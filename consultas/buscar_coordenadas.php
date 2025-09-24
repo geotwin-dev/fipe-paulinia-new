@@ -75,6 +75,7 @@ try {
     $poligonos_lotes_quadras = []; // Array para polígonos de lotes e quadras
     $debug_queries = []; // Array para armazenar todas as queries executadas
     $debug_info = []; // Array para informações de debug detalhadas
+    $marcadores_unicos = []; // Array para controlar marcadores únicos (evitar duplicação)
     $stats = [
         'total_registros' => count($registros),
         'coordenadas_encontradas' => 0,
@@ -165,14 +166,16 @@ try {
                 FROM desenhos 
                 WHERE quarteirao = ? 
                 AND quadra = ? 
-                AND lote = ?";
+                AND lote = ?
+                AND status = 1";
         
         // Preparar query para debug (substituir ? pelos valores reais)
         $sql_debug = "SELECT $select_sql
                       FROM desenhos 
                       WHERE quarteirao = '" . addslashes($cara_quarteirao) . "' 
                       AND quadra = '" . $quadra. "' 
-                      AND lote = '" . $lote. "'";
+                      AND lote = '" . $lote. "'
+                      AND status = 1";
         
         // Salvar query no debug
         $query_info = [
@@ -231,6 +234,20 @@ try {
                 // Se não for JSON, tentar processar como string
                 $coordenadas_processadas = $coordenadas_raw;
                 $debug_coordenadas['parse_resultado'] = 'Não é JSON - ' . json_last_error_msg();
+            }
+
+            // Verificar duplicação de marcadores (apenas para tipo 'marcador')
+            if ($tipo === 'marcador') {
+                $chave_marcador = $desenho['quarteirao'] . '/' . $desenho['quadra'] . '/' . $desenho['lote'];
+                
+                if (isset($marcadores_unicos[$chave_marcador])) {
+                    // Marcador já foi processado, pular
+                    error_log("MARCADOR DUPLICADO IGNORADO: " . $chave_marcador);
+                    continue;
+                }
+                
+                // Marcar como processado
+                $marcadores_unicos[$chave_marcador] = true;
             }
 
             $item_coordenada = [
@@ -323,8 +340,9 @@ try {
             $sql_poligonos = "SELECT $select_sql
                              FROM desenhos 
                              WHERE quadricula IN ($placeholders)
-                             AND tipo = 'poligono'
-                             ORDER BY quadricula, id";
+                             AND (tipo = 'poligono' OR tipo = 'polilinha')
+                             AND status = 1
+                             ORDER BY quadricula, tipo, id";
             
             $params_poligonos = $quadriculas_list;
             
@@ -367,21 +385,37 @@ try {
         $total_poligonos = 0;
         
         foreach ($quadriculas_list as $quadricula) {
-            $test_sql = "SELECT COUNT(*) as total FROM desenhos WHERE tipo = 'poligono' AND quadricula = ?";
+            $test_sql = "SELECT COUNT(*) as total FROM desenhos WHERE (tipo = 'poligono' OR tipo = 'polilinha') AND quadricula = ? AND status = 1";
             try {
                 $stmt_test = $pdo->prepare($test_sql);
                 $stmt_test->execute([$quadricula]);
                 $test_result = $stmt_test->fetch(PDO::FETCH_ASSOC);
                 $total_poligonos += $test_result['total'];
-                error_log("TEST: Quadrícula " . $quadricula . " tem " . $test_result['total'] . " polígonos");
+                error_log("TEST: Quadrícula " . $quadricula . " tem " . $test_result['total'] . " polígonos/polilinhas ativos (status=1)");
                 
                 // Testar camadas disponíveis na quadrícula
-                $test_sql2 = "SELECT DISTINCT camada, COUNT(*) as total FROM desenhos WHERE tipo = 'poligono' AND quadricula = ? GROUP BY camada";
+                $test_sql2 = "SELECT DISTINCT camada, tipo, COUNT(*) as total FROM desenhos WHERE (tipo = 'poligono' OR tipo = 'polilinha') AND quadricula = ? AND status = 1 GROUP BY camada, tipo";
                 $stmt_test2 = $pdo->prepare($test_sql2);
                 $stmt_test2->execute([$quadricula]);
-                error_log("TEST: Camadas de polígonos na quadrícula " . $quadricula . ":");
+                error_log("TEST: Camadas de polígonos/polilinhas na quadrícula " . $quadricula . ":");
                 while ($camada_result = $stmt_test2->fetch(PDO::FETCH_ASSOC)) {
-                    error_log("  - Camada: " . $camada_result['camada'] . " (" . $camada_result['total'] . " registros)");
+                    error_log("  - Camada: " . $camada_result['camada'] . " / Tipo: " . $camada_result['tipo'] . " (" . $camada_result['total'] . " registros)");
+                }
+
+                // Verificar se há lotes especificamente (polígonos OU polilinhas)
+                $test_sql3 = "SELECT COUNT(*) as total FROM desenhos WHERE (tipo = 'poligono' OR tipo = 'polilinha') AND quadricula = ? AND camada = 'lote' AND status = 1";
+                $stmt_test3 = $pdo->prepare($test_sql3);
+                $stmt_test3->execute([$quadricula]);
+                $lotes_result = $stmt_test3->fetch(PDO::FETCH_ASSOC);
+                error_log("TEST: Lotes (polígonos+polilinhas) na quadrícula " . $quadricula . ": " . $lotes_result['total']);
+                
+                // Verificar todos os tipos de elementos
+                $test_sql4 = "SELECT DISTINCT tipo, COUNT(*) as total FROM desenhos WHERE quadricula = ? GROUP BY tipo";
+                $stmt_test4 = $pdo->prepare($test_sql4);
+                $stmt_test4->execute([$quadricula]);
+                error_log("TEST: Tipos de elementos na quadrícula " . $quadricula . ":");
+                while ($tipo_result = $stmt_test4->fetch(PDO::FETCH_ASSOC)) {
+                    error_log("  - Tipo: " . $tipo_result['tipo'] . " (" . $tipo_result['total'] . " registros)");
                 }
             } catch (Exception $e) {
                 error_log("TEST: Erro na consulta de teste: " . $e->getMessage());
@@ -422,8 +456,8 @@ try {
                 $coordenadas_processadas = $coordenadas_raw;
             }
             
-            // FILTRO DE PROXIMIDADE: Verificar se polígono está a até 500m dos marcadores
-            $relevante = verificarProximidadePoligono($poligono, $coordenadas_encontradas, 500);
+            // FILTRO DE PROXIMIDADE: Verificar se polígono/polilinha está a até 10m dos marcadores
+            $relevante = verificarProximidadePoligono($poligono, $coordenadas_encontradas, 10);
             
             if ($relevante) {
                 $poligonos_proximos++;
@@ -463,9 +497,9 @@ try {
             $query_poligonos_info['poligonos_distantes'] = $poligonos_distantes;
             
             error_log("Resultados encontrados na consulta de polígonos: " . $resultados_poligonos);
-            error_log("🎯 FILTRO DE PROXIMIDADE (500m):");
-            error_log("  - Polígonos próximos (≤500m): " . $poligonos_proximos);
-            error_log("  - Polígonos distantes (>500m): " . $poligonos_distantes);
+            error_log("🎯 FILTRO DE PROXIMIDADE (10m):");
+            error_log("  - Polígonos/Polilinhas próximos (≤10m): " . $poligonos_proximos);
+            error_log("  - Polígonos/Polilinhas distantes (>10m): " . $poligonos_distantes);
             error_log("  - Taxa de proximidade: " . ($resultados_poligonos > 0 ? round(($poligonos_proximos / $resultados_poligonos) * 100, 1) : 0) . "%");
             
             // Sem fallback necessário - busca por quadrícula já é completa
@@ -585,9 +619,9 @@ function calcularDistanciaGPS($lat1, $lng1, $lat2, $lng2) {
 }
 
 /**
- * Verifica se um polígono está próximo (até 500m) de algum marcador
+ * Verifica se um polígono está próximo (até 10m) de algum marcador
  */
-function verificarProximidadePoligono($poligono, $coordenadas_marcadores, $distancia_maxima = 500) {
+function verificarProximidadePoligono($poligono, $coordenadas_marcadores, $distancia_maxima = 10) {
     try {
         // Tentar decodificar as coordenadas do polígono
         $coordenadas_raw = $poligono['coordenadas'];
