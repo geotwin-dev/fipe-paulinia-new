@@ -3204,7 +3204,7 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                     console.warn('Timeout na inicialização do mapa');
                     mostrarErroMapa('Timeout na inicialização. O mapa demorou muito para carregar.');
                 }
-            }, 15000);
+            }, 150000000);
         };
 
         // Debug: Log completo dos dados recebidos
