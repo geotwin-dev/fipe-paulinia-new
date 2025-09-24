@@ -145,6 +145,12 @@ include("../connection.php");
             border: 1px solid #ddd;
             border-radius: 5px;
             background-color: #f8f9fa;
+            transition: all 0.3s ease;
+        }
+
+        .filtro-item.filtro-ativo {
+            border-color: #28a745;
+            background-color: #e6f7e6;
         }
 
         .filtro-campos {
@@ -155,6 +161,26 @@ include("../connection.php");
 
         .filtro-remove {
             margin-left: auto;
+        }
+
+        .btn-aplicar-filtros {
+            position: relative;
+        }
+
+        .filtros-aplicados-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -214,7 +240,18 @@ include("../connection.php");
         <div id="filtros" style="display: none;">
             <div id="subDivFiltros">
                 <div style="width: 100%;" class="d-flex justify-content-between align-items-center mb-3">
-                    <button id="btnIncluirFiltro" class="btn btn-primary">+Filtro</button>
+                    <div class="d-flex gap-2">
+                        <button id="btnIncluirFiltro" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Filtro
+                        </button>
+                        <button id="btnAplicarFiltros" class="btn btn-warning btn-aplicar-filtros" onclick="aplicarFiltrosCustomizados()">
+                            <i class="fas fa-filter"></i> Aplicar Filtros
+                            <span id="badgeFiltros" class="filtros-aplicados-badge" style="display: none;">0</span>
+                        </button>
+                        <button id="btnLimparFiltros" class="btn btn-secondary" onclick="limparTodosFiltros()">
+                            <i class="fas fa-eraser"></i> Limpar Filtros
+                        </button>
+                    </div>
                     <button id="btnPlotarMapa" class="btn btn-success" onclick="plotarNoMapa()">
                         <i class="fas fa-map-marked-alt"></i> Plotar no mapa
                     </button>
@@ -282,36 +319,38 @@ include("../connection.php");
         }
 
         function realizarConsulta(tabela, consultaId) {
-            console.log('Pesquisando...')
+            console.log('Iniciando consulta server-side...')
             
             $('#avisoInicial').removeClass('d-flex');
             $('#avisoInicial').addClass('d-none');
-            // Mostrar loading e esconder tabela
-            $('#loadingDiv').show();
-            $('#tableResult').hide();
-
+            
+            // Armazenar parâmetros da consulta atual
+            window.consultaAtual = {
+                tabela: tabela,
+                consulta_id: consultaId
+            };
+            
+            // Fazer uma requisição inicial para obter metadados (colunas e tipos)
             $.ajax({
                 url: 'consultar_dados.php',
                 method: 'POST',
                 data: {
                     tabela: tabela,
                     consulta_id: consultaId,
+                    draw: 1,
+                    start: 0,
+                    length: 1, // Só queremos os metadados
+                    search: { value: '' }
                 },
                 dataType: 'json',
                 success: function(response) {
-                    //console.log('Resposta recebida:', response);
-                    
-                    if (response.success && response.data && response.colunas) {
-                        //console.log('Total de registros encontrados:', response.recordsTotal);
-                        //console.log('Registros carregados:', response.recordsShown);
-                        //console.log('Tipos das colunas:', response.tipos_colunas);
-                        
-                        // Chamar função para exibir na tabela (client-side)
-                        chamarTabela(response.data, response.colunas, response.tipos_colunas);
+                    if (response.success && response.colunas) {
+                        console.log('Metadados recebidos, inicializando DataTable server-side...');
+                        // Chamar função para configurar tabela server-side
+                        chamarTabelaServerSide(response.colunas, response.tipos_colunas);
                     } else {
-                        console.error('Erro na consulta:', response.mensagem || 'Erro desconhecido');
+                        console.error('Erro na consulta inicial:', response.mensagem || 'Erro desconhecido');
                         alert('Erro na consulta: ' + (response.mensagem || 'Erro desconhecido'));
-                        // Esconder loading em caso de erro
                         $('#loadingDiv').hide();
                     }
                 },
@@ -322,16 +361,15 @@ include("../connection.php");
                         responseText: xhr.responseText
                     });
                     alert('Erro na comunicação com o servidor: ' + error);
-                    // Esconder loading em caso de erro
                     $('#loadingDiv').hide();
                 }
             });
         }
 
-        function chamarTabela(dados, colunas, tiposColunas) {
-            //console.log('=== NOVA CONSULTA ===');
-            //console.log('Configurando tabela client-side com', dados.length, 'registros');
-            //console.log('Colunas da nova consulta:', colunas);
+        function chamarTabelaServerSide(colunas, tiposColunas) {
+            console.log('=== NOVA CONSULTA SERVER-SIDE ===');
+            console.log('Configurando tabela server-side processing');
+            console.log('Colunas da nova consulta:', colunas);
             
             // Limpar filtros existentes
             $('#containerFiltros').empty();
@@ -347,7 +385,7 @@ include("../connection.php");
             
             // Destruir completamente a tabela existente
             if ($.fn.DataTable.isDataTable('#tableResult')) {
-                //console.log('Destruindo tabela existente...');
+                console.log('Destruindo tabela existente...');
                 $('#tableResult').DataTable().clear().destroy();
             }
             
@@ -381,12 +419,27 @@ include("../connection.php");
                 colunasParaEsconder.push(i);
             }
 
-            // DataTable com limitação simples de colunas
+            // DataTable com server-side processing
             table = $('#tableResult').DataTable({
-                "data": dados,
+                "serverSide": true,
+                "processing": true,
+                "ajax": {
+                    "url": "consultar_dados.php",
+                    "type": "POST",
+                    "data": function(d) {
+                        // Adicionar parâmetros da consulta atual
+                        d.tabela = window.consultaAtual.tabela;
+                        d.consulta_id = window.consultaAtual.consulta_id;
+                        
+                        // Adicionar filtros customizados
+                        d.filtros_customizados = JSON.stringify(coletarFiltrosCustomizados());
+                        
+                        return d;
+                    }
+                },
                 "columns": columnsConfig,
                 "ordering": true,
-                "pageLength": 10,
+                "pageLength": 25,
                 "lengthMenu": [10, 25, 50, 100, 250, 500],
                 "paging": true,
                 "searching": true,
@@ -423,16 +476,21 @@ include("../connection.php");
                     }
                 ],
                 "initComplete": function() {
-                    console.log('DataTable com colunas limitadas inicializado');
+                    console.log('DataTable server-side inicializado com sucesso');
+                    // Esconder loading e mostrar tabela
+                    $('#loadingDiv').hide();
+                    $('#tableResult').show();
+                    
+                    // Mostrar div de filtros após carregar a tabela
+                    $('#filtros').show();
                 }
             });
+        }
 
-            // Esconder loading e mostrar tabela
-            $('#loadingDiv').hide();
-            $('#tableResult').show();
-            
-            // Mostrar div de filtros após carregar a tabela
-            $('#filtros').show();
+        // Manter função original para compatibilidade (caso seja chamada em algum lugar)
+        function chamarTabela(dados, colunas, tiposColunas) {
+            console.log('Função chamarTabela original chamada - redirecionando para server-side...');
+            chamarTabelaServerSide(colunas, tiposColunas);
         }
 
         // Função para mostrar detalhes no modal
@@ -473,13 +531,168 @@ include("../connection.php");
             });
         });
 
+        // Função para coletar todos os filtros customizados ativos
+        function coletarFiltrosCustomizados() {
+            const filtros = [];
+            
+            $('#containerFiltros .filtro-item').each(function() {
+                const filtroId = $(this).attr('id');
+                const selectFiltro = $(this).find('select');
+                const coluna = selectFiltro.val();
+                
+                if (coluna && window.tiposColunasAtual && window.tiposColunasAtual[coluna]) {
+                    const tipoCampo = window.tiposColunasAtual[coluna];
+                    const filtroObj = {
+                        campo: coluna,
+                        tipo: tipoCampo
+                    };
+                    
+                    // Coletar valores baseado no tipo
+                    switch (tipoCampo) {
+                        case 'texto':
+                            const valorTexto = $(`#${filtroId}_valor`).val();
+                            if (valorTexto) {
+                                filtroObj.valor1 = valorTexto;
+                                filtros.push(filtroObj);
+                            }
+                            break;
+                            
+                        case 'data':
+                            const dataInicio = $(`#${filtroId}_de`).val();
+                            const dataFim = $(`#${filtroId}_ate`).val();
+                            if (dataInicio || dataFim) {
+                                if (dataInicio) filtroObj.valor1 = dataInicio;
+                                if (dataFim) filtroObj.valor2 = dataFim;
+                                filtros.push(filtroObj);
+                            }
+                            break;
+                            
+                        case 'numero':
+                            const numeroInicio = $(`#${filtroId}_de`).val();
+                            const numeroFim = $(`#${filtroId}_ate`).val();
+                            if (numeroInicio || numeroFim) {
+                                if (numeroInicio) filtroObj.valor1 = numeroInicio;
+                                if (numeroFim) filtroObj.valor2 = numeroFim;
+                                filtros.push(filtroObj);
+                            }
+                            break;
+                    }
+                }
+            });
+            
+            return filtros;
+        }
+
+        // Função para aplicar filtros customizados (reconstrói a tabela)
+        function aplicarFiltrosCustomizados() {
+            if (!table || !window.consultaAtual) {
+                alert('Nenhuma consulta ativa para aplicar filtros.');
+                return;
+            }
+
+            console.log('=== APLICANDO FILTROS CUSTOMIZADOS ===');
+            
+            const filtros = coletarFiltrosCustomizados();
+            console.log('Filtros coletados:', filtros);
+            
+            // Atualizar badge com número de filtros
+            atualizarBadgeFiltros(filtros.length);
+            
+            // Destacar filtros ativos visualmente
+            destacarFiltrosAtivos();
+            
+            if (filtros.length === 0) {
+                console.log('Nenhum filtro customizado ativo');
+            }
+            
+            // Recarregar dados da tabela com novos filtros
+            table.ajax.reload(null, false); // false = manter página atual
+            
+            console.log('Tabela recarregada com filtros aplicados');
+        }
+
+        // Função para limpar todos os filtros
+        function limparTodosFiltros() {
+            if (!table) {
+                return;
+            }
+
+            console.log('=== LIMPANDO TODOS OS FILTROS ===');
+            
+            // Limpar filtros customizados
+            $('#containerFiltros').empty();
+            contadorFiltros = 0;
+            
+            // Limpar busca global do DataTables
+            table.search('');
+            
+            // Atualizar badge
+            atualizarBadgeFiltros(0);
+            
+            // Recarregar dados da tabela
+            table.ajax.reload(null, false); // false = manter página atual
+            
+            console.log('Todos os filtros foram limpos');
+        }
+
+        // Função para atualizar o badge de filtros
+        function atualizarBadgeFiltros(quantidade) {
+            const badge = $('#badgeFiltros');
+            if (quantidade > 0) {
+                badge.text(quantidade);
+                badge.show();
+            } else {
+                badge.hide();
+            }
+        }
+
+        // Função para destacar filtros ativos visualmente
+        function destacarFiltrosAtivos() {
+            $('#containerFiltros .filtro-item').each(function() {
+                const filtroId = $(this).attr('id');
+                const selectFiltro = $(this).find('select');
+                const coluna = selectFiltro.val();
+                
+                if (coluna && window.tiposColunasAtual && window.tiposColunasAtual[coluna]) {
+                    const tipoCampo = window.tiposColunasAtual[coluna];
+                    let temValor = false;
+                    
+                    // Verificar se o filtro tem valores
+                    switch (tipoCampo) {
+                        case 'texto':
+                            temValor = $(`#${filtroId}_valor`).val() !== '';
+                            break;
+                        case 'data':
+                            temValor = $(`#${filtroId}_de`).val() !== '' || $(`#${filtroId}_ate`).val() !== '';
+                            break;
+                        case 'numero':
+                            temValor = $(`#${filtroId}_de`).val() !== '' || $(`#${filtroId}_ate`).val() !== '';
+                            break;
+                    }
+                    
+                    // Aplicar classe visual
+                    if (temValor) {
+                        $(this).addClass('filtro-ativo');
+                    } else {
+                        $(this).removeClass('filtro-ativo');
+                    }
+                }
+            });
+        }
+
         function adicionarFiltro() {
             contadorFiltros++;
             const filtroId = 'filtro_' + contadorFiltros;
             
-            // Criar options do select com as colunas disponíveis
+            // Criar options do select com as colunas disponíveis em ordem alfabética
             let options = '<option value="">Selecione uma coluna...</option>';
-            window.todasColunas.forEach(function(coluna) {
+            
+            // Ordenar colunas alfabeticamente
+            const colunasOrdenadas = [...window.todasColunas].sort((a, b) => {
+                return a.toLowerCase().localeCompare(b.toLowerCase(), 'pt-BR');
+            });
+            
+            colunasOrdenadas.forEach(function(coluna) {
                 options += `<option value="${coluna}">${coluna.toUpperCase()}</option>`;
             });
 
@@ -522,29 +735,24 @@ include("../connection.php");
                     camposHTML = `
                         <label class="form-label">De:</label>
                         <input type="date" class="form-control" style="width: 150px;" 
-                               onchange="aplicarFiltro('${filtroId}', '${coluna}', 'data')"
                                id="${filtroId}_de">
                         <label class="form-label">Até:</label>
                         <input type="date" class="form-control" style="width: 150px;"
-                               onchange="aplicarFiltro('${filtroId}', '${coluna}', 'data')"
                                id="${filtroId}_ate">
                     `;
                     break;
                 case 'numero':
                     camposHTML = `
                         <input type="number" class="form-control" placeholder="De" style="width: 100px;"
-                               oninput="aplicarFiltro('${filtroId}', '${coluna}', 'numero')"
                                id="${filtroId}_de">
                         <span>até</span>
                         <input type="number" class="form-control" placeholder="Até" style="width: 100px;"
-                               oninput="aplicarFiltro('${filtroId}', '${coluna}', 'numero')"
                                id="${filtroId}_ate">
                     `;
                     break;
                 default: // texto
                     camposHTML = `
                         <input type="text" class="form-control" placeholder="Digite para filtrar..." style="width: 250px;"
-                               oninput="aplicarFiltro('${filtroId}', '${coluna}', 'texto')"
                                id="${filtroId}_valor">
                     `;
                     break;
@@ -553,261 +761,125 @@ include("../connection.php");
             camposDiv.html(camposHTML);
         }
 
-        function aplicarFiltro(filtroId, coluna, tipo) {
-            // Encontrar índice da coluna
-            const colunaIndex = window.todasColunas.indexOf(coluna);
-            if (colunaIndex === -1) return;
-
-            let valorFiltro = '';
-
-            switch (tipo) {
-                case 'texto':
-                    valorFiltro = $(`#${filtroId}_valor`).val();
-                    break;
-                    
-                case 'data':
-                    const dataInicio = $(`#${filtroId}_de`).val();
-                    const dataFim = $(`#${filtroId}_ate`).val();
-                    
-                    // Lógica inteligente para filtro de datas
-                    if (!dataInicio && !dataFim) {
-                        // Ambos vazios = mostrar tudo
-                        valorFiltro = '';
-                    } else if (dataInicio && dataFim) {
-                        // Ambos preenchidos = intervalo entre as datas
-                        valorFiltro = function(settings, data, dataIndex) {
-                            const valorColuna = data[colunaIndex];
-                            if (!valorColuna) return false;
-                            
-                            // Extrair apenas a parte da data (YYYY-MM-DD) do datetime
-                            const dataValor = valorColuna.split(' ')[0];
-                            return dataValor >= dataInicio && dataValor <= dataFim;
-                        };
-                    } else if (dataInicio) {
-                        // Só data início = a partir desta data
-                        valorFiltro = function(settings, data, dataIndex) {
-                            const valorColuna = data[colunaIndex];
-                            if (!valorColuna) return false;
-                            
-                            const dataValor = valorColuna.split(' ')[0];
-                            return dataValor >= dataInicio;
-                        };
-                    } else if (dataFim) {
-                        // Só data fim = até esta data
-                        valorFiltro = function(settings, data, dataIndex) {
-                            const valorColuna = data[colunaIndex];
-                            if (!valorColuna) return false;
-                            
-                            const dataValor = valorColuna.split(' ')[0];
-                            return dataValor <= dataFim;
-                        };
-                    }
-                    break;
-                    
-                case 'numero':
-                    const valorInicio = $(`#${filtroId}_de`).val();
-                    const valorFim = $(`#${filtroId}_ate`).val();
-                    
-                    if (!valorInicio && !valorFim) {
-                        valorFiltro = '';
-                    } else if (valorInicio && valorFim) {
-                        // Intervalo numérico
-                        valorFiltro = function(settings, data, dataIndex) {
-                            const valorColuna = parseFloat(data[colunaIndex]);
-                            if (isNaN(valorColuna)) return false;
-                            return valorColuna >= parseFloat(valorInicio) && valorColuna <= parseFloat(valorFim);
-                        };
-                    } else if (valorInicio) {
-                        // A partir do valor
-                        valorFiltro = function(settings, data, dataIndex) {
-                            const valorColuna = parseFloat(data[colunaIndex]);
-                            if (isNaN(valorColuna)) return false;
-                            return valorColuna >= parseFloat(valorInicio);
-                        };
-                    } else if (valorFim) {
-                        // Até o valor
-                        valorFiltro = function(settings, data, dataIndex) {
-                            const valorColuna = parseFloat(data[colunaIndex]);
-                            if (isNaN(valorColuna)) return false;
-                            return valorColuna <= parseFloat(valorFim);
-                        };
-                    }
-                    break;
-            }
-
-            // Aplicar filtro na coluna específica do DataTables
-            if (table) {
-                // Remover filtro anterior desta coluna se existir
-                if (filtrosAtivos[filtroId]) {
-                    const index = $.fn.dataTable.ext.search.indexOf(filtrosAtivos[filtroId]);
-                    if (index > -1) {
-                        $.fn.dataTable.ext.search.splice(index, 1);
-                    }
-                }
-                
-                if (typeof valorFiltro === 'function') {
-                    // Para filtros customizados (datas e números)
-                    filtrosAtivos[filtroId] = valorFiltro;
-                    $.fn.dataTable.ext.search.push(valorFiltro);
-                    table.draw();
-                } else {
-                    // Para filtros de texto simples
-                    if (valorFiltro === '') {
-                        // Limpar filtro de texto
-                        delete filtrosAtivos[filtroId];
-                    }
-                    table.column(colunaIndex).search(valorFiltro).draw();
-                }
-            }
-        }
+        // OBSERVAÇÃO: A função aplicarFiltro foi removida pois agora usamos server-side processing
+        // Os filtros são aplicados no servidor quando o botão "Aplicar Filtros" é clicado
 
         function removerFiltro(filtroId) {
-            // Obter informações do filtro antes de remover
-            const selectFiltro = $(`#${filtroId} select`);
-            const coluna = selectFiltro.val();
-            
-            if (coluna && table) {
-                // Encontrar índice da coluna
-                const colunaIndex = window.todasColunas.indexOf(coluna);
-                
-                if (colunaIndex !== -1) {
-                    // Resetar filtro da coluna específica (para filtros de texto)
-                    table.column(colunaIndex).search('');
-                }
-                
-                // Remover filtro customizado se existir (para datas e números)
-                if (filtrosAtivos[filtroId]) {
-                    const index = $.fn.dataTable.ext.search.indexOf(filtrosAtivos[filtroId]);
-                    if (index > -1) {
-                        $.fn.dataTable.ext.search.splice(index, 1);
-                    }
-                    delete filtrosAtivos[filtroId];
-                }
-                
-                // Redesenhar tabela
-                table.draw();
-            }
+            console.log('Removendo filtro:', filtroId);
             
             // Remover o elemento visual do filtro
             $(`#${filtroId}`).remove();
+            
+            // Aplicar filtros restantes automaticamente
+            if (table) {
+                aplicarFiltrosCustomizados();
+            }
         }
 
         function plotarNoMapa() {
-            // Verificar se há dados na tabela
-            if (!table || !table.data().count()) {
-                alert('Nenhum dado para plotar no mapa. Execute uma consulta primeiro.');
+            // Verificar se há uma consulta ativa
+            if (!table || !window.consultaAtual) {
+                alert('Nenhuma consulta ativa. Execute uma consulta primeiro.');
                 return;
             }
 
-            console.log('=== PLOTAR NO MAPA ===');
+            console.log('=== PLOTAR NO MAPA (SERVER-SIDE) ===');
             
-            // Obter dados FILTRADOS da tabela (apenas os visíveis)
-            const dadosFiltrados = table.rows({ search: 'applied' }).data().toArray();
-            console.log('Total de registros na tabela:', table.data().count());
-            console.log('Registros após filtros:', dadosFiltrados.length);
-            console.log('Dados filtrados que serão enviados:', dadosFiltrados);
+            // Com server-side processing, precisamos fazer uma requisição especial
+            // para obter TODOS os dados filtrados (não apenas a página atual)
+            
+            // Obter filtro de busca global do DataTables
+            const buscaGlobal = table.search();
+            
+            // Coletar filtros customizados para o mapa
+            const filtrosParaMapa = coletarFiltrosCustomizados();
 
-            // Coletar informações dos filtros aplicados para referência
-            const filtrosParaMapa = [];
+            console.log('Buscando TODOS os dados filtrados para o mapa...');
             
-            // Percorrer todos os filtros no containerFiltros
-            $('#containerFiltros .filtro-item').each(function() {
-                const filtroId = $(this).attr('id');
-                const selectFiltro = $(this).find('select');
-                const coluna = selectFiltro.val();
-                
-                if (coluna && window.tiposColunasAtual && window.tiposColunasAtual[coluna]) {
-                    const tipoCampo = window.tiposColunasAtual[coluna];
-                    const filtroObj = {
-                        campo: coluna,
-                        tipo: tipoCampo
-                    };
-                    
-                    // Coletar valores baseado no tipo
-                    switch (tipoCampo) {
-                        case 'texto':
-                            const valorTexto = $(`#${filtroId}_valor`).val();
-                            if (valorTexto) {
-                                filtroObj.valor1 = valorTexto;
-                                filtrosParaMapa.push(filtroObj);
-                            }
-                            break;
+            // Fazer requisição para obter TODOS os dados filtrados (sem paginação)
+            $.ajax({
+                url: 'consultar_dados.php',
+                method: 'POST',
+                data: {
+                    tabela: window.consultaAtual.tabela,
+                    consulta_id: window.consultaAtual.consulta_id,
+                    draw: 999, // Não importa para o mapa
+                    start: 0,
+                    length: 999999, // Pegar todos os registros
+                    search: { value: buscaGlobal },
+                    filtros_customizados: JSON.stringify(filtrosParaMapa)
+                },
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success && response.data) {
+                        const dadosFiltrados = response.data;
+                        
+                        console.log('Dados recebidos para o mapa:');
+                        console.log('- Total de registros:', response.recordsTotal);
+                        console.log('- Registros filtrados:', response.recordsFiltered);
+                        console.log('- Registros recebidos:', dadosFiltrados.length);
+                        
+                        if (dadosFiltrados.length === 0) {
+                            alert('Nenhum registro encontrado com os filtros aplicados.');
+                            return;
+                        }
+
+                        try {
+                            // Preparar dados para envio
+                            const dadosJSON = JSON.stringify(dadosFiltrados);
+                            const filtrosJSON = JSON.stringify(filtrosParaMapa);
                             
-                        case 'data':
-                            const dataInicio = $(`#${filtroId}_de`).val();
-                            const dataFim = $(`#${filtroId}_ate`).val();
-                            if (dataInicio || dataFim) {
-                                if (dataInicio) filtroObj.valor1 = dataInicio;
-                                if (dataFim) filtroObj.valor2 = dataFim;
-                                filtrosParaMapa.push(filtroObj);
-                            }
-                            break;
+                            console.log('Enviando para o mapa:');
+                            console.log('- Registros:', dadosFiltrados.length);
+                            console.log('- Filtros aplicados:', filtrosParaMapa.length);
+                            console.log('- Tamanho dos dados (caracteres):', dadosJSON.length);
                             
-                        case 'numero':
-                            const numeroInicio = $(`#${filtroId}_de`).val();
-                            const numeroFim = $(`#${filtroId}_ate`).val();
-                            if (numeroInicio || numeroFim) {
-                                if (numeroInicio) filtroObj.valor1 = numeroInicio;
-                                if (numeroFim) filtroObj.valor2 = numeroFim;
-                                filtrosParaMapa.push(filtroObj);
-                            }
-                            break;
+                            // Criar formulário oculto para envio via POST
+                            const form = document.createElement('form');
+                            form.method = 'POST';
+                            form.action = 'mapa_plot.php';
+                            form.target = '_blank';
+                            form.style.display = 'none';
+                            
+                            // Campo para dados
+                            const inputDados = document.createElement('input');
+                            inputDados.type = 'hidden';
+                            inputDados.name = 'dados';
+                            inputDados.value = dadosJSON;
+                            form.appendChild(inputDados);
+                            
+                            // Campo para filtros
+                            const inputFiltros = document.createElement('input');
+                            inputFiltros.type = 'hidden';
+                            inputFiltros.name = 'filtros';
+                            inputFiltros.value = filtrosJSON;
+                            form.appendChild(inputFiltros);
+                            
+                            // Adicionar ao DOM e submeter
+                            document.body.appendChild(form);
+                            form.submit();
+                            
+                            // Remover formulário após envio
+                            setTimeout(() => {
+                                document.body.removeChild(form);
+                            }, 100);
+                            
+                            console.log('Dados enviados via POST com sucesso!');
+                            
+                        } catch (error) {
+                            console.error('Erro ao preparar dados para o mapa:', error);
+                            alert('Erro ao processar dados para o mapa: ' + error.message);
+                        }
+                    } else {
+                        console.error('Erro ao obter dados para o mapa:', response.mensagem);
+                        alert('Erro ao obter dados para o mapa: ' + (response.mensagem || 'Erro desconhecido'));
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Erro AJAX ao obter dados para o mapa:', error);
+                    alert('Erro na comunicação com o servidor: ' + error);
                 }
             });
-
-            // Verificar se há dados para enviar
-            if (dadosFiltrados.length === 0) {
-                alert('Nenhum registro encontrado com os filtros aplicados.');
-                return;
-            }
-
-            try {
-                // Preparar dados para envio
-                const dadosJSON = JSON.stringify(dadosFiltrados);
-                const filtrosJSON = JSON.stringify(filtrosParaMapa);
-                
-                console.log('Dados enviados para o mapa:');
-                console.log('- Registros:', dadosFiltrados.length);
-                console.log('- Filtros aplicados:', filtrosParaMapa.length);
-                console.log('- Tamanho dos dados (caracteres):', dadosJSON.length);
-                
-                // Criar formulário oculto para envio via POST
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = 'mapa_plot.php';
-                form.target = '_blank';
-                form.style.display = 'none';
-                
-                // Campo para dados
-                const inputDados = document.createElement('input');
-                inputDados.type = 'hidden';
-                inputDados.name = 'dados';
-                inputDados.value = dadosJSON;
-                form.appendChild(inputDados);
-                
-                // Campo para filtros
-                const inputFiltros = document.createElement('input');
-                inputFiltros.type = 'hidden';
-                inputFiltros.name = 'filtros';
-                inputFiltros.value = filtrosJSON;
-                form.appendChild(inputFiltros);
-                
-                // Adicionar ao DOM e submeter
-                document.body.appendChild(form);
-                form.submit();
-                
-                // Remover formulário após envio
-                setTimeout(() => {
-                    document.body.removeChild(form);
-                }, 100);
-                
-                console.log('Dados enviados via POST com sucesso!');
-                
-            } catch (error) {
-                console.error('Erro ao preparar dados para o mapa:', error);
-                alert('Erro ao processar dados para o mapa: ' + error.message);
-            }
         }
 
     </script>

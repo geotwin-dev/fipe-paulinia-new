@@ -30,6 +30,18 @@ try {
     $tabela = $_POST['tabela'];
     $consultaId = (int)$_POST['consulta_id'];
     
+    // Parâmetros do DataTables para server-side processing
+    $draw = intval($_POST['draw'] ?? 0);
+    $start = intval($_POST['start'] ?? 0);
+    $length = intval($_POST['length'] ?? 10);
+    $search = $_POST['search']['value'] ?? '';
+    
+    // Parâmetros de filtros customizados
+    $filtrosCustomizados = [];
+    if (isset($_POST['filtros_customizados'])) {
+        $filtrosCustomizados = json_decode($_POST['filtros_customizados'], true) ?? [];
+    }
+    
     // Validar tabela
     $tabelasPermitidas = ['cadastro', 'desenhos'];
     if (!in_array($tabela, $tabelasPermitidas)) {
@@ -561,17 +573,130 @@ try {
     }
 
     $consulta = $consultas[$tabela][$consultaId];
-    $sql = $consulta['sql'];
+    $sqlBase = $consulta['sql'];
     $count_sql = $consulta['count_sql'];
     $colunas = $consulta['colunas'];
 
-    // Contar total de registros
+    // Contar total de registros (sem filtros)
     $stmt_count = $pdo->prepare($count_sql);
     $stmt_count->execute();
     $total_records = $stmt_count->fetch(PDO::FETCH_ASSOC)['total'];
     
-    // Executar consulta completa
-    $stmt = $pdo->prepare($sql);
+    // Aplicar filtros (busca global + filtros customizados)
+    $sqlFiltrado = $sqlBase;
+    $count_sql_filtrado = $count_sql;
+    $parametros = [];
+    $clausulasWhere = [];
+    
+    // Filtro de busca global
+    if ($search !== '') {
+        $filtrosGlobais = [];
+        foreach ($colunas as $coluna) {
+            $filtrosGlobais[] = "$coluna LIKE :search";
+        }
+        $clausulasWhere[] = "(" . implode(" OR ", $filtrosGlobais) . ")";
+        $parametros[':search'] = "%$search%";
+    }
+    
+    // Filtros customizados
+    if (!empty($filtrosCustomizados)) {
+        foreach ($filtrosCustomizados as $index => $filtro) {
+            if (!isset($filtro['campo']) || !in_array($filtro['campo'], $colunas)) {
+                continue; // Ignorar filtros inválidos
+            }
+            
+            $campo = $filtro['campo'];
+            $tipo = $filtro['tipo'] ?? 'texto';
+            $valor1 = $filtro['valor1'] ?? '';
+            $valor2 = $filtro['valor2'] ?? '';
+            
+            switch ($tipo) {
+                case 'texto':
+                    if ($valor1 !== '') {
+                        $paramKey = ":filtro_texto_{$index}";
+                        $clausulasWhere[] = "$campo LIKE $paramKey";
+                        $parametros[$paramKey] = "%$valor1%";
+                    }
+                    break;
+                    
+                case 'data':
+                    if ($valor1 !== '' && $valor2 !== '') {
+                        // Intervalo de datas
+                        $paramKey1 = ":filtro_data_inicio_{$index}";
+                        $paramKey2 = ":filtro_data_fim_{$index}";
+                        $clausulasWhere[] = "DATE($campo) BETWEEN $paramKey1 AND $paramKey2";
+                        $parametros[$paramKey1] = $valor1;
+                        $parametros[$paramKey2] = $valor2;
+                    } elseif ($valor1 !== '') {
+                        // A partir da data
+                        $paramKey = ":filtro_data_inicio_{$index}";
+                        $clausulasWhere[] = "DATE($campo) >= $paramKey";
+                        $parametros[$paramKey] = $valor1;
+                    } elseif ($valor2 !== '') {
+                        // Até a data
+                        $paramKey = ":filtro_data_fim_{$index}";
+                        $clausulasWhere[] = "DATE($campo) <= $paramKey";
+                        $parametros[$paramKey] = $valor2;
+                    }
+                    break;
+                    
+                case 'numero':
+                    if ($valor1 !== '' && $valor2 !== '') {
+                        // Intervalo numérico
+                        $paramKey1 = ":filtro_num_inicio_{$index}";
+                        $paramKey2 = ":filtro_num_fim_{$index}";
+                        $clausulasWhere[] = "$campo BETWEEN $paramKey1 AND $paramKey2";
+                        $parametros[$paramKey1] = $valor1;
+                        $parametros[$paramKey2] = $valor2;
+                    } elseif ($valor1 !== '') {
+                        // A partir do número
+                        $paramKey = ":filtro_num_inicio_{$index}";
+                        $clausulasWhere[] = "$campo >= $paramKey";
+                        $parametros[$paramKey] = $valor1;
+                    } elseif ($valor2 !== '') {
+                        // Até o número
+                        $paramKey = ":filtro_num_fim_{$index}";
+                        $clausulasWhere[] = "$campo <= $paramKey";
+                        $parametros[$paramKey] = $valor2;
+                    }
+                    break;
+            }
+        }
+    }
+    
+    // Aplicar cláusulas WHERE se existirem
+    if (!empty($clausulasWhere)) {
+        $whereClause = " AND (" . implode(" AND ", $clausulasWhere) . ")";
+        
+        // Verificar se já existe WHERE na consulta
+        if (stripos($sqlBase, 'WHERE') !== false) {
+            $sqlFiltrado = $sqlBase . $whereClause;
+            $count_sql_filtrado = $count_sql . $whereClause;
+        } else {
+            $whereClause = " WHERE (" . implode(" AND ", $clausulasWhere) . ")";
+            $sqlFiltrado = $sqlBase . $whereClause;
+            $count_sql_filtrado = $count_sql . $whereClause;
+        }
+    }
+    
+    // Contar registros filtrados
+    $stmt_filtered = $pdo->prepare($count_sql_filtrado);
+    foreach ($parametros as $param => $valor) {
+        $stmt_filtered->bindValue($param, $valor);
+    }
+    $stmt_filtered->execute();
+    $recordsFiltered = $stmt_filtered->fetch(PDO::FETCH_ASSOC)['total'];
+    
+    // Aplicar paginação
+    $sqlPaginado = $sqlFiltrado . " LIMIT :start, :length";
+    
+    // Executar consulta paginada
+    $stmt = $pdo->prepare($sqlPaginado);
+    foreach ($parametros as $param => $valor) {
+        $stmt->bindValue($param, $valor);
+    }
+    $stmt->bindValue(':start', $start, PDO::PARAM_INT);
+    $stmt->bindValue(':length', $length, PDO::PARAM_INT);
     $stmt->execute();
     $dados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -597,10 +722,11 @@ try {
         $tipos_colunas[$nome_coluna] = $tipo_simplificado;
     }
 
-    // Preparar resposta
+    // Preparar resposta no formato DataTables server-side
     $response = [
+        'draw' => $draw,
         'recordsTotal' => (int)$total_records,
-        'recordsShown' => (int)$total_records,
+        'recordsFiltered' => (int)$recordsFiltered,
         'data' => $dados,
         'success' => true,
         'colunas' => $colunas,

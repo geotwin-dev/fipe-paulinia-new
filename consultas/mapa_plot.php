@@ -1,4 +1,5 @@
 <?php
+//var_dump($_POST);
 session_start();
 
 if (!isset($_SESSION['usuario'])) {
@@ -171,7 +172,7 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                 <i class="fas fa-map-marked-alt"></i> Mapa de Dados Filtrados
             </h6>
             
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 align-items-center">
                 <button class="btn btn-sm btn-outline-primary" onclick="voltarConsultas()">
                     <i class="fas fa-arrow-left"></i> Voltar
                 </button>
@@ -181,6 +182,26 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                 <button class="btn btn-sm btn-outline-info" onclick="forcarVisualizacao()">
                     <i class="fas fa-eye"></i> Ver Marcadores
                 </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="debugPoligonos()">
+                    <i class="fas fa-bug"></i> Debug Polígonos
+                </button>
+                
+                <!-- Controles de Camadas -->
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="toggleCamada('lotes')" id="btnLotes">
+                        <i class="fas fa-square"></i> Lotes
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="toggleCamada('quadras')" id="btnQuadras">
+                        <i class="fas fa-square"></i> Quadras
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-info" onclick="toggleCamada('quarteiroes')" id="btnQuarteiroes">
+                        <i class="fas fa-square"></i> Quarteirões
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="toggleCamada('lotesPrefeitura')" id="btnLotesPrefeitura">
+                        <i class="fas fa-building"></i> Lotes Prefeitura
+                    </button>
+                </div>
+                
                 <a href="../logout.php" class="btn btn-sm btn-outline-danger">
                     <i class="fas fa-sign-out-alt"></i> Sair
                 </a>
@@ -246,9 +267,14 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
         let markers = [];
         let polygons = [];
         let polylines = [];
+        let lotesPolygons = [];
+        let quadrasPolygons = [];
+        let quarteiraoPolygons = [];
+        let lotesPrefeituraPolygons = [];
         let dadosOriginais = [];
         let filtrosRecebidos = [];
         let coordenadasDesenhos = [];
+        let poligonosLotesQuadras = [];
         let infoWindow;
 
         // Configurações do mapa
@@ -413,7 +439,7 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
 
             try {
                 console.log('Enviando dados para buscar_coordenadas.php:', {
-                    registros: dadosOriginais.slice(0, 2) // Mostrar apenas 2 primeiros para debug
+                    //registros: dadosOriginais.slice(0, 2) // Mostrar apenas 2 primeiros para debug
                 });
 
                 // Fazer requisição AJAX para buscar coordenadas
@@ -454,9 +480,64 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
 
                 if (resultado.success) {
                     coordenadasDesenhos = resultado.coordenadas;
+                    poligonosLotesQuadras = resultado.poligonos || [];
                     
                     console.log(`Encontradas ${coordenadasDesenhos.length} coordenadas`);
+                    console.log(`Encontrados ${poligonosLotesQuadras.length} polígonos`);
                     console.log('Estatísticas:', resultado.stats);
+                    
+                    // DEBUG: Verificar quadrículas nos marcadores
+                    if (coordenadasDesenhos.length > 0) {
+                        const marcadorExemplo = coordenadasDesenhos[0];
+                        console.log('🔍 EXEMPLO MARCADOR:', {
+                            quarteirao: marcadorExemplo.quarteirao,
+                            quadra: marcadorExemplo.quadra,
+                            lote: marcadorExemplo.lote,
+                            quadricula: marcadorExemplo.dados_completos_desenho?.quadricula || 'SEM QUADRÍCULA'
+                        });
+                        
+                        const quadriculas = [...new Set(coordenadasDesenhos.map(m => 
+                            m.dados_completos_desenho?.quadricula).filter(q => q))];
+                        console.log('🗺️ QUADRÍCULAS ENCONTRADAS NOS MARCADORES:', quadriculas);
+                    }
+                    
+                    // DEBUG: Mostrar queries SQL usadas
+                    if (resultado.debug_queries) {
+                        console.log('=== QUERIES SQL EXECUTADAS ===');
+                        resultado.debug_queries.forEach((query, index) => {
+                            if (query.sql_debug) {
+                                console.log(`Query ${index + 1}:`, query.sql_debug);
+                                console.log(`Parâmetros ${index + 1}:`, query.params_debug);
+                                console.log(`Tipo: ${query.tipo}`);
+                                console.log(`Resultados: ${query.resultados_encontrados || 0}`);
+                                if (query.poligonos_proximos !== undefined) {
+                                    console.log(`🎯 Filtro Proximidade (500m):`);
+                                    console.log(`  - Próximos: ${query.poligonos_proximos}`);
+                                    console.log(`  - Distantes: ${query.poligonos_distantes}`);
+                                    console.log(`  - Taxa: ${query.resultados_encontrados > 0 ? ((query.poligonos_proximos / query.resultados_encontrados) * 100).toFixed(1) : 0}%`);
+                                }
+                                console.log('---');
+                            }
+                        });
+                        console.log('===============================');
+                    }
+                    
+                    // Debug detalhado dos polígonos recebidos
+                    console.log('=== DEBUG POLÍGONOS RECEBIDOS ===');
+                    poligonosLotesQuadras.forEach((poligono, index) => {
+                        console.log(`Polígono ${index + 1}:`, {
+                            camada: poligono.camada,
+                            tipo: poligono.tipo,
+                            quarteirao: poligono.quarteirao,
+                            quadra: poligono.quadra,
+                            lote: poligono.lote,
+                            relevante: poligono.relevante,
+                            coordenadas_tipo: typeof poligono.coordenadas,
+                            coordenadas_length: Array.isArray(poligono.coordenadas) ? poligono.coordenadas.length : 'N/A',
+                            coordenadas_sample: Array.isArray(poligono.coordenadas) ? poligono.coordenadas.slice(0, 2) : poligono.coordenadas
+                        });
+                    });
+                    console.log('==================================');
                     
                     // Atualizar estatísticas na interface
                     atualizarEstatisticasDesenhos(resultado.stats);
@@ -464,8 +545,21 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                     // Criar elementos no mapa
                     await criarElementosNoMapa();
                     
+                    // Criar polígonos de quadras
+                    await criarPoligonosQuadras();
+                    
+                    // Lotes da prefeitura desabilitados para simplificar
+                    // await carregarLotesPrefeitura();
+                    
+                    // Inicializar estado dos botões de camadas
+                    inicializarBotoesCamadas();
+                    
                     // Centralizar mapa se houver elementos
-                    if (markers.length > 0 || polygons.length > 0 || polylines.length > 0) {
+                    const totalElementos = markers.length + polygons.length + polylines.length + 
+                                          lotesPolygons.length + quadrasPolygons.length + quarteiraoPolygons.length + 
+                                          lotesPrefeituraPolygons.length;
+                    
+                    if (totalElementos > 0) {
                         console.log('Centralizando mapa nos elementos encontrados...');
                         centralizarMapa();
                     } else {
@@ -526,13 +620,405 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             console.log(`Elementos criados: ${marcadoresCriados} marcadores, ${poligonosCriados} polígonos, ${polilinhasCriadas} polilinhas`);
         }
 
-        async function criarMarcador(item) {
-            console.log('=== CRIANDO MARCADOR ===');
-            console.log('Item recebido:', item);
+        async function criarPoligonosQuadras() {
+            console.log('Criando polígonos da quadrícula (sem filtro de relevância)...');
             
+            let poligonosCreated = 0;
+            let poligonosRejeitados = 0;
+            let totalProcessados = 0;
+
+            console.log(`Iniciando processamento de ${poligonosLotesQuadras.length} polígonos...`);
+
+            for (const item of poligonosLotesQuadras) {
+                totalProcessados++;
+                try {
+                    const camada = item.camada.toLowerCase();
+                    const coordenadas = item.coordenadas;
+                    
+                    // SEM FILTRO DE RELEVÂNCIA - aceita todos os polígonos da quadrícula
+                    console.log(`✅ Processando polígono da quadrícula:`, {
+                        camada: camada,
+                        quarteirao: item.quarteirao,
+                        quadra: item.quadra,
+                        lote: item.lote
+                    });
+                    
+                    console.log(`Processando ${camada}:`, item);
+
+                    // Processar coordenadas do polígono
+                    let paths = [];
+                    
+                    console.log(`Processando coordenadas para ${camada}:`, coordenadas);
+                    
+                    if (Array.isArray(coordenadas)) {
+                        paths = coordenadas.map(coord => {
+                            if (typeof coord === 'object' && coord.lat && coord.lng) {
+                                return { lat: parseFloat(coord.lat), lng: parseFloat(coord.lng) };
+                            } else if (Array.isArray(coord) && coord.length >= 2) {
+                                return { lat: parseFloat(coord[1]), lng: parseFloat(coord[0]) };
+                            }
+                            return null;
+                        }).filter(coord => coord !== null);
+                    } else if (typeof coordenadas === 'string') {
+                        try {
+                            const coordenadasParsed = JSON.parse(coordenadas);
+                            if (Array.isArray(coordenadasParsed)) {
+                                paths = coordenadasParsed.map(coord => {
+                                    if (typeof coord === 'object' && coord.lat && coord.lng) {
+                                        return { lat: parseFloat(coord.lat), lng: parseFloat(coord.lng) };
+                                    } else if (Array.isArray(coord) && coord.length >= 2) {
+                                        return { lat: parseFloat(coord[1]), lng: parseFloat(coord[0]) };
+                                    }
+                                    return null;
+                                }).filter(coord => coord !== null);
+                            }
+                        } catch (e) {
+                            console.error('Erro ao fazer parse das coordenadas:', e, coordenadas);
+                        }
+                    }
+                    
+                    console.log(`Paths processados para ${camada}:`, paths);
+
+                    if (paths.length > 0) {
+                        // Estilo SIMPLES apenas para quadras
+                        const cor = item.cor || '#FF0000';
+                        const fillOpacity = 0.25;
+                        const strokeWeight = 3;
+                        const zIndex = 2;
+                        
+                        const polygon = new google.maps.Polygon({
+                            paths: paths,
+                            strokeColor: cor,
+                            strokeOpacity: 1,
+                            strokeWeight: strokeWeight,
+                            fillColor: cor,
+                            fillOpacity: fillOpacity,
+                            map: map, // Garantir que seja exibido no mapa imediatamente
+                            zIndex: zIndex,
+                            visible: true // Forçar visibilidade
+                        });
+
+                        // Armazenar informações adicionais no polígono
+                        polygon.camada = camada;
+                        polygon.dadosOriginais = item;
+                        
+                        console.log(`✅ Polígono ${camada} criado e adicionado ao mapa:`, {
+                            id: item.id_desenho,
+                            quarteirao: item.quarteirao,
+                            quadra: item.quadra,
+                            lote: item.lote,
+                            pathsCount: paths.length,
+                            cor: cor,
+                            visible: polygon.getVisible(),
+                            map: polygon.getMap() !== null
+                        });
+                        
+                        // Adicionar evento de clique
+                        google.maps.event.addListener(polygon, "click", (event) => {
+                            mostrarDetalhesPoligono(item, event.latLng);
+                        });
+
+                        // Adicionar polígonos da quadrícula
+                        quadrasPolygons.push(polygon);
+                        poligonosCreated++;
+                        
+                        console.log(`✅ Polígono ${camada} criado: ${item.quarteirao}/${item.quadra}/${item.lote}`);
+                    }
+                    
+                } catch (error) {
+                    console.error('Erro ao criar polígono:', error, item);
+                }
+            }
+
+            console.log(`=== RESUMO QUADRÍCULA ===`);
+            console.log(`Total processados: ${totalProcessados}`);
+            console.log(`Polígonos criados: ${poligonosCreated}`);
+            console.log(`Polígonos rejeitados: ${poligonosRejeitados}`);
+            console.log(`Taxa de aprovação: ${totalProcessados > 0 ? ((poligonosCreated / totalProcessados) * 100).toFixed(1) : 0}%`);
+            console.log(`========================`);
+            
+            // Salvar estatísticas globalmente para exibição
+            window.quadrasRejeitadas = poligonosRejeitados;
+        }
+
+        async function carregarLotesPrefeitura() {
+            console.log('Carregando lotes da prefeitura (otimizado)...');
+            
+            // Extrair dados específicos dos registros para filtro otimizado
+            const filtroEspecifico = extrairDadosEspecificosParaLotes();
+            
+            console.log('Filtro específico gerado:', filtroEspecifico);
+
+            // Carregar lotes apenas para as quadrículas que têm dados
+            for (const quadricula of filtroEspecifico.quadriculas) {
+                await carregarLotesPrefeituraQuadriculaOtimizada(quadricula, filtroEspecifico);
+            }
+
+            console.log(`=== RESUMO DOS FILTROS INTELIGENTES ===`);
+            console.log(`Total de lotes da prefeitura carregados: ${lotesPrefeituraPolygons.length}`);
+            console.log(`Filtro baseado em ${filtroEspecifico.coordenadasMarcadores ? filtroEspecifico.coordenadasMarcadores.length : 0} marcadores encontrados`);
+            console.log(`Quarteirões únicos: ${filtroEspecifico.quarteiroes.length}`);
+            console.log(`Quadrículas: ${filtroEspecifico.quadriculas.join(', ')}`);
+            console.log(`========================================`);
+        }
+
+        function extrairDadosEspecificosParaLotes() {
+            const quadriculas = new Set();
+            const quarteiroes = new Set();
+            const coordenadasMarcadores = [];
+            
+            // Extrair coordenadas dos marcadores encontrados para filtro geoespacial
+            coordenadasDesenhos.forEach(item => {
+                if (item.tipo.toLowerCase() === 'marcador' && item.coordenadas) {
+                    let lat, lng;
+                    
+                    // Processar coordenadas do marcador
+                    if (Array.isArray(item.coordenadas) && item.coordenadas.length > 0) {
+                        const coord = item.coordenadas[0];
+                        if (coord && coord.lat && coord.lng) {
+                            lat = parseFloat(coord.lat);
+                            lng = parseFloat(coord.lng);
+                        }
+                    }
+                    
+                    if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+                        coordenadasMarcadores.push({
+                            lat: lat,
+                            lng: lng,
+                            quarteirao: item.quarteirao,
+                            quadra: item.quadra,
+                            lote: item.lote
+                        });
+                    }
+                }
+            });
+            
+            // Extrair dados dos registros originais (busca mais ampla)
+            dadosOriginais.forEach(registro => {
+                // Extrair quadrícula
+                const quadricula_candidatos = ['quadricula', 'ortofoto', 'codigo_quadricula'];
+                let quadricula = null;
+                for (const campo of quadricula_candidatos) {
+                    if (registro[campo]) {
+                        quadricula = registro[campo];
+                        quadriculas.add(quadricula);
+                        break;
+                    }
+                }
+                
+                // Extrair quarteirão
+                let quarteirao = registro['cara_quarteirao'] || registro['quarteirao'] || registro['quarteirao_cara'];
+                if (quarteirao) {
+                    // Aplicar mesmo padding que no backend
+                    quarteirao = quarteirao.toString().padStart(4, '0');
+                    quarteiroes.add(quarteirao);
+                }
+            });
+            
+            // Se não encontrou quadrículas nos dados originais, tentar dos polígonos
+            if (quadriculas.size === 0) {
+                poligonosLotesQuadras.forEach(item => {
+                    if (item.quadricula) {
+                        quadriculas.add(item.quadricula);
+                    }
+                });
+            }
+            
+            // Se não encontrou quarteirões dos dados originais, tentar dos polígonos
+            if (quarteiroes.size === 0) {
+                poligonosLotesQuadras.forEach(item => {
+                    if (item.quarteirao) {
+                        quarteiroes.add(item.quarteirao);
+                    }
+                });
+            }
+            
+            return {
+                quadriculas: Array.from(quadriculas),
+                quarteiroes: Array.from(quarteiroes),
+                coordenadasMarcadores: coordenadasMarcadores
+            };
+        }
+
+        async function carregarLotesPrefeituraQuadriculaOtimizada(quadricula, filtroEspecifico) {
+            try {
+                const url = `../loteamentos_quadriculas/geojson/lotes_prefeitura_quadricula_${quadricula}.geojson`;
+                console.log(`Carregando lotes da prefeitura (otimizado) para quadrícula ${quadricula}:`, url);
+                
+                const response = await fetch(url, {
+                    cache: 'no-store'
+                });
+
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        console.log(`Arquivo de lotes da prefeitura não encontrado para quadrícula ${quadricula}`);
+                        return;
+                    }
+                    throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const geojsonData = await response.json();
+                console.log(`GeoJSON carregado para ${quadricula}:`, geojsonData.features?.length || 0, 'features total');
+
+                if (geojsonData && geojsonData.features) {
+                    let lotesCarregados = 0;
+                    let lotesDescartados = 0;
+
+                    geojsonData.features.forEach((feature, index) => {
+                        if (feature.geometry && feature.geometry.type === 'Polygon' && feature.geometry.coordinates) {
+                            // FILTRO OTIMIZADO: verificar se este lote é relevante
+                            const deveCarregar = verificarSeDeveCarregarLote(feature, filtroEspecifico);
+                            
+                            if (!deveCarregar) {
+                                lotesDescartados++;
+                                return; // Pular este lote
+                            }
+
+                            try {
+                                // Converter coordenadas do GeoJSON para formato Google Maps
+                                const coordinates = feature.geometry.coordinates[0].map(coord => ({
+                                    lat: coord[1],  // latitude é o segundo elemento
+                                    lng: coord[0]   // longitude é o primeiro elemento
+                                }));
+
+                                // Criar polígono da prefeitura
+                                const polygon = new google.maps.Polygon({
+                                    paths: coordinates,
+                                    strokeColor: '#FF6B35',    // Cor laranja
+                                    strokeOpacity: 0.8,
+                                    strokeWeight: 3,
+                                    fillColor: '#FF6B35',
+                                    fillOpacity: 0.3,
+                                    map: map,                   // Visível por padrão
+                                    clickable: true,
+                                    zIndex: 15,                 // Z-index alto para ficar por cima
+                                    visible: true               // Forçar visibilidade
+                                });
+                                
+                                console.log(`✅ Lote da prefeitura criado:`, {
+                                    quadricula: quadricula,
+                                    coordenadas: coordinates.length,
+                                    visible: polygon.getVisible(),
+                                    map: polygon.getMap() !== null,
+                                    properties: feature.properties
+                                });
+
+                                // Adicionar dados extras ao polígono
+                                polygon.quadricula = quadricula;
+                                polygon.feature = feature;
+                                polygon.camada = 'lotesPrefeitura';
+
+                                // Adicionar evento de clique
+                                polygon.addListener('click', (event) => {
+                                    mostrarDetalhesLotePrefeitura(feature, event.latLng, quadricula);
+                                });
+
+                                lotesPrefeituraPolygons.push(polygon);
+                                lotesCarregados++;
+
+                            } catch (error) {
+                                console.error('Erro ao processar feature do lote da prefeitura:', error);
+                            }
+                        }
+                    });
+
+                    console.log(`Quadrícula ${quadricula}: ${lotesCarregados} lotes da prefeitura carregados, ${lotesDescartados} descartados (filtro inteligente)`);
+                }
+
+            } catch (error) {
+                console.error(`Erro ao carregar lotes da prefeitura para quadrícula ${quadricula}:`, error);
+            }
+        }
+
+        function verificarSeDeveCarregarLote(feature, filtroEspecifico) {
+            // Se não há marcadores específicos, usar filtro por quarteirão (fallback)
+            if (!filtroEspecifico.coordenadasMarcadores || filtroEspecifico.coordenadasMarcadores.length === 0) {
+                if (!filtroEspecifico.quarteiroes.length) {
+                    return true;
+                }
+
+                // Tentar extrair informações do lote do GeoJSON
+                const props = feature.properties || {};
+                
+                // Possíveis campos que podem conter informações de quarteirão
+                const quarteiraoCandidatos = ['quarteirao', 'QUARTEIRAO', 'quarteirao_id', 'bairro', 'distrito'];
+                
+                let quarteirao = null;
+                
+                // Tentar extrair quarteirão
+                for (const campo of quarteiraoCandidatos) {
+                    if (props[campo]) {
+                        quarteirao = props[campo].toString().padStart(4, '0');
+                        break;
+                    }
+                }
+                
+                // Verificar se o quarteirão está na lista dos filtrados
+                if (quarteirao && filtroEspecifico.quarteiroes.includes(quarteirao)) {
+                    return true; // Lote pertence a um quarteirão filtrado
+                }
+                
+                // Estratégia alternativa: se não conseguiu identificar quarteirão específico,
+                // carregar o lote (melhor mostrar demais que faltar)
+                return !quarteirao;
+            }
+
+            // FILTRO GEOESPACIAL: Verificar se o lote está próximo a algum marcador
+            if (feature.geometry && feature.geometry.type === 'Polygon' && feature.geometry.coordinates) {
+                try {
+                    // Calcular centro do polígono do lote
+                    const coordenadas = feature.geometry.coordinates[0];
+                    let somaDeLat = 0;
+                    let somaDeLng = 0;
+                    let pontos = 0;
+                    
+                    coordenadas.forEach(coord => {
+                        if (Array.isArray(coord) && coord.length >= 2) {
+                            somaDeLng += coord[0]; // longitude
+                            somaDeLat += coord[1]; // latitude
+                            pontos++;
+                        }
+                    });
+                    
+                    if (pontos > 0) {
+                        const centroLote = {
+                            lat: somaDeLat / pontos,
+                            lng: somaDeLng / pontos
+                        };
+                        
+                        // Verificar proximidade com marcadores (raio de ~500 metros)
+                        const RAIO_PROXIMIDADE = 0.005; // aproximadamente 500m em graus
+                        
+                        for (const marcador of filtroEspecifico.coordenadasMarcadores) {
+                            const distancia = calcularDistanciaSimples(centroLote, marcador);
+                            
+                            if (distancia <= RAIO_PROXIMIDADE) {
+                                console.log(`Lote da prefeitura aprovado por proximidade (${(distancia * 111000).toFixed(0)}m) com marcador ${marcador.quarteirao}/${marcador.quadra}/${marcador.lote}`);
+                                return true;
+                            }
+                        }
+                        
+                        console.log(`Lote da prefeitura rejeitado - muito distante dos marcadores (min: ${(Math.min(...filtroEspecifico.coordenadasMarcadores.map(m => calcularDistanciaSimples(centroLote, m))) * 111000).toFixed(0)}m)`);
+                        return false;
+                    }
+                } catch (error) {
+                    console.error('Erro ao calcular proximidade do lote:', error);
+                    return true; // Em caso de erro, mostrar o lote
+                }
+            }
+            
+            return true; // Fallback: mostrar se não conseguir determinar
+        }
+        
+        // Função auxiliar para calcular distância simples entre dois pontos
+        function calcularDistanciaSimples(ponto1, ponto2) {
+            const deltaLat = ponto1.lat - ponto2.lat;
+            const deltaLng = ponto1.lng - ponto2.lng;
+            return Math.sqrt(deltaLat * deltaLat + deltaLng * deltaLng);
+        }
+
+        async function criarMarcador(item) {
             const coordenadas = item.coordenadas;
-            console.log('Coordenadas brutas:', coordenadas);
-            console.log('Tipo das coordenadas:', typeof coordenadas);
             
             let lat, lng;
 
@@ -542,19 +1028,16 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                 if (coord && coord.lat && coord.lng) {
                     lat = parseFloat(coord.lat);
                     lng = parseFloat(coord.lng);
-                    console.log('Coordenadas extraídas do array:', { lat, lng });
                 }
             } else if (typeof coordenadas === 'object' && coordenadas.lat && coordenadas.lng) {
                 lat = parseFloat(coordenadas.lat);
                 lng = parseFloat(coordenadas.lng);
-                console.log('Coordenadas extraídas do objeto:', { lat, lng });
             } else if (typeof coordenadas === 'string') {
                 try {
                     const parsed = JSON.parse(coordenadas);
                     if (Array.isArray(parsed) && parsed.length > 0) {
                         lat = parseFloat(parsed[0].lat);
                         lng = parseFloat(parsed[0].lng);
-                        console.log('Coordenadas extraídas da string JSON:', { lat, lng });
                     }
                 } catch (e) {
                     // Tentar parsing simples "lat,lng"
@@ -562,16 +1045,13 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                     if (parts.length >= 2) {
                         lat = parseFloat(parts[0]);
                         lng = parseFloat(parts[1]);
-                        console.log('Coordenadas extraídas da string simples:', { lat, lng });
                     }
                 }
             }
 
-            console.log('Coordenadas finais:', { lat, lng });
 
             if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
                 try {
-                    console.log('Criando marcador no Google Maps...');
                     
                     // Usar marcador simples primeiro para testar
                     const marker = new google.maps.Marker({
@@ -590,13 +1070,10 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
 
                     // Adicionar evento de clique
                     google.maps.event.addListener(marker, "click", () => {
-                        console.log('Marcador clicado:', item);
                         mostrarDetalhesDesenho(item, marker);
                     });
 
                     markers.push(marker);
-                    console.log(`✅ Marcador criado com sucesso em: ${lat}, ${lng}`);
-                    console.log('Total de marcadores:', markers.length);
                 } catch (error) {
                     console.error('❌ Erro ao criar marcador:', error);
                 }
@@ -604,7 +1081,6 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                 console.error('❌ Coordenadas inválidas:', { lat, lng, coordenadas });
             }
             
-            console.log('=== FIM CRIAÇÃO MARCADOR ===');
         }
 
         async function criarPoligono(item) {
@@ -770,10 +1246,160 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             console.log('InfoWindow aberto com sucesso');
         }
 
+        function mostrarDetalhesPoligono(item, position) {
+            console.log('Abrindo InfoWindow para polígono:', item);
+            
+            // Criar conteúdo do InfoWindow para polígono
+            let conteudo = `
+                <div style="max-width: 350px; max-height: 400px; overflow-y: auto; font-family: Arial, sans-serif; font-size: 12px;">
+                    <div style="background: #f8f9fa; padding: 8px; margin: -8px -8px 8px -8px; border-radius: 3px;">
+                        <strong>${item.camada.toUpperCase()}: ${item.quarteirao}/${item.quadra}/${item.lote}</strong>
+                    </div>
+                    
+                    <ul style="margin: 0; padding: 0; list-style: none; line-height: 1.3;">
+                        <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                            <strong>ID DESENHO:</strong> ${item.id_desenho}
+                        </li>
+                        <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                            <strong>QUARTEIRÃO:</strong> ${item.quarteirao || 'N/A'}
+                        </li>
+                        <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                            <strong>QUADRA:</strong> ${item.quadra || 'N/A'}
+                        </li>
+                        <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                            <strong>LOTE:</strong> ${item.lote || 'N/A'}
+                        </li>
+                        <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                            <strong>TIPO:</strong> ${item.tipo}
+                        </li>
+                        <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                            <strong>CAMADA:</strong> ${item.camada}
+                        </li>
+                        <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                            <strong>COR:</strong> <span style="background: ${item.cor}; padding: 2px 8px; border-radius: 3px; color: white;">${item.cor || 'N/A'}</span>
+                        </li>
+                        <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                            <strong>QUADRÍCULA:</strong> ${item.quadricula || 'N/A'}
+                        </li>
+                        <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                            <strong>STATUS:</strong> ${item.status || 'N/A'}
+                        </li>
+                    </ul>
+                    
+                    <div style="text-align: center; padding-top: 8px; border-top: 2px solid #ddd; margin-top: 8px;">
+                        <small style="color: #666;">Clique no mapa para fechar</small>
+                    </div>
+                </div>
+            `;
+
+            // Definir conteúdo e posição do InfoWindow
+            infoWindow.setContent(conteudo);
+            infoWindow.setPosition(position);
+            
+            // Abrir InfoWindow
+            infoWindow.open(map);
+            console.log('InfoWindow de polígono aberto com sucesso');
+        }
+
+        function mostrarDetalhesLotePrefeitura(feature, position, quadricula) {
+            console.log('Abrindo InfoWindow para lote da prefeitura:', feature);
+            
+            // Criar conteúdo do InfoWindow para lote da prefeitura
+            let conteudo = `
+                <div style="max-width: 350px; max-height: 400px; overflow-y: auto; font-family: Arial, sans-serif; font-size: 12px;">
+                    <div style="background: #ff6b35; padding: 8px; margin: -8px -8px 8px -8px; border-radius: 3px; color: white;">
+                        <strong>🏢 LOTE DA PREFEITURA - ${quadricula}</strong>
+                    </div>
+                    
+                    <ul style="margin: 0; padding: 0; list-style: none; line-height: 1.3;">
+            `;
+
+            // Processar propriedades do GeoJSON
+            if (feature.properties && Object.keys(feature.properties).length > 0) {
+                // Definir ordem desejada para exibir propriedades importantes primeiro
+                const ordemPropriedades = ['name', 'ENDERECO', 'INSCRICAO'];
+                const propriedadesExibidas = new Set();
+                
+                // Primeiro, exibir propriedades na ordem específica
+                ordemPropriedades.forEach(key => {
+                    if (feature.properties[key] !== null && 
+                        feature.properties[key] !== '' && 
+                        feature.properties[key] !== undefined) {
+                        
+                        let labelFormatada;
+                        switch(key) {
+                            case 'name':
+                                labelFormatada = 'Nome/Inscrição';
+                                break;
+                            case 'ENDERECO':
+                                labelFormatada = 'Endereço';
+                                break;
+                            case 'INSCRICAO':
+                                labelFormatada = 'Inscrição';
+                                break;
+                            default:
+                                labelFormatada = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        }
+                        
+                        conteudo += `
+                            <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                                <strong>${labelFormatada}:</strong> ${feature.properties[key]}
+                            </li>
+                        `;
+                        propriedadesExibidas.add(key);
+                    }
+                });
+                
+                // Depois, exibir outras propriedades não mostradas ainda
+                Object.keys(feature.properties).forEach(key => {
+                    const value = feature.properties[key];
+                    if (value !== null && value !== '' && value !== undefined && 
+                        !propriedadesExibidas.has(key) && 
+                        key !== 'fill_color') {
+                        
+                        const keyFormatted = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        conteudo += `
+                            <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                                <strong>${keyFormatted}:</strong> ${value}
+                            </li>
+                        `;
+                    }
+                });
+            } else {
+                conteudo += `
+                    <li style="padding: 3px 0; color: #666; font-style: italic;">
+                        Sem dados adicionais disponíveis
+                    </li>
+                `;
+            }
+
+            conteudo += `
+                        <li style="border-bottom: 1px solid #eee; padding: 3px 0;">
+                            <strong>QUADRÍCULA:</strong> ${quadricula}
+                        </li>
+                    </ul>
+                    
+                    <div style="text-align: center; padding-top: 8px; border-top: 2px solid #ff6b35; margin-top: 8px;">
+                        <small style="color: #666;">Clique no mapa para fechar</small>
+                    </div>
+                </div>
+            `;
+
+            // Definir conteúdo e posição do InfoWindow
+            infoWindow.setContent(conteudo);
+            infoWindow.setPosition(position);
+            
+            // Abrir InfoWindow
+            infoWindow.open(map);
+            console.log('InfoWindow de lote da prefeitura aberto com sucesso');
+        }
+
         function atualizarEstatisticasDesenhos(stats) {
             // Atualizar estatísticas com informações dos desenhos
             const totalDesenhos = stats.coordenadas_encontradas;
+            const totalPoligonos = stats.poligonos_encontrados || 0;
             const tipos = stats.tipos_encontrados;
+            const camadas = stats.camadas_encontradas || {};
             
             // Adicionar informações de desenhos nas estatísticas
             const statsContainer = document.querySelector('.stats-row');
@@ -782,29 +1408,83 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             const existingStats = statsContainer.querySelectorAll('.stat-desenho');
             existingStats.forEach(stat => stat.remove());
             
-            // Adicionar novas estatísticas
-            const statDesenhos = document.createElement('div');
-            statDesenhos.className = 'stat-item stat-desenho';
-            statDesenhos.style.borderLeftColor = '#28a745';
-            statDesenhos.innerHTML = `
-                <div class="stat-number">${totalDesenhos}</div>
-                <div class="stat-label">Desenhos Encontrados</div>
-            `;
-            statsContainer.appendChild(statDesenhos);
+            // Adicionar estatística de marcadores
+            if (totalDesenhos > 0) {
+                const statDesenhos = document.createElement('div');
+                statDesenhos.className = 'stat-item stat-desenho';
+                statDesenhos.style.borderLeftColor = '#28a745';
+                statDesenhos.innerHTML = `
+                    <div class="stat-number">${totalDesenhos}</div>
+                    <div class="stat-label">Marcadores</div>
+                `;
+                statsContainer.appendChild(statDesenhos);
+            }
             
-            // Estatísticas por tipo
-            Object.keys(tipos).forEach(tipo => {
-                if (tipos[tipo] > 0) {
-                    const statTipo = document.createElement('div');
-                    statTipo.className = 'stat-item stat-desenho';
-                    statTipo.style.borderLeftColor = tipo === 'marcador' ? '#ffc107' : tipo === 'poligono' ? '#dc3545' : '#17a2b8';
-                    statTipo.innerHTML = `
-                        <div class="stat-number">${tipos[tipo]}</div>
-                        <div class="stat-label">${tipo.charAt(0).toUpperCase() + tipo.slice(1)}s</div>
+            // Adicionar estatística de polígonos
+            if (totalPoligonos > 0) {
+                const statPoligonos = document.createElement('div');
+                statPoligonos.className = 'stat-item stat-desenho';
+                statPoligonos.style.borderLeftColor = '#dc3545';
+                statPoligonos.innerHTML = `
+                    <div class="stat-number">${totalPoligonos}</div>
+                    <div class="stat-label">Polígonos</div>
+                `;
+                statsContainer.appendChild(statPoligonos);
+            }
+            
+            // Estatísticas por camada
+            Object.keys(camadas).forEach(camada => {
+                if (camadas[camada] > 0 && camada !== 'marcador_quadra') {
+                    const statCamada = document.createElement('div');
+                    statCamada.className = 'stat-item stat-desenho';
+                    
+                    // Definir cor baseada na camada
+                    let cor = '#6c757d';
+                    switch(camada) {
+                        case 'lote':
+                            cor = '#28a745';
+                            break;
+                        case 'quadra':
+                            cor = '#ffc107';
+                            break;
+                        case 'quarteirao':
+                            cor = '#17a2b8';
+                            break;
+                    }
+                    
+                    statCamada.style.borderLeftColor = cor;
+                    statCamada.innerHTML = `
+                        <div class="stat-number">${camadas[camada]}</div>
+                        <div class="stat-label">${camada.charAt(0).toUpperCase() + camada.slice(1)}s</div>
                     `;
-                    statsContainer.appendChild(statTipo);
+                    statsContainer.appendChild(statCamada);
                 }
             });
+
+            // Adicionar estatística de lotes da prefeitura se houver
+            if (lotesPrefeituraPolygons.length > 0) {
+                const statLotesPref = document.createElement('div');
+                statLotesPref.className = 'stat-item stat-desenho';
+                statLotesPref.style.borderLeftColor = '#ff6b35';
+                statLotesPref.innerHTML = `
+                    <div class="stat-number">${lotesPrefeituraPolygons.length}</div>
+                    <div class="stat-label">Lotes Prefeitura (Filtrados)</div>
+                `;
+                statsContainer.appendChild(statLotesPref);
+            }
+            
+            // Adicionar estatística de polígonos rejeitados se houver
+            const totalPoligonosRejeitados = (window.lotesRejeitados || 0) + (window.quadrasRejeitadas || 0) + (window.quarteiraoRejeitados || 0);
+            if (totalPoligonosRejeitados > 0) {
+                const statRejeitados = document.createElement('div');
+                statRejeitados.className = 'stat-item stat-desenho';
+                statRejeitados.style.borderLeftColor = '#6c757d';
+                statRejeitados.innerHTML = `
+                    <div class="stat-number">${totalPoligonosRejeitados}</div>
+                    <div class="stat-label">Polígonos Rejeitados (Filtro)</div>
+                `;
+                statsContainer.appendChild(statRejeitados);
+            }
         }
 
         async function criarMarcadores() {
@@ -930,7 +1610,10 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             console.log('Iniciando centralização...', {
                 markers: markers.length,
                 polygons: polygons.length, 
-                polylines: polylines.length
+                polylines: polylines.length,
+                lotesPolygons: lotesPolygons.length,
+                quadrasPolygons: quadrasPolygons.length,
+                quarteiraoPolygons: quarteiraoPolygons.length
             });
 
             // Adicionar marcadores ao bounds
@@ -958,6 +1641,42 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                 });
             });
 
+            // Adicionar polígonos de lotes ao bounds
+            lotesPolygons.forEach(polygon => {
+                const path = polygon.getPath();
+                path.forEach(point => {
+                    bounds.extend(point);
+                    totalElementos++;
+                });
+            });
+
+            // Adicionar polígonos de quadras ao bounds
+            quadrasPolygons.forEach(polygon => {
+                const path = polygon.getPath();
+                path.forEach(point => {
+                    bounds.extend(point);
+                    totalElementos++;
+                });
+            });
+
+            // Adicionar polígonos de quarteirões ao bounds
+            quarteiraoPolygons.forEach(polygon => {
+                const path = polygon.getPath();
+                path.forEach(point => {
+                    bounds.extend(point);
+                    totalElementos++;
+                });
+            });
+
+            // Adicionar polígonos de lotes da prefeitura ao bounds
+            lotesPrefeituraPolygons.forEach(polygon => {
+                const path = polygon.getPath();
+                path.forEach(point => {
+                    bounds.extend(point);
+                    totalElementos++;
+                });
+            });
+
             if (totalElementos === 0) {
                 console.log('Nenhum elemento para centralizar');
                 return;
@@ -971,7 +1690,7 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             map.fitBounds(bounds);
             
             // Se houver poucos elementos, definir zoom específico
-            if (markers.length <= 10) {
+            if (totalElementos <= 10) {
                 setTimeout(() => {
                     const currentZoom = map.getZoom();
                     const newZoom = Math.max(currentZoom, 16);
@@ -981,6 +1700,104 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             }
 
             console.log(`Mapa centralizado com ${totalElementos} elementos`);
+        }
+
+        // Função para inicializar o estado visual dos botões de camadas
+        function inicializarBotoesCamadas() {
+            console.log('Inicializando botões de camadas...');
+            
+            // Apenas quadras são utilizadas agora
+            const stats = {
+                quadras: quadrasPolygons.length
+            };
+            
+            console.log('Estatísticas dos polígonos:', stats);
+            
+            // Ocultar botões desnecessários
+            const botoesParaOcultar = ['btnLotes', 'btnQuarteiroes', 'btnLotesPrefeitura'];
+            botoesParaOcultar.forEach(btnId => {
+                const btn = document.getElementById(btnId);
+                if (btn) {
+                    btn.style.display = 'none';
+                }
+            });
+            
+            // Configurar apenas o botão de quadras
+            const btnQuadras = document.getElementById('btnQuadras');
+            if (btnQuadras && stats.quadras > 0 && camadasVisiveis.quadras) {
+                btnQuadras.classList.remove('btn-outline-secondary');
+                btnQuadras.classList.add('btn-outline-warning');
+                btnQuadras.style.display = 'inline-block';
+                console.log(`Botão quadras visível (${stats.quadras} quadras)`);
+            } else if (btnQuadras) {
+                btnQuadras.style.display = 'none';
+                console.log('Botão quadras oculto (sem quadras)');
+            }
+            
+            // Log final sobre estado dos polígonos
+            console.log(`Total de polígonos no mapa: ${stats.quadras} quadras`);
+        }
+
+        // Estado de visibilidade das camadas
+        const camadasVisiveis = {
+            lotes: true,
+            quadras: true,
+            quarteiroes: true,
+            lotesPrefeitura: true
+        };
+
+        function toggleCamada(tipo) {
+            camadasVisiveis[tipo] = !camadasVisiveis[tipo];
+            const visivel = camadasVisiveis[tipo];
+            
+            console.log(`${tipo} ${visivel ? 'mostrado' : 'ocultado'}`);
+            
+            // Atualizar botão
+            const btn = document.getElementById(`btn${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`);
+            if (visivel) {
+                btn.classList.remove('btn-outline-secondary');
+                switch(tipo) {
+                    case 'lotes':
+                        btn.classList.add('btn-outline-success');
+                        break;
+                    case 'quadras':
+                        btn.classList.add('btn-outline-warning');
+                        break;
+                    case 'quarteiroes':
+                        btn.classList.add('btn-outline-info');
+                        break;
+                    case 'lotesPrefeitura':
+                        btn.classList.add('btn-outline-danger');
+                        break;
+                }
+            } else {
+                btn.classList.remove('btn-outline-success', 'btn-outline-warning', 'btn-outline-info', 'btn-outline-danger');
+                btn.classList.add('btn-outline-secondary');
+            }
+            
+            // Mostrar/ocultar polígonos correspondentes
+            switch(tipo) {
+                case 'lotes':
+                    lotesPolygons.forEach(polygon => {
+                        polygon.setMap(visivel ? map : null);
+                    });
+                    break;
+                case 'quadras':
+                    quadrasPolygons.forEach(polygon => {
+                        polygon.setMap(visivel ? map : null);
+                    });
+                    break;
+                case 'quarteiroes':
+                    quarteiraoPolygons.forEach(polygon => {
+                        polygon.setMap(visivel ? map : null);
+                    });
+                    break;
+                case 'lotesPrefeitura':
+                    lotesPrefeituraPolygons.forEach(polygon => {
+                        polygon.setMap(visivel ? map : null);
+                    });
+                    break;
+            }
         }
 
         function forcarVisualizacao() {
@@ -1037,6 +1854,98 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                 console.log('=====================================');
                 
             }, 500);
+        }
+
+        function debugPoligonos() {
+            console.log('=== DEBUG SIMPLES DOS POLÍGONOS ===');
+            
+            const stats = {
+                marcadores: markers.length,
+                quadrasPolygons: quadrasPolygons.length
+            };
+            
+            console.log('Estatísticas dos elementos:', stats);
+            
+            // Debug apenas de quadras
+            console.log('--- QUADRAS ---');
+            quadrasPolygons.forEach((polygon, index) => {
+                console.log(`Quadra ${index + 1}:`, {
+                    camada: polygon.camada,
+                    dadosOriginais: polygon.dadosOriginais,
+                    visible: polygon.getVisible(),
+                    map: polygon.getMap() !== null,
+                    pathLength: polygon.getPath() ? polygon.getPath().getLength() : 'N/A'
+                });
+            });
+            
+            // console.log('--- LOTES ---');
+            lotesPolygons.forEach((polygon, index) => {
+                console.log(`Lote ${index + 1}:`, {
+                    camada: polygon.camada,
+                    dadosOriginais: polygon.dadosOriginais,
+                    visible: polygon.getVisible(),
+                    map: polygon.getMap() !== null,
+                    pathLength: polygon.getPath() ? polygon.getPath().getLength() : 'N/A'
+                });
+            });
+            
+            console.log('--- QUADRAS ---');
+            quadrasPolygons.forEach((polygon, index) => {
+                console.log(`Quadra ${index + 1}:`, {
+                    camada: polygon.camada,
+                    dadosOriginais: polygon.dadosOriginais,
+                    visible: polygon.getVisible(),
+                    map: polygon.getMap() !== null,
+                    pathLength: polygon.getPath() ? polygon.getPath().getLength() : 'N/A'
+                });
+            });
+            
+            console.log('--- QUARTEIRÕES ---');
+            quarteiraoPolygons.forEach((polygon, index) => {
+                console.log(`Quarteirão ${index + 1}:`, {
+                    camada: polygon.camada,
+                    dadosOriginais: polygon.dadosOriginais,
+                    visible: polygon.getVisible(),
+                    map: polygon.getMap() !== null,
+                    pathLength: polygon.getPath() ? polygon.getPath().getLength() : 'N/A'
+                });
+            });
+            
+            console.log('--- LOTES DA PREFEITURA ---');
+            lotesPrefeituraPolygons.forEach((polygon, index) => {
+                console.log(`Lote Prefeitura ${index + 1}:`, {
+                    quadricula: polygon.quadricula,
+                    camada: polygon.camada,
+                    visible: polygon.getVisible(),
+                    map: polygon.getMap() !== null,
+                    pathLength: polygon.getPath() ? polygon.getPath().getLength() : 'N/A'
+                });
+            });
+            
+            // Testar forçar visibilidade de todos os polígonos
+            console.log('Forçando visibilidade de todos os polígonos...');
+            [...lotesPolygons, ...quadrasPolygons, ...quarteiraoPolygons, ...lotesPrefeituraPolygons].forEach(polygon => {
+                if (polygon.getMap() === null) {
+                    polygon.setMap(map);
+                    console.log('Polígono adicionado ao mapa:', polygon.camada);
+                }
+                if (!polygon.getVisible()) {
+                    polygon.setVisible(true);
+                    console.log('Polígono tornado visível:', polygon.camada);
+                }
+            });
+            
+            console.log('=== FIM DEBUG POLÍGONOS ===');
+            
+            // Mostrar alerta com resumo
+            alert(`Debug Polígonos:
+                Lotes: ${stats.lotesPolygons}
+                Quadras: ${stats.quadrasPolygons}
+                Quarteirões: ${stats.quarteiraoPolygons}
+                Lotes Prefeitura: ${stats.lotesPrefeituraPolygons}
+                
+                Todos foram forçados a serem visíveis.
+                Verifique o console para detalhes.`);
         }
 
         function voltarConsultas() {
