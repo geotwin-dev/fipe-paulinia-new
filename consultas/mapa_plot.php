@@ -1989,10 +1989,8 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             // Sincronizar checkbox dos lotes da prefeitura
             const toggleLotesPrefeituraCheckbox = document.getElementById('toggleLotesPrefeitura');
             if (toggleLotesPrefeituraCheckbox) {
-                const temLotesPrefeitura = window.lotesPrefeituraPolygons && window.lotesPrefeituraPolygons.length > 0;
-                if (!temLotesPrefeitura) {
-                    toggleLotesPrefeituraCheckbox.checked = false;
-                }
+                // Manter sempre marcado por padrão (não desmarcar mesmo se não houver lotes carregados)
+                // O checkbox já vem marcado no HTML, então não precisamos fazer nada aqui
             }
             
             // Info na topbar removida - elemento não existe mais

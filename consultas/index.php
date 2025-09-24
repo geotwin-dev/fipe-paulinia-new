@@ -182,6 +182,17 @@ include("../connection.php");
             justify-content: center;
             font-weight: bold;
         }
+
+        /* Modal de carregamento com fundo borrado */
+        .modal-backdrop {
+            backdrop-filter: blur(5px);
+            background-color: rgba(0, 0, 0, 0.3);
+        }
+
+        #modalCarregamento .modal-content {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
     </style>
 </head>
 
@@ -311,6 +322,21 @@ include("../connection.php");
         </div>
     </div>
 
+    <!-- Modal de Carregamento -->
+    <div class="modal fade" id="modalCarregamento" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-body text-center py-5">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                    <h5 class="text-muted mb-2" id="modalCarregamentoTitulo">Processando dados...</h5>
+                    <p class="text-muted mb-0" id="modalCarregamentoDescricao">Aguarde enquanto buscamos as informações</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let table;
 
@@ -318,8 +344,22 @@ include("../connection.php");
             window.location.href = `../painel.php`;
         }
 
+        // Funções para controlar o modal de carregamento
+        function mostrarModalCarregamento(titulo = 'Processando dados...', descricao = 'Aguarde enquanto buscamos as informações') {
+            $('#modalCarregamentoTitulo').text(titulo);
+            $('#modalCarregamentoDescricao').text(descricao);
+            $('#modalCarregamento').modal('show');
+        }
+
+        function esconderModalCarregamento() {
+            $('#modalCarregamento').modal('hide');
+        }
+
         function realizarConsulta(tabela, consultaId) {
             console.log('Iniciando consulta server-side...')
+            
+            // Mostrar modal de carregamento
+            mostrarModalCarregamento('Executando consulta...', 'Buscando dados no banco de dados');
             
             $('#avisoInicial').removeClass('d-flex');
             $('#avisoInicial').addClass('d-none');
@@ -352,6 +392,7 @@ include("../connection.php");
                         console.error('Erro na consulta inicial:', response.mensagem || 'Erro desconhecido');
                         alert('Erro na consulta: ' + (response.mensagem || 'Erro desconhecido'));
                         $('#loadingDiv').hide();
+                        esconderModalCarregamento();
                     }
                 },
                 error: function(xhr, status, error) {
@@ -362,6 +403,7 @@ include("../connection.php");
                     });
                     alert('Erro na comunicação com o servidor: ' + error);
                     $('#loadingDiv').hide();
+                    esconderModalCarregamento();
                 }
             });
         }
@@ -455,7 +497,6 @@ include("../connection.php");
                     "infoEmpty": "Mostrando 0 até 0 de 0 registros",
                     "infoFiltered": "(filtrado de _MAX_ registros no total)",
                     "search": "Buscar:",
-                    "processing": "Processando...",
                     "paginate": {
                         "first": "Primeiro",
                         "last": "Último",
@@ -483,6 +524,9 @@ include("../connection.php");
                     
                     // Mostrar div de filtros após carregar a tabela
                     $('#filtros').show();
+                    
+                    // Esconder modal de carregamento
+                    esconderModalCarregamento();
                 }
             });
         }
@@ -592,6 +636,9 @@ include("../connection.php");
 
             console.log('=== APLICANDO FILTROS CUSTOMIZADOS ===');
             
+            // Mostrar modal de carregamento
+            mostrarModalCarregamento('Aplicando filtros...', 'Processando dados com os filtros selecionados');
+            
             const filtros = coletarFiltrosCustomizados();
             console.log('Filtros coletados:', filtros);
             
@@ -608,6 +655,11 @@ include("../connection.php");
             // Recarregar dados da tabela com novos filtros
             table.ajax.reload(null, false); // false = manter página atual
             
+            // Esconder modal após um pequeno delay para permitir que a requisição seja processada
+            setTimeout(() => {
+                esconderModalCarregamento();
+            }, 500);
+            
             console.log('Tabela recarregada com filtros aplicados');
         }
 
@@ -618,6 +670,9 @@ include("../connection.php");
             }
 
             console.log('=== LIMPANDO TODOS OS FILTROS ===');
+            
+            // Mostrar modal de carregamento
+            mostrarModalCarregamento('Limpando filtros...', 'Removendo todos os filtros aplicados');
             
             // Limpar filtros customizados
             $('#containerFiltros').empty();
@@ -631,6 +686,11 @@ include("../connection.php");
             
             // Recarregar dados da tabela
             table.ajax.reload(null, false); // false = manter página atual
+            
+            // Esconder modal após um pequeno delay
+            setTimeout(() => {
+                esconderModalCarregamento();
+            }, 500);
             
             console.log('Todos os filtros foram limpos');
         }
@@ -783,6 +843,19 @@ include("../connection.php");
                 return;
             }
 
+            // Mostrar modal de carregamento
+            mostrarModalCarregamento('Preparando mapa...', 'Coletando dados filtrados para visualização no mapa');
+
+            // Desabilitar o botão por 10 segundos
+            const btnPlotarMapa = document.getElementById('btnPlotarMapa');
+            
+            btnPlotarMapa.disabled = true;
+            
+            // Reabilitar após 10 segundos
+            setTimeout(() => {
+                btnPlotarMapa.disabled = false;
+            }, 10000);
+
             console.log('=== PLOTAR NO MAPA (SERVER-SIDE) ===');
             
             // Com server-side processing, precisamos fazer uma requisição especial
@@ -821,6 +894,7 @@ include("../connection.php");
                         
                         if (dadosFiltrados.length === 0) {
                             alert('Nenhum registro encontrado com os filtros aplicados.');
+                            esconderModalCarregamento();
                             return;
                         }
 
@@ -864,20 +938,26 @@ include("../connection.php");
                                 document.body.removeChild(form);
                             }, 100);
                             
+                            // Esconder modal após envio bem-sucedido
+                            esconderModalCarregamento();
+                            
                             console.log('Dados enviados via POST com sucesso!');
                             
                         } catch (error) {
                             console.error('Erro ao preparar dados para o mapa:', error);
                             alert('Erro ao processar dados para o mapa: ' + error.message);
+                            esconderModalCarregamento();
                         }
                     } else {
                         console.error('Erro ao obter dados para o mapa:', response.mensagem);
                         alert('Erro ao obter dados para o mapa: ' + (response.mensagem || 'Erro desconhecido'));
+                        esconderModalCarregamento();
                     }
                 },
                 error: function(xhr, status, error) {
                     console.error('Erro AJAX ao obter dados para o mapa:', error);
                     alert('Erro na comunicação com o servidor: ' + error);
+                    esconderModalCarregamento();
                 }
             });
         }
