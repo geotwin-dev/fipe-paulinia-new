@@ -1,5 +1,4 @@
 <?php
-//var_dump($_POST);
 session_start();
 
 if (!isset($_SESSION['usuario'])) {
@@ -9,7 +8,6 @@ if (!isset($_SESSION['usuario'])) {
 
 include("../connection.php");
 
-// Debug: Verificar dados recebidos
 $dados_recebidos = false;
 $metodo_recebimento = '';
 $tamanho_dados = 0;
@@ -32,20 +30,18 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mapa de Dados Filtrados</title>
     
-    <!-- Font Awesome para ícones -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 
-    <!-- jQuery -->
     <script src="../jquery.min.js"></script>
-    <!-- Bootstrap 5.3 -->
     <script src="../bootstrap.bundle.min.js"></script>
     <link href="../bootstrap.min.css" rel="stylesheet">
 
-    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
-    <!-- Google Maps API -->
     <script src="../apiGoogle.js"></script>
+    
+    <!-- toGeoJSON para conversão de KML -->
+    <script src="https://unpkg.com/togeojson@0.16.0/togeojson.js"></script>
 
     <style>
         html, body {
@@ -253,7 +249,6 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
     </style>
 </head>
 <body>
-    <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
         <div class="loading-spinner"></div>
         <h4 style="margin-top: 20px; color: #666;">Carregando dados do mapa...</h4>
@@ -264,7 +259,6 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
     <div class="container-fluid"
         style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; padding: 10px; display: flex; flex-direction: column;">
         
-        <!-- Botões de controle compactos -->
         <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.9); 
                     padding: 8px 15px; border-radius: 5px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <h6 style="margin: 0; color: #333;">
@@ -279,7 +273,6 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                     <i class="fas fa-crosshairs"></i> Centralizar
                 </button>
                 
-                <!-- Menu Dropdown Camadas -->
                 <div class="dropdown-menu-topbar">
                     <button id="btnCamadas" class="btn btn-sm btn-outline-dark dropdown-toggle" onclick="toggleMenuCamadas()">
                         <i class="fas fa-layer-group"></i> Camadas
@@ -313,10 +306,30 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                                 <span>Lotes Prefeitura</span>
                             </label>
                         </div>
+                        <div class="camada-item-topbar">
+                            <label class="camada-label-topbar">
+                                <input type="checkbox" id="toggleQuadriculas" checked onchange="toggleQuadriculas(this.checked)">
+                                <i class="fas fa-border-all" style="color: #FFD700;"></i>
+                                <span>Quadriculas (grade)</span>
+                            </label>
+                        </div>
+                        <div class="camada-item-topbar">
+                            <label class="camada-label-topbar">
+                                <input type="checkbox" id="toggleLimiteMunicipio" checked onchange="toggleLimiteMunicipio(this.checked)">
+                                <i class="fas fa-draw-polygon" style="color: #6f42c1;"></i>
+                                <span>Limite do Município</span>
+                            </label>
+                        </div>
+                        <div class="camada-item-topbar">
+                            <label class="camada-label-topbar">
+                                <input type="checkbox" id="toggleQuadriculasRotulos" checked onchange="toggleQuadriculasRotulos(this.checked)">
+                                <i class="fas fa-hashtag" style="color: #28a745;"></i>
+                                <span>Rótulos Quadrículas</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Controle de Opacidade -->
                 <div class="d-flex align-items-center gap-2 opacity-control-topbar">
                     <label for="opacidadeInput" class="form-label mb-0 small text-muted">Opacidade:</label>
                     <input type="range" id="opacidadeInput" class="form-range" min="0.1" max="1" step="0.1" value="0.6" style="width: 80px;" onchange="atualizarOpacidade(this.value)">
@@ -330,7 +343,6 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             </div>
         </div>
 
-        <!-- Painel de Informações -->
         <div class="map-container">
             <div class="info-panel">
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -367,14 +379,13 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                     <h6><i class="fas fa-filter"></i> Filtros Aplicados:</h6>
                     <div id="listaFiltros" class="d-flex flex-wrap gap-2"></div>
                 </div>
+
             </div>
 
-            <!-- Mapa -->
             <div id="map"></div>
         </div>
     </div>
 
-    <!-- InfoWindow será usado em vez de modal para mostrar detalhes -->
 
     <script>
         let map;
@@ -390,10 +401,38 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
         let coordenadasDesenhos = [];
         let poligonosLotesQuadras = [];
         let infoWindow;
+        let quadriculasRects = [];
+        let quadriculasRotulos = [];
+        let limiteMunicipioLayer = null;
 
-        // Configurações do mapa
+        // Sistema simples de camadas (compatível com index_3.php)
+        const arrayCamadas = {
+            prefeitura: [],
+            limite: [],
+            marcador: [],
+            marcador_quadra: [],
+            quadriculas: [],
+            ortofoto: [],
+            quadra: [],
+            lote: [],
+            quarteirao: [],
+            semCamadas: []
+        };
+
+        function adicionarObjetoNaCamada(nome, objeto) {
+            try {
+                const chave = (nome || 'semCamadas').toLowerCase();
+                if (!arrayCamadas[chave]) {
+                    arrayCamadas[chave] = [];
+                }
+                arrayCamadas[chave].push(objeto);
+            } catch (e) {
+                console.error('Erro ao adicionar objeto na camada:', e);
+            }
+        }
+
         const MAP_CONFIG = {
-            center: { lat: -22.7594, lng: -47.1532 }, // Paulínia, SP
+            center: { lat: -22.7594, lng: -47.1532 }, 
             zoom: 13,
             mapTypeId: 'hybrid'
         };
@@ -401,7 +440,6 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
         async function initMap() {
             console.log('Inicializando Google Maps...');
             
-            // Verificar se o elemento do mapa existe
             const mapElement = document.getElementById("map");
             if (!mapElement) {
                 console.error('Elemento #map não encontrado!');
@@ -473,17 +511,14 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             console.log('Processando dados recebidos...');
             
             try {
-                // Verificar se os dados vieram via POST (preferência) ou GET (fallback)
                 let dadosParam = '';
                 let filtrosParam = '';
                 
-                // Primeiro tentar obter do PHP (POST)
                 <?php if (isset($_POST['dados']) && isset($_POST['filtros'])): ?>
                     dadosParam = <?php echo json_encode($_POST['dados']); ?>;
                     filtrosParam = <?php echo json_encode($_POST['filtros']); ?>;
                     console.log('Dados recebidos via POST');
                 <?php else: ?>
-                    // Fallback para GET se POST não estiver disponível
                     const urlParams = new URLSearchParams(window.location.search);
                     dadosParam = urlParams.get('dados');
                     filtrosParam = urlParams.get('filtros');
@@ -496,7 +531,6 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
 
                 if (dadosParam) {
                     try {
-                        // Se veio do POST, já está decodificado. Se veio do GET, precisa decodificar
                         if (typeof dadosParam === 'string' && dadosParam.startsWith('%')) {
                             dadosOriginais = JSON.parse(decodeURIComponent(dadosParam));
                         } else if (typeof dadosParam === 'string') {
@@ -514,7 +548,6 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
 
                 if (filtrosParam) {
                     try {
-                        // Se veio do POST, já está decodificado. Se veio do GET, precisa decodificar
                         if (typeof filtrosParam === 'string' && filtrosParam.startsWith('%')) {
                             filtrosRecebidos = JSON.parse(decodeURIComponent(filtrosParam));
                         } else if (typeof filtrosParam === 'string') {
@@ -552,11 +585,6 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             }
 
             try {
-                console.log('Enviando dados para buscar_coordenadas.php:', {
-                    //registros: dadosOriginais.slice(0, 2) // Mostrar apenas 2 primeiros para debug
-                });
-
-                // Fazer requisição AJAX para buscar coordenadas
                 const response = await fetch('buscar_coordenadas.php', {
                     method: 'POST',
                     headers: {
@@ -600,7 +628,6 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                     console.log(`Encontrados ${poligonosLotesQuadras.length} polígonos`);
                     console.log('Estatísticas:', resultado.stats);
                     
-                    // DEBUG: Verificar quadrículas nos marcadores
                     if (coordenadasDesenhos.length > 0) {
                         const marcadorExemplo = coordenadasDesenhos[0];
                         console.log('🔍 EXEMPLO MARCADOR:', {
@@ -662,16 +689,22 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                     // Criar polígonos de quadras
                     await criarPoligonosQuadras();
                     
-                    // Carregar lotes da prefeitura
-                    await carregarLotesPrefeitura();
+            // Carregar lotes da prefeitura
+            await carregarLotesPrefeitura();
                     
                     // Inicializar estado dos botões de camadas
                     inicializarBotoesCamadas();
                     
+                    // Carregar e plotar todas as quadriculas (grade)
+                    await carregarQuadriculas();
+
+                    // Carregar limite do município via KML
+                    await carregarLimiteMunicipio();
+
                     // Centralizar mapa se houver elementos
                     const totalElementos = markers.length + polygons.length + polylines.length + 
                                           lotesPolygons.length + quadrasPolygons.length + quarteiraoPolygons.length + 
-                                          lotesPrefeituraPolygons.length;
+                                          lotesPrefeituraPolygons.length + quadriculasRects.length + quadriculasRotulos.length;
                     
                     if (totalElementos > 0) {
                         console.log('Centralizando mapa nos elementos encontrados...');
@@ -769,7 +802,7 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
         }
 
         async function criarPoligonosQuadras() {
-            console.log('Criando polígonos da quadrícula (COM filtro de proximidade 50m)...');
+            console.log('Criando polígonos da quadrícula (COM filtro de proximidade 32m)...');
             
             let poligonosCreated = 0;
             let poligonosRejeitados = 0;
@@ -925,7 +958,7 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                 }
             }
 
-            console.log(`=== RESUMO FILTRO PROXIMIDADE 50m ===`);
+            console.log(`=== RESUMO FILTRO PROXIMIDADE 32m ===`);
             console.log(`Total recebidos: ${totalProcessados}`);
             console.log(`Duplicados ignorados: ${poligonosDuplicados}`);
             console.log(`Únicos processados: ${totalProcessados - poligonosDuplicados}`);
@@ -940,7 +973,7 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             window.quadrasRejeitadas = poligonosRejeitados;
         }
 
-        async function carregarLotesPrefeitura() {
+        async function carregarLotesPrefeituraOtimizado() {
             console.log('Carregando lotes da prefeitura (otimizado)...');
             
             // Extrair dados específicos dos registros para filtro otimizado
@@ -1248,7 +1281,7 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
         /**
          * Verifica se um polígono está próximo aos marcadores (filtro por proximidade geográfica)
          */
-        function poligonoPerteniceAQuadraComMarcadores(poligono, marcadores, raioMaximo = 50) {
+        function poligonoPerteniceAQuadraComMarcadores(poligono, marcadores, raioMaximo = 32) {
             try {
                 // Se não há marcadores, não mostrar nenhum polígono
                 if (!marcadores || marcadores.length === 0) {
@@ -1515,6 +1548,181 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
             });
             
             console.log(`📊 ${lotesAfetados} lotes da prefeitura ${visivel ? 'exibidos' : 'ocultados'}`);
+        }
+
+        async function carregarQuadriculas() {
+            try {
+                const resp = await fetch('../loteamentos_quadriculas/mapa_quadriculas.json', { cache: 'no-store' });
+                if (!resp.ok) {
+                    console.warn('Não foi possível carregar mapa_quadriculas.json');
+                    return;
+                }
+                const lista = await resp.json();
+                
+                // Limpar quadrículas e rótulos anteriores
+                quadriculasRects.forEach(r => r.setMap && r.setMap(null));
+                quadriculasRects = [];
+                quadriculasRotulos.forEach(r => r.setMap && r.setMap(null));
+                quadriculasRotulos = [];
+                
+                const opacidade = carregarOpacidadeSalva();
+                lista.forEach(item => {
+                    if (!Array.isArray(item.bounds) || item.bounds.length !== 4) return;
+                    const [west, south, east, north] = item.bounds.map(Number);
+                    
+                    // Criar retângulo da quadrícula
+                    const rect = new google.maps.Rectangle({
+                        bounds: { north, south, east, west },
+                        strokeColor: '#FFD700',
+                        strokeOpacity: Math.min(opacidade + 0.2, 1),
+                        strokeWeight: 1,
+                        fillColor: '#FFD700',
+                        fillOpacity: Math.max(opacidade * 0.15, 0.1),
+                        map: map,
+                        clickable: false,
+                        zIndex: 5
+                    });
+                    rect.nomeQuadricula = item.nome;
+                    quadriculasRects.push(rect);
+                    
+                    // Criar rótulo com o nome da quadrícula
+                    const centro = {
+                        lat: (north + south) / 2,
+                        lng: (east + west) / 2
+                    };
+                    
+                    const labelDiv = document.createElement('div');
+                    labelDiv.style.fontSize = '14px';
+                    labelDiv.style.fontWeight = 'bold';
+                    labelDiv.style.color = '#000';
+                    labelDiv.style.background = 'rgba(255,255,255,0.9)';
+                    labelDiv.style.padding = '4px 8px';
+                    labelDiv.style.borderRadius = '8px';
+                    labelDiv.style.border = '2px solid #28a745';
+                    labelDiv.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+                    labelDiv.style.textAlign = 'center';
+                    labelDiv.style.minWidth = '30px';
+                    labelDiv.innerText = item.nome;
+                    
+                    // Usar sempre Marker comum para máxima compatibilidade (evita depender de mapId)
+                    const marker = new google.maps.Marker({
+                        position: centro,
+                        map: map,
+                        icon: {
+                            url: 'data:image/svg+xml;utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>',
+                            labelOrigin: new google.maps.Point(0, 0)
+                        },
+                        label: {
+                            text: item.nome,
+                            color: '#000',
+                            fontSize: '14px',
+                            fontWeight: 'bold'
+                        },
+                        zIndex: 20
+                    });
+                    
+                    marker.setMap(map);
+                    marker.nomeQuadricula = item.nome;
+                    quadriculasRotulos.push(marker);
+                });
+                console.log(`Quadriculas carregadas: ${quadriculasRects.length} retângulos, ${quadriculasRotulos.length} rótulos`);
+            } catch (e) {
+                console.error('Erro ao carregar quadriculas:', e);
+            }
+        }
+
+        function toggleQuadriculas(visivel) {
+            quadriculasRects.forEach(rect => rect.setMap && rect.setMap(visivel ? map : null));
+            console.log(`Quadriculas ${visivel ? 'exibidas' : 'ocultadas'}: ${quadriculasRects.length}`);
+        }
+
+        function toggleQuadriculasRotulos(visivel) {
+            quadriculasRotulos.forEach(marker => marker.setMap && marker.setMap(visivel ? map : null));
+            console.log(`Rótulos das quadrículas ${visivel ? 'exibidos' : 'ocultados'}: ${quadriculasRotulos.length}`);
+        }
+
+        async function carregarLimiteMunicipio() {
+            try {
+                if (!window.toGeoJSON) {
+                    console.error('toGeoJSON não está carregado!');
+                    return;
+                }
+                if (!map) {
+                    console.error('O mapa ainda não foi inicializado!');
+                    return;
+                }
+                
+                // Limpar limite anterior
+                if (limiteMunicipioLayer) {
+                    limiteMunicipioLayer.forEach(obj => { if (obj.setMap) obj.setMap(null); });
+                    limiteMunicipioLayer = [];
+                } else {
+                    limiteMunicipioLayer = [];
+                }
+                
+                const base = window.location.origin + window.location.pathname.replace(/\/consultas\/.*$/, '');
+                const kmlUrl = base + '/limite_paulinia.kml';
+                
+                console.log('Carregando limite do município:', kmlUrl);
+                
+                // Carrega o KML usando fetch e toGeoJSON (mesmo método do framework.js)
+                const response = await fetch(kmlUrl);
+                const kmlText = await response.text();
+                
+                const parser = new DOMParser();
+                const kml = parser.parseFromString(kmlText, 'text/xml');
+                const geojson = toGeoJSON.kml(kml);
+                
+                console.log('GeoJSON do limite:', geojson);
+                
+                geojson.features.forEach(f => {
+                    if (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString' || f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon') {
+                        let paths = [];
+                        if (f.geometry.type === 'LineString') {
+                            paths = f.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
+                        } else if (f.geometry.type === 'MultiLineString') {
+                            f.geometry.coordinates.forEach(line => {
+                                paths = paths.concat(line.map(([lng, lat]) => ({ lat, lng })));
+                            });
+                        } else if (f.geometry.type === 'Polygon') {
+                            // Para Polygon, desenha o contorno
+                            paths = f.geometry.coordinates[0].map(([lng, lat]) => ({ lat, lng }));
+                        } else if (f.geometry.type === 'MultiPolygon') {
+                            f.geometry.coordinates.forEach(poly => {
+                                paths = paths.concat(poly[0].map(([lng, lat]) => ({ lat, lng })));
+                            });
+                        }
+                        
+                        const polyline = new google.maps.Polyline({
+                            path: paths,
+                            strokeColor: '#6f42c1', // Cor roxa para o limite
+                            clickable: false,
+                            strokeOpacity: 1.0,
+                            strokeWeight: 4,
+                            map: map,
+                            zIndex: 10
+                        });
+                        limiteMunicipioLayer.push(polyline);
+                    }
+                });
+                
+                console.log(`Limite do município carregado: ${limiteMunicipioLayer.length} polylines`);
+            } catch (e) {
+                console.error('Erro ao carregar KML do limite do município:', e);
+            }
+        }
+
+        function toggleLimiteMunicipio(visivel) {
+            if (limiteMunicipioLayer && Array.isArray(limiteMunicipioLayer)) {
+                limiteMunicipioLayer.forEach(polyline => {
+                    if (polyline.setMap) {
+                        polyline.setMap(visivel ? map : null);
+                    }
+                });
+            } else if (visivel) {
+                carregarLimiteMunicipio();
+            }
+            console.log(`Limite do município ${visivel ? 'exibido' : 'ocultado'}`);
         }
 
 
@@ -2755,6 +2963,48 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                 });
             }
             
+            // Calcular quadrículas envolvidas
+            const quadSet = new Set();
+            // Dos dados originais
+            dadosOriginais.forEach(r => {
+                const q = r.quadricula || r.ortofoto || r.codigo_quadricula;
+                if (q) quadSet.add(q);
+            });
+            // Dos desenhos carregados
+            if (Array.isArray(coordenadasDesenhos)) {
+                coordenadasDesenhos.forEach(item => {
+                    const q = item?.dados_completos_desenho?.quadricula || item.quadricula;
+                    if (q) quadSet.add(q);
+                });
+            }
+            // Dos polígonos retornados
+            if (Array.isArray(poligonosLotesQuadras)) {
+                poligonosLotesQuadras.forEach(p => {
+                    if (p.quadricula) quadSet.add(p.quadricula);
+                });
+            }
+
+            const quadriculas = Array.from(quadSet).sort();
+            const totalQuadElem = document.getElementById('totalQuadriculas');
+            if (totalQuadElem) totalQuadElem.textContent = quadriculas.length;
+
+            const secQuad = document.getElementById('quadriculasEnvolvidas');
+            const listaQuad = document.getElementById('listaQuadriculas');
+            if (secQuad && listaQuad) {
+                listaQuad.innerHTML = '';
+                if (quadriculas.length > 0) {
+                    secQuad.style.display = 'block';
+                    quadriculas.forEach(q => {
+                        const chip = document.createElement('span');
+                        chip.className = 'badge bg-warning text-dark';
+                        chip.textContent = q;
+                        listaQuad.appendChild(chip);
+                    });
+                } else {
+                    secQuad.style.display = 'none';
+                }
+            }
+
             // Atualizar hora
             const agora = new Date();
             document.getElementById('ultimaAtualizacao').textContent = 
@@ -2833,6 +3083,26 @@ if (isset($_POST['dados']) && isset($_POST['filtros'])) {
                     bounds.extend(point);
                     totalElementos++;
                 });
+            });
+
+            // Adicionar quadriculas (retângulos) ao bounds
+            quadriculasRects.forEach(rect => {
+                if (rect && rect.getBounds) {
+                    const rb = rect.getBounds();
+                    if (rb) {
+                        bounds.extend(rb.getNorthEast());
+                        bounds.extend(rb.getSouthWest());
+                        totalElementos++;
+                    }
+                }
+            });
+
+            // Adicionar rótulos das quadrículas ao bounds
+            quadriculasRotulos.forEach(marker => {
+                if (marker && marker.position) {
+                    bounds.extend(marker.position);
+                    totalElementos++;
+                }
             });
 
             if (totalElementos === 0) {
