@@ -358,8 +358,6 @@ include("../connection.php");
         function realizarConsulta(tabela, consultaId) {
             console.log('Iniciando consulta server-side...')
             
-            // Mostrar modal de carregamento
-            mostrarModalCarregamento('Executando consulta...', 'Buscando dados no banco de dados');
             
             $('#avisoInicial').removeClass('d-flex');
             $('#avisoInicial').addClass('d-none');
@@ -856,6 +854,12 @@ include("../connection.php");
                 btnPlotarMapa.disabled = false;
             }, 10000);
 
+            // Timeout de segurança para esconder o modal após 10 segundos
+            setTimeout(() => {
+                esconderModalCarregamento();
+                console.log('Modal de carregamento escondido por timeout de 10 segundos');
+            }, 10000);
+
             console.log('=== PLOTAR NO MAPA (SERVER-SIDE) ===');
             
             // Com server-side processing, precisamos fazer uma requisição especial
@@ -938,8 +942,7 @@ include("../connection.php");
                                 document.body.removeChild(form);
                             }, 100);
                             
-                            // Esconder modal após envio bem-sucedido
-                            esconderModalCarregamento();
+                            // NÃO esconder o modal aqui - deixar que mapa_plot.php o esconda quando o mapa estiver carregado
                             
                             console.log('Dados enviados via POST com sucesso!');
                             
