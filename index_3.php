@@ -1712,7 +1712,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         async function abrirPDFQuarteirao(nomeArquivo) {
             console.log('Nome original PDF quarteirão:', nomeArquivo);
             const nomeDecodificado = normalizarString(nomeArquivo);
-            window.open('loteamentos_quadriculas/pdfs_quarteiroes/' + nomeDecodificado, '_blank');
+            
+            // Se o caminho já inclui a pasta, usa diretamente
+            if (nomeArquivo.includes('/')) {
+                window.open('loteamentos_quadriculas/pdfs_quarteiroes/' + nomeDecodificado, '_blank');
+            } else {
+                // Caso contrário, usa o caminho padrão
+                window.open('loteamentos_quadriculas/pdfs_quarteiroes/' + nomeDecodificado, '_blank');
+            }
         }
 
         // Função para criar as opções de loteamentos na div
@@ -2228,7 +2235,31 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         }
 
         // Função para carregar os dados dos PDFs dos quarteirões
-        function carregarDadosPDFsQuarteiroes() {
+        function carregarDadosPDFsQuarteiroes(numeroQuarteirao = null) {
+            // Se um número de quarteirão foi especificado, tenta carregar o JSON específico
+            if (numeroQuarteirao) {
+                return $.ajax({
+                    url: `loteamentos_quadriculas/pdfs_quarteiroes/${numeroQuarteirao}/quarteiroes.json`,
+                    method: 'GET',
+                    dataType: 'json'
+                }).then(function(data) {
+                    return data;
+                }).catch(function(error) {
+                    // Se falhar, carrega o arquivo geral e filtra apenas os dados deste quarteirão
+                    //console.log(`Arquivo específico não encontrado para quarteirão ${numeroQuarteirao}, usando arquivo geral`);
+                    return carregarDadosPDFsQuarteiroes().then(function(dadosGerais) {
+                        if (dadosGerais && Array.isArray(dadosGerais)) {
+                            // Filtra apenas os dados relacionados ao quarteirão específico
+                            return dadosGerais.filter(item => 
+                                item.quarteiroes && item.quarteiroes.includes(numeroQuarteirao)
+                            );
+                        }
+                        return [];
+                    });
+                });
+            }
+
+            // Comportamento original para carregamento geral
             if (dadosPDFsQuarteiroes) {
                 return Promise.resolve(dadosPDFsQuarteiroes);
             }
@@ -2263,18 +2294,31 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         }
 
         // Função para obter PDFs de um quarteirão específico
-        function obterPDFsQuarteirao(nomeQuarteirao) {
-            if (!dadosPDFsQuarteiroes || !Array.isArray(dadosPDFsQuarteiroes)) {
+        function obterPDFsQuarteirao(nomeQuarteirao, dadosPDFs = null) {
+            // Usa os dados passados como parâmetro ou a variável global como fallback
+            const dadosParaUsar = dadosPDFs || dadosPDFsQuarteiroes;
+            
+            if (!dadosParaUsar || !Array.isArray(dadosParaUsar)) {
                 return [];
             }
 
             // Procura por arquivos que contenham este quarteirão
-            const arquivosComQuarteirao = dadosPDFsQuarteiroes.filter(item => {
+            const arquivosComQuarteirao = dadosParaUsar.filter(item => {
                 return item.quarteiroes && item.quarteiroes.includes(nomeQuarteirao);
             });
 
             // Retorna os nomes dos arquivos encontrados
-            return arquivosComQuarteirao.map(item => item.nome_arquivo);
+            return arquivosComQuarteirao.map(item => {
+                // Se os dados vieram de um arquivo específico (pasta do quarteirão), adiciona o caminho
+                if (dadosPDFs && dadosPDFs.length > 0 && dadosPDFs[0] && dadosPDFs[0].nome_arquivo) {
+                    // Se o nome do arquivo não começa com o caminho da pasta, adiciona o caminho
+                    if (!item.nome_arquivo.startsWith(`${nomeQuarteirao}/`)) {
+                        return `${nomeQuarteirao}/${item.nome_arquivo}`;
+                    }
+                }
+                // Para a estrutura atual (arquivo geral), usa o caminho padrão
+                return `pdfs_quarteiroes/${item.nome_arquivo}`;
+            });
         }
 
         // Função para popular a lista de quarteirões
@@ -2377,11 +2421,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 return;
             }
 
-            // Carrega os dados complementares e depois cria os botões
-            Promise.all([
-                carregarDadosQuarteiroes(),
-                carregarDadosPDFsQuarteiroes()
-            ]).then(function() {
+            // Carrega os dados complementares gerais primeiro
+            carregarDadosQuarteiroes().then(function() {
                 // Ordena os quarteirões numericamente
                 quarteiroesDoLoteamento.sort((a, b) => {
                     const nomeA = a.properties.impreciso_name || a.id;
@@ -2391,8 +2432,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     const numeroA = parseInt(nomeA.replace(/\D/g, '')) || 0;
                     const numeroB = parseInt(nomeB.replace(/\D/g, '')) || 0;
                     
+                    console.log(`Comparando: ${nomeA} (${numeroA}) vs ${nomeB} (${numeroB})`);
+                    
+                    // Ordenação numérica
                     return numeroA - numeroB;
                 });
+                
+                console.log('Quarteirões ordenados:', quarteiroesDoLoteamento.map(q => q.properties.impreciso_name || q.id));
+                
+                // Array para armazenar todos os elementos criados
+                const elementosQuarteiroes = [];
                 
                 // Cria os botões radio para cada quarteirão
                 quarteiroesDoLoteamento.forEach((quarteirao, index) => {
@@ -2402,9 +2451,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     // Busca informações complementares
                     const infoComplementar = obterInfoComplementarQuarteirao(loteamento.nome, nomeQuarteirao);
 
-                    // Busca PDFs do quarteirão
-                    const pdfsQuarteirao = obterPDFsQuarteirao(nomeQuarteirao);
-                    const temPDFs = pdfsQuarteirao && pdfsQuarteirao.length > 0;
+                    // Carrega os dados dos PDFs específicos para este quarteirão
+                    carregarDadosPDFsQuarteiroes(nomeQuarteirao).then(function(dadosPDFs) {
+                        // Busca PDFs do quarteirão passando os dados carregados
+                        const pdfsQuarteirao = obterPDFsQuarteirao(nomeQuarteirao, dadosPDFs);
+                        const temPDFs = pdfsQuarteirao && pdfsQuarteirao.length > 0;
 
                     // Cria o texto do small baseado nas informações disponíveis
                     let textoSmall = ''; //`ID: ${quarteirao.id}`;
@@ -2431,8 +2482,10 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             ${temPDFs ? 
                                 `<div class="submenu-pdfs">
                                     ${pdfsQuarteirao.map(arquivo => {
+                                        // Extrai apenas o nome do arquivo para exibição
+                                        const nomeArquivo = arquivo.split('/').pop();
                                         return `<a href="javascript:void(0)" onclick="abrirPDFQuarteirao('${arquivo}')" title="${arquivo}">
-                                            <i class="fas fa-file-pdf"></i>${arquivo.length > 20 ? arquivo.substring(0, 20) + '...' : arquivo}
+                                            <i class="fas fa-file-pdf"></i>${nomeArquivo.length > 20 ? nomeArquivo.substring(0, 20) + '...' : nomeArquivo}
                                         </a>`;
                                     }).join('')}
                                 </div>` : 
@@ -2441,8 +2494,19 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         </div>
                     `);
 
-                    container.append(opcao);
-
+                        // Armazena o elemento no array com o índice correto
+                        elementosQuarteiroes[index] = opcao;
+                        
+                        // Verifica se todos os elementos foram criados
+                        if (elementosQuarteiroes.filter(el => el !== undefined).length === quarteiroesDoLoteamento.length) {
+                            // Adiciona todos os elementos ao container na ordem correta
+                            elementosQuarteiroes.forEach(elemento => {
+                                if (elemento) {
+                                    container.append(elemento);
+                                }
+                            });
+                        }
+                    });
                 });
 
                 // Adiciona evento para destacar seleção de quarteirão
@@ -2462,16 +2526,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     }
                 });
 
-                // Adiciona evento para o botão Docs de cada quarteirão
-                $('.btn-docs-quarteirao').on('click', function(e) {
+                // Adiciona evento para o botão Docs de cada quarteirão usando delegação
+                $(document).off('click', '.btn-docs-quarteirao').on('click', '.btn-docs-quarteirao', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
                     
                     const nomeQuarteirao = $(this).data('quarteirao');
-                    alert(`Aqui você poderá incluir, alterar e excluir documentos relacionados com o quarteirão ${nomeQuarteirao}`);
+                    console.log('Botão Docs clicado para quarteirão:', nomeQuarteirao);
+                    abrirModalGerenciarDocs(nomeQuarteirao);
                 });
             });
-
         }
 
         // Função para verificar se um quarteirão está dentro de um loteamento
@@ -2787,8 +2851,307 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             });
         });
 
+        // ============================================================================
+        // FUNÇÕES PARA GERENCIAR ARQUIVOS DOS QUARTEIRÕES
+        // ============================================================================
+        
+        let quarteiraoAtualModal = null;
+
+        // Função para abrir o modal de gerenciamento de documentos
+        function abrirModalGerenciarDocs(nomeQuarteirao) {
+            console.log('Função abrirModalGerenciarDocs chamada para:', nomeQuarteirao);
+            quarteiraoAtualModal = nomeQuarteirao;
+            
+            // Atualiza as informações do modal
+            $('#nomeQuarteiraoModal').text(`Quarteirão ${nomeQuarteirao}`);
+            $('#caminhoPastaModal').text(`Pasta: loteamentos_quadriculas/pdfs_quarteiroes/`);
+            
+            // Limpa a lista de arquivos
+            $('#listaArquivos').empty();
+            $('#inputArquivos').val('');
+            $('#btnUploadArquivos').prop('disabled', true);
+            
+            // Carrega a lista de arquivos
+            carregarListaArquivosQuarteirao(nomeQuarteirao);
+            
+            // Verifica se o modal existe
+            const modal = $('#modalGerenciarDocs');
+            console.log('Modal encontrado:', modal.length > 0);
+            
+            // Mostra o modal
+            if (modal.length > 0) {
+                modal.modal('show');
+                console.log('Modal.show() executado');
+            } else {
+                console.error('Modal não encontrado!');
+            }
+        }
+
+        // Função para carregar a lista de arquivos do quarteirão
+        function carregarListaArquivosQuarteirao(nomeQuarteirao) {
+            console.log('Carregando lista de arquivos para quarteirão:', nomeQuarteirao);
+            
+            // Tenta carregar arquivos da pasta física do quarteirão
+            $.ajax({
+                url: 'consultas/listar_arquivos_quarteirao.php',
+                method: 'POST',
+                data: { quarteirao: nomeQuarteirao },
+                dataType: 'json',
+                success: function(response) {
+                    console.log('Resposta da listagem:', response);
+                    if (response.success && response.arquivos.length > 0) {
+                        exibirListaArquivos(response.arquivos);
+                    } else {
+                        // Se não encontrar arquivos na pasta, tenta carregar do JSON
+                        carregarDadosPDFsQuarteiroes(nomeQuarteirao).then(function(dadosPDFs) {
+                            if (dadosPDFs && Array.isArray(dadosPDFs)) {
+                                const arquivos = dadosPDFs.map(item => {
+                                    return item.nome_arquivo.split('/').pop();
+                                });
+                                exibirListaArquivos(arquivos);
+                            } else {
+                                $('#listaArquivos').html('<div class="alert alert-warning">Nenhum arquivo encontrado.</div>');
+                            }
+                        }).catch(function(error) {
+                            console.error('Erro ao carregar dados dos PDFs:', error);
+                            $('#listaArquivos').html('<div class="alert alert-warning">Nenhum arquivo encontrado.</div>');
+                        });
+                    }
+                },
+                error: function() {
+                    $('#listaArquivos').html('<div class="alert alert-danger">Erro ao carregar arquivos.</div>');
+                }
+            });
+        }
+
+        // Função para exibir a lista de arquivos
+        function exibirListaArquivos(arquivos) {
+            const container = $('#listaArquivos');
+            container.empty();
+            
+            if (arquivos.length === 0) {
+                container.html('<div class="alert alert-info">Nenhum arquivo encontrado nesta pasta.</div>');
+                return;
+            }
+            
+            arquivos.forEach(function(arquivo) {
+                const extensao = arquivo.split('.').pop().toLowerCase();
+                const icone = getIconeArquivo(extensao);
+                
+                const item = $(`
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <i class="${icone} me-2"></i>
+                            <span>${arquivo}</span>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary me-2" onclick="visualizarArquivo('${arquivo}')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="excluirArquivoQuarteirao('${arquivo}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `);
+                
+                container.append(item);
+            });
+        }
+
+        // Função para obter o ícone baseado na extensão do arquivo
+        function getIconeArquivo(extensao) {
+            const icones = {
+                'pdf': 'fas fa-file-pdf text-danger',
+                'doc': 'fas fa-file-word text-primary',
+                'docx': 'fas fa-file-word text-primary',
+                'jpg': 'fas fa-file-image text-success',
+                'jpeg': 'fas fa-file-image text-success',
+                'png': 'fas fa-file-image text-success',
+                'gif': 'fas fa-file-image text-success'
+            };
+            return icones[extensao] || 'fas fa-file text-secondary';
+        }
+
+        // Função para visualizar um arquivo
+        function visualizarArquivo(nomeArquivo) {
+            const caminho = `loteamentos_quadriculas/pdfs_quarteiroes/${quarteiraoAtualModal}/${nomeArquivo}`;
+            window.open(caminho, '_blank');
+        }
+
+        // Função para excluir um arquivo
+        function excluirArquivoQuarteirao(nomeArquivo) {
+            if (!confirm(`Tem certeza que deseja excluir o arquivo "${nomeArquivo}"?`)) {
+                return;
+            }
+            
+            $.ajax({
+                url: 'consultas/excluir_arquivo_quarteirao.php',
+                method: 'POST',
+                data: { 
+                    quarteirao: quarteiraoAtualModal,
+                    arquivo: nomeArquivo 
+                },
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success) {
+                        alert('Arquivo excluído com sucesso!');
+                        // Atualiza a lista do modal
+                        carregarListaArquivosQuarteirao(quarteiraoAtualModal);
+                        // Atualiza a lista de PDFs na interface principal
+                        atualizarListaPDFsQuarteirao(quarteiraoAtualModal);
+                    } else {
+                        alert('Erro ao excluir arquivo: ' + response.message);
+                    }
+                },
+                error: function() {
+                    alert('Erro ao excluir arquivo.');
+                }
+            });
+        }
+
+        // Função para atualizar a lista de PDFs na divCadastro2
+        function atualizarListaPDFsQuarteirao(nomeQuarteirao) {
+            console.log('Atualizando lista de PDFs para quarteirão:', nomeQuarteirao);
+            
+            // Carrega arquivos da pasta física do quarteirão
+            $.ajax({
+                url: 'consultas/listar_arquivos_quarteirao.php',
+                method: 'POST',
+                data: { quarteirao: nomeQuarteirao },
+                dataType: 'json',
+                success: function(response) {
+                    console.log('Resposta da atualização:', response);
+                    
+                    // Encontra o elemento do quarteirão na divCadastro2
+                    const radioSelector = `input[name="quarteirao"][data-nome="${nomeQuarteirao}"]`;
+                    const radioElement = $(radioSelector);
+                    
+                    if (radioElement.length > 0) {
+                        const opcaoQuarteirao = radioElement.closest('.opcao-quarteirao');
+                        const submenuPdfs = opcaoQuarteirao.find('.submenu-pdfs');
+                        
+                        // Atualiza o conteúdo do submenu de PDFs
+                        if (response.success && response.arquivos.length > 0) {
+                            const novosPDFs = response.arquivos.map(arquivo => {
+                                const caminhoCompleto = `${nomeQuarteirao}/${arquivo}`;
+                                return `<a href="javascript:void(0)" onclick="abrirPDFQuarteirao('${caminhoCompleto}')" title="${caminhoCompleto}">
+                                    <i class="fas fa-file-pdf"></i>${arquivo.length > 20 ? arquivo.substring(0, 20) + '...' : arquivo}
+                                </a>`;
+                            }).join('');
+                            
+                            submenuPdfs.html(novosPDFs);
+                        } else {
+                            submenuPdfs.html('<em class="text-muted">Sem PDFs</em>');
+                        }
+                    }
+                },
+                error: function() {
+                    console.error('Erro ao atualizar lista de PDFs');
+                }
+            });
+        }
+
+        // Event listeners para o modal
+        $(document).ready(function() {
+            // Habilita o botão de upload quando arquivos são selecionados
+            $('#inputArquivos').on('change', function() {
+                const files = this.files;
+                $('#btnUploadArquivos').prop('disabled', files.length === 0);
+            });
+
+            // Upload de arquivos
+            $('#btnUploadArquivos').on('click', function() {
+                const files = $('#inputArquivos')[0].files;
+                if (files.length === 0) return;
+
+                const formData = new FormData();
+                formData.append('quarteirao', quarteiraoAtualModal);
+                
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('arquivos[]', files[i]);
+                }
+
+                // Mostra loading
+                $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Enviando...');
+
+                console.log('Enviando arquivos para quarteirão:', quarteiraoAtualModal);
+                console.log('FormData:', formData);
+                
+                $.ajax({
+                    url: 'consultas/upload_arquivos_quarteirao.php',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json',
+                    success: function(response) {
+                        console.log('Resposta do servidor:', response);
+                        if (response.success) {
+                            alert('Arquivos enviados com sucesso!');
+                            $('#inputArquivos').val('');
+                            
+                            // Atualiza a lista do modal
+                            carregarListaArquivosQuarteirao(quarteiraoAtualModal);
+                            
+                            // Atualiza a lista de PDFs na divCadastro2
+                            atualizarListaPDFsQuarteirao(quarteiraoAtualModal);
+                        } else {
+                            alert('Erro ao enviar arquivos: ' + response.message);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Erro na requisição:', xhr, status, error);
+                        console.error('Resposta do servidor:', xhr.responseText);
+                        alert('Erro ao enviar arquivos.');
+                    },
+                    complete: function() {
+                        $('#btnUploadArquivos').prop('disabled', true).html('Adicionar Arquivos');
+                    }
+                });
+            });
+        });
+
         
     </script>
+
+    <!-- Modal para gerenciar arquivos dos quarteirões -->
+    <div class="modal fade" id="modalGerenciarDocs" tabindex="-1" aria-labelledby="modalGerenciarDocsLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalGerenciarDocsLabel">Gerenciar Documentos</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="infoQuarteirao" class="mb-3">
+                        <h6 id="nomeQuarteiraoModal"></h6>
+                        <small class="text-muted" id="caminhoPastaModal"></small>
+                    </div>
+                    
+                    <!-- Área de upload -->
+                    <div class="mb-4">
+                        <label for="inputArquivos" class="form-label">Adicionar Arquivos</label>
+                        <input type="file" class="form-control" id="inputArquivos" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif">
+                        <div class="form-text">Selecione um ou mais arquivos para adicionar à pasta do quarteirão.</div>
+                    </div>
+                    
+                    <!-- Lista de arquivos -->
+                    <div>
+                        <h6>Arquivos Existentes</h6>
+                        <div id="listaArquivos" class="list-group">
+                            <!-- Arquivos serão carregados aqui dinamicamente -->
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-primary" id="btnUploadArquivos" disabled>Adicionar Arquivos</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </body>
 
 </html>
