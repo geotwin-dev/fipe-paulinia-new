@@ -129,6 +129,7 @@ const MapFramework = {
             mapTypeId: 'roadmap',
             zoomControl: true,
             scaleControl: true,
+            
             streetViewControl: true,
             fullscreenControl: false,
             mapTypeControl: false,
