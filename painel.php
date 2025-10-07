@@ -30,6 +30,9 @@ include("connection.php");
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+    
+    <!-- Biblioteca para conversão KML para GeoJSON -->
+    <script src="https://unpkg.com/@mapbox/togeojson@0.16.2/togeojson.js"></script>
 
     <!-- Google Maps API -->
     <script src="apiGoogle.js"></script>
@@ -68,6 +71,68 @@ include("connection.php");
         .dropdown-menu{
             padding: 0 30px;
         }
+
+        /* Modal de carregamento */
+        .modal-loading {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            backdrop-filter: blur(3px);
+        }
+
+        .modal-content-loading {
+            background-color: #fff;
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 400px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            animation: modalSlideIn 0.3s ease-out;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .loading-subtitle {
+            font-size: 14px;
+            color: #666;
+        }
     </style>
 
 <body>
@@ -77,7 +142,7 @@ include("connection.php");
             <div class="container-fluid">
 
                 <!-- Título -->
-                <a class="navbar-brand" href="#">Plataforma Geo</a>
+                <a class="navbar-brand" href="#">Visão geral das quadrículas</a>
 
                 <!-- Botões -->
                 <div class="d-flex align-items-center flex-grow-1 gap-2">
@@ -127,156 +192,262 @@ include("connection.php");
         <div id="map"></div>
     </div>
 
+    <!-- Modal de carregamento -->
+    <div id="modalLoading" class="modal-loading">
+        <div class="modal-content-loading">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Carregando Quadrícula...</div>
+            <div class="loading-subtitle" id="loadingSubtitle">Aguarde um momento</div>
+        </div>
+    </div>
+
     <script>
         let coordsLocal = { lat: -22.754690200587653, lng: -47.157327848672836 }; 
         let map;
-        let quadriculasData = [];
-        let polygons = [];
-        let markers = [];
+        let quadriculasPolygons = [];
+        let quadriculasRotulos = [];
         let selectedPolygon = null;
         let selectedQuadricula = null;
-        let kmlLayer = null;
         let limitePolyline = null;
 
-        // Carregar dados das quadrículas
-        $.ajax({
-            url: "loteamentos_quadriculas/mapa_quadriculas.json",
-            dataType: "json",
-            async: false,
-            type: "GET",
-            success: function(response) {
-                quadriculasData = response;
-                //console.log("Dados carregados:", quadriculasData);
+        // Inicializar arrays para quadrículas
+        if (!quadriculasPolygons) quadriculasPolygons = [];
+        if (!quadriculasRotulos) quadriculasRotulos = [];
+
+        // Função para mostrar modal de carregamento
+        function showLoadingModal(quadriculaNome) {
+            const modal = document.getElementById('modalLoading');
+            const subtitle = document.getElementById('loadingSubtitle');
+            
+            subtitle.textContent = `Redirecionando para ${quadriculaNome}...`;
+            modal.style.display = 'block';
+            
+            // Prevenir scroll da página
+            document.body.style.overflow = 'hidden';
+        }
+
+        // Função para esconder modal de carregamento
+        function hideLoadingModal() {
+            const modal = document.getElementById('modalLoading');
+            modal.style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+
+        // Função para navegar para quadrícula com modal
+        function navigateToQuadricula(quadriculaNome) {
+            showLoadingModal(quadriculaNome);
+            
+            // Pequeno delay para mostrar o modal antes do redirecionamento
+            setTimeout(() => {
+                window.location.href = `index_3.php?quadricula=${quadriculaNome}`;
+            }, 500);
+        }
+
+        // Função para carregar quadrículas do KML
+        function carregarQuadriculasKML(urlKML = 'quadriculas_paulinia.kml') {
+            if (!window.toGeoJSON) {
+                console.error('toGeoJSON não está carregado!');
+                return;
             }
-        });
-
-        // Função para converter bounds em polígono
-        function boundsToPolygon(bounds) {
-            const [lng1, lat1, lng2, lat2] = bounds;
-            return [
-                { lat: lat1, lng: lng1 },
-                { lat: lat1, lng: lng2 },
-                { lat: lat2, lng: lng2 },
-                { lat: lat2, lng: lng1 },
-                { lat: lat1, lng: lng1 } // Fechar o polígono
-            ];
-        }
-
-        // Função para calcular o centro de um polígono
-        function getPolygonCenter(bounds) {
-            const [lng1, lat1, lng2, lat2] = bounds;
-            return {
-                lat: (lat1 + lat2) / 2,
-                lng: (lng1 + lng2) / 2
-            };
-        }
-
-        // Função para criar polígonos das quadrículas
-        function createQuadriculasPolygons() {
-            quadriculasData.forEach((quadricula, index) => {
-                const polygonPath = boundsToPolygon(quadricula.bounds);
-                
-                // Criar polígono
-                const polygon = new google.maps.Polygon({
-                    paths: polygonPath,
-                    strokeColor: '#000000',
-                    strokeOpacity: 1.0,
-                    strokeWeight: 2,
-                    fillColor: 'transparent',
-                    fillOpacity: 0,
-                    clickable: true,
-                    zIndex: 1
-                });
-
-                // Armazenar referência da quadrícula no polígono
-                polygon.quadriculaData = quadricula;
-
-                // Adicionar eventos do polígono
-                polygon.addListener('mouseover', function() {
-                    if (polygon !== selectedPolygon) {
-                        polygon.setOptions({
-                            strokeWeight: 3,
-                            strokeColor: '#FF0000',
-                            fillColor: '#FF0000',
-                            fillOpacity: 0.5,
-                            zIndex: 3
-                        });
-                    }
-                });
-
-                polygon.addListener('mouseout', function() {
-                    if (polygon !== selectedPolygon) {
-                        polygon.setOptions({
-                            strokeWeight: 2,
-                            strokeColor: '#000000',
-                            fillColor: 'transparent',
-                            fillOpacity: 0,
-                            zIndex: 2
-                        });
-                    }
-                });
-
-                polygon.addListener('click', function() {
-                    // Desselecionar polígono anterior se existir
-                    if (selectedPolygon) {
-                        selectedPolygon.setOptions({
-                            strokeWeight: 2,
-                            strokeColor: '#000000',
-                            fillColor: 'transparent',
-                            fillOpacity: 0,
-                            zIndex: 2
-                        });
-                    }
+            if (!map) {
+                console.error('O mapa ainda não foi inicializado!');
+                return;
+            }
+            
+            // Remove quadrículas antigas
+            quadriculasPolygons.forEach(obj => { if (obj.setMap) obj.setMap(null); });
+            quadriculasPolygons = [];
+            
+            // Remove rótulos antigos
+            quadriculasRotulos.forEach(obj => { if (obj.setMap) obj.setMap(null); });
+            quadriculasRotulos = [];
+            
+            // Carrega o KML
+            fetch(urlKML)
+                .then(res => res.text())
+                .then(kmlText => {
+                    const parser = new DOMParser();
+                    const kml = parser.parseFromString(kmlText, 'text/xml');
+                    const geojson = toGeoJSON.kml(kml);
                     
-                    // Selecionar novo polígono
-                    selectedPolygon = polygon;
-                    selectedQuadricula = polygon.quadriculaData;
-                    polygon.setOptions({
-                        strokeWeight: 3,
-                        strokeColor: '#0066FF',
-                        fillColor: '#0066FF',
-                        fillOpacity: 0.5,
-                        zIndex: 4
+                    geojson.features.forEach(f => {
+                        let obj = null;
+                        let centro = null;
+                        
+                        if (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon') {
+                            let paths = [];
+                            if (f.geometry.type === 'Polygon') {
+                                paths = f.geometry.coordinates[0].map(([lng, lat]) => ({ lat, lng }));
+                            } else if (f.geometry.type === 'MultiPolygon') {
+                                f.geometry.coordinates.forEach(poly => {
+                                    paths = paths.concat(poly[0].map(([lng, lat]) => ({ lat, lng })));
+                                });
+                            }
+                            
+                            obj = new google.maps.Polygon({
+                                paths: paths,
+                                strokeColor: '#000000',
+                                strokeOpacity: 1.0,
+                                strokeWeight: 2,
+                                fillColor: 'transparent',
+                                fillOpacity: 0,
+                                clickable: true,
+                                zIndex: 1
+                            });
+                            
+                            // Calcular centro do polígono
+                            const bounds = new google.maps.LatLngBounds();
+                            paths.forEach(path => bounds.extend(path));
+                            centro = bounds.getCenter();
+                        }
+                        
+                        if (obj) {
+                            // Armazenar dados da quadrícula no polígono
+                            obj.quadriculaData = {
+                                nome: f.properties ? f.properties.name : 'Quadrícula',
+                                centro: centro
+                            };
+                            
+                            // Adicionar eventos do polígono
+                            obj.addListener('mouseover', function() {
+                                if (obj !== selectedPolygon) {
+                                    obj.setOptions({
+                                        strokeWeight: 3,
+                                        strokeColor: '#FF0000',
+                                        fillColor: '#FF0000',
+                                        fillOpacity: 0.5,
+                                        zIndex: 3
+                                    });
+                                }
+                            });
+                            
+                            obj.addListener('mouseout', function() {
+                                if (obj !== selectedPolygon) {
+                                    obj.setOptions({
+                                        strokeWeight: 2,
+                                        strokeColor: '#000000',
+                                        fillColor: 'transparent',
+                                        fillOpacity: 0,
+                                        zIndex: 2
+                                    });
+                                }
+                            });
+                            
+                            obj.addListener('click', function() {
+                                // Desselecionar polígono anterior se existir
+                                if (selectedPolygon) {
+                                    selectedPolygon.setOptions({
+                                        strokeWeight: 2,
+                                        strokeColor: '#000000',
+                                        fillColor: 'transparent',
+                                        fillOpacity: 0,
+                                        zIndex: 2
+                                    });
+                                }
+                                
+                                // Selecionar novo polígono
+                                selectedPolygon = obj;
+                                selectedQuadricula = obj.quadriculaData;
+                                obj.setOptions({
+                                    strokeWeight: 3,
+                                    strokeColor: '#0066FF',
+                                    fillColor: '#0066FF',
+                                    fillOpacity: 0.5,
+                                    zIndex: 4
+                                });
+                                
+                                // Mostrar botão de navegação
+                                showNavigationButton();
+                            });
+                            
+                            // Adicionar evento de duplo clique para navegação direta
+                            obj.addListener('dblclick', function(event) {
+                                // Prevenir o zoom do mapa no duplo clique
+                                event.stop();
+                                
+                                // Selecionar a quadrícula primeiro
+                                if (selectedPolygon) {
+                                    selectedPolygon.setOptions({
+                                        strokeWeight: 2,
+                                        strokeColor: '#000000',
+                                        fillColor: 'transparent',
+                                        fillOpacity: 0,
+                                        zIndex: 2
+                                    });
+                                }
+                                
+                                selectedPolygon = obj;
+                                selectedQuadricula = obj.quadriculaData;
+                                obj.setOptions({
+                                    strokeWeight: 3,
+                                    strokeColor: '#0066FF',
+                                    fillColor: '#0066FF',
+                                    fillOpacity: 0.5,
+                                    zIndex: 4
+                                });
+                                
+                                // Navegar com modal de carregamento
+                                if (selectedQuadricula) {
+                                    navigateToQuadricula(selectedQuadricula.nome);
+                                }
+                            });
+                            
+                            quadriculasPolygons.push(obj);
+                            obj.setMap(map);
+                        }
+                        
+                        // Adiciona rótulo se houver nome e centro
+                        if (f.properties && f.properties.name && centro) {
+                            const labelDiv = document.createElement('div');
+                            labelDiv.style.fontSize = '12px';
+                            labelDiv.style.color = '#000';
+                            labelDiv.style.background = 'rgba(255,255,255,0.7)';
+                            labelDiv.style.padding = '4px 8px';
+                            labelDiv.style.borderRadius = '4px';
+                            labelDiv.style.border = '1px solid #000';
+                            labelDiv.style.fontWeight = 'bold';
+                            labelDiv.style.textAlign = 'center';
+                            labelDiv.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+                            labelDiv.style.whiteSpace = 'nowrap';
+                            labelDiv.innerText = f.properties.name;
+                            
+                            let marker;
+                            if (google.maps.marker && google.maps.marker.AdvancedMarkerElement) {
+                                marker = new google.maps.marker.AdvancedMarkerElement({
+                                    position: centro,
+                                    content: labelDiv,
+                                    gmpClickable: false,
+                                    zIndex: 10
+                                });
+                                marker.setMap(map);
+                            } else {
+                                marker = new google.maps.Marker({
+                                    position: centro,
+                                    map: map,
+                                    icon: {
+                                        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="transparent"/></svg>'),
+                                        scaledSize: new google.maps.Size(1, 1)
+                                    },
+                                    label: {
+                                        text: f.properties.name,
+                                        color: '#000',
+                                        fontSize: '12px',
+                                        fontWeight: 'bold'
+                                    },
+                                    zIndex: 10
+                                });
+                            }
+                            quadriculasRotulos.push(marker);
+                        }
                     });
-
-                    // Mostrar botão de navegação
-                    showNavigationButton();
+                    
+                    console.log('Quadrículas carregadas do KML:', quadriculasPolygons.length);
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar quadrículas KML:', error);
                 });
-
-                // Adicionar polígono ao mapa
-                polygon.setMap(map);
-                polygons.push(polygon);
-
-                // Criar marker personalizado no centro
-                const center = getPolygonCenter(quadricula.bounds);
-                const markerElement = document.createElement('div');
-                markerElement.innerHTML = `
-                    <div style="
-                        background: rgb(255, 255, 255);
-                        border: 1px solid #000;
-                        border-radius: 4px;
-                        padding: 4px 8px;
-                        font-weight: bold;
-                        font-size: 12px;
-                        color: #000;
-                        text-align: center;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-                        white-space: nowrap;
-                    ">
-                        ${quadricula.nome}
-                    </div>
-                `;
-
-                const marker = new google.maps.marker.AdvancedMarkerElement({
-                    position: center,
-                    content: markerElement,
-                    map: map,
-                    zIndex: 10
-                });
-
-                markers.push(marker);
-            });
         }
+
 
         // Função para mostrar/esconder botão de navegação
         function showNavigationButton() {
@@ -300,10 +471,10 @@ include("connection.php");
 
         // Função para controlar visibilidade das quadrículas
         function toggleQuadriculas(show) {
-            polygons.forEach(polygon => {
+            quadriculasPolygons.forEach(polygon => {
                 polygon.setVisible(show);
             });
-            markers.forEach(marker => {
+            quadriculasRotulos.forEach(marker => {
                 if (show) {
                     marker.map = map;
                 } else {
@@ -411,7 +582,7 @@ include("connection.php");
             // Event listener para o botão de navegação
             $('#btnIrQuadricula').click(function() {
                 if (selectedQuadricula) {
-                    window.location.href = `index_3.php?quadricula=${selectedQuadricula.nome}`;
+                    navigateToQuadricula(selectedQuadricula.nome);
                 }
             });
         });
@@ -474,8 +645,8 @@ include("connection.php");
                 mapId: "mapImovel",
             });
 
-            // Criar polígonos das quadrículas após o mapa ser inicializado
-            createQuadriculasPolygons();
+            // Carregar quadrículas do KML após o mapa ser inicializado
+            carregarQuadriculasKML();
             
             // Carregar Polyline do limite do município
             loadLimitePolyline();

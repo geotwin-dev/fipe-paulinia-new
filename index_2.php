@@ -867,6 +867,17 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
 <body>
 
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); z-index: 9999;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: white;">
+            <div class="spinner-border" role="status" style="width: 4rem; height: 4rem; margin-bottom: 20px;">
+                <span class="visually-hidden">Carregando...</span>
+            </div>
+            <h4>Salvando alterações...</h4>
+            <p>Por favor, aguarde.</p>
+        </div>
+    </div>
+
     <!-- Modal personalizado de escolha de camada -->
     <div id="modalCamada" class="modal" style="display:none">
         <div class="modal-dialog">
@@ -1134,6 +1145,17 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                     </label>
                                 </div>
                             </li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkModoCadastro">
+                                    <label class="form-check-label" for="chkModoCadastro">
+                                        Loteamentos
+                                    </label>
+                                </div>
+                            </li>
                         </ul>
                     </div>
 
@@ -1149,6 +1171,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     <!-- Botões condicionais (aparecem se há seleção) -->
                     <button id="btnEditar" class="btn btn-warning d-none">Editar</button>
                     <button id="btnExcluir" class="btn btn-danger d-none">Excluir</button>
+                    
+                    <!-- Botão Sair da Edição (aparece quando está em modo de edição) -->
+                    <button id="btnSairEdicao" class="btn btn-secondary d-none">Sair da Edição</button>
 
                     <div class="divControle">
                         <input min="0" max="1" step="0.1" type="range" class="form-range" id="customRange1" value="0.3">
@@ -1156,10 +1181,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
                     <button data-loteamento="" data-arquivos="" data-quadricula="" onclick="desenharNoPDF(this)" id="btnLerPDF" class="btn btn-warning d-none">Desenhar no PDF</button>
 
-                    <button id="btnCadastro" class="btn btn-info">Cadastro</button>
+                    <!-- Botões Cadastro removidos - agora é uma camada no dropdown -->
+                    <!-- <button id="btnCadastro" class="btn btn-info">Cadastro</button> -->
                     
                     <!-- Botão Sair do Cadastro (aparece quando entra no modo cadastro) -->
-                    <button id="btnSairCadastro" class="btn btn-secondary d-none">Sair do Cadastro</button>
+                    <!-- <button id="btnSairCadastro" class="btn btn-secondary d-none">Sair do Cadastro</button> -->
 
                     <!-- Botão Marcador e inputs text -->
                     <button id="btnIncluirMarcador" class="btn btn-danger d-none">Marcador</button>
@@ -1298,6 +1324,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
     </div>
 
     <script>
+        const paginaAtual = 'index_2';
+
         const arrayCamadas = {
             prefeitura: [],
             limite: [],
@@ -1395,6 +1423,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             MapFramework.excluirDesenhoSelecionado2('paulinia', dadosOrto[0]['quadricula']);
         });
 
+        // Botão Editar - Entra no modo de edição
+        $('#btnEditar').on('click', function() {
+            MapFramework.entrarModoEdicao();
+        });
+
+        // Botão Sair da Edição - Salva e sai do modo de edição
+        $('#btnSairEdicao').on('click', function() {
+            MapFramework.sairModoEdicao();
+        });
+
         // Checkbox da Ortofoto
         $('#chkOrtofoto').on('change', function() {
             if (!dadosOrto || dadosOrto.length === 0) {
@@ -1486,30 +1524,43 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             }
         });
 
-        // Botão de Cadastro
-        $('#btnCadastro').on('click', function() {
-            if (!dadosOrto || dadosOrto.length === 0) {
-                alert('Erro: Dados da ortofoto não estão disponíveis.');
-                return;
+        // Checkbox Modo Cadastro (Loteamentos)
+        let processandoModoCadastro = false;
+        
+        $('#chkModoCadastro').on('change', function() {
+            if (processandoModoCadastro) return;
+            
+            const ativado = $(this).is(':checked');
+            
+            if (ativado) {
+                // Ativar modo cadastro
+                if (!dadosOrto || dadosOrto.length === 0) {
+                    alert('Erro: Dados da ortofoto não estão disponíveis.');
+                    $(this).prop('checked', false);
+                    return;
+                }
+
+                // Controla visibilidade dos botões
+                controlarVisibilidadeBotoes('cadastro');
+
+                //aqui desabilita o clique no poligonos quadra e lote
+                arrayCamadas.quadra.forEach(quadra => {
+                    quadra.setOptions({
+                        clickable: false
+                    });
+                });
+                arrayCamadas.lote.forEach(lote => {
+                    lote.setOptions({
+                        clickable: false
+                    });
+                });
+
+                const quadricula = dadosOrto[0]['quadricula'];
+                carregarLoteamentosQuadricula(quadricula);
+            } else {
+                // Desativar modo cadastro
+                sairModoCadastro();
             }
-
-            // Controla visibilidade dos botões
-            controlarVisibilidadeBotoes('cadastro');
-
-            //aqui desabilita o clique no poligonos quadra e lote
-            arrayCamadas.quadra.forEach(quadra => {
-                quadra.setOptions({
-                    clickable: false
-                });
-            });
-            arrayCamadas.lote.forEach(lote => {
-                lote.setOptions({
-                    clickable: false
-                });
-            });
-
-            const quadricula = dadosOrto[0]['quadricula'];
-            carregarLoteamentosQuadricula(quadricula);
         });
 
         // Função para carregar loteamentos de uma quadrícula específica
@@ -1944,8 +1995,10 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             */
         }
 
-        // Evento para fechar a div de cadastro
-        $('#btnFecharCadastro').on('click', function() {
+        // Função para sair do modo cadastro
+        function sairModoCadastro() {
+            processandoModoCadastro = true;
+            
             $('#divCadastro').fadeOut(150);
 
             // Fecha também a divCadastro2 se estiver aberta
@@ -2007,14 +2060,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             quarteiraoIdAtualSelecionado = null;
 
             $("#btnLerPDF").addClass('d-none');
-        });
+            
+            // Desmarca o checkbox do modo cadastro
+            $('#chkModoCadastro').prop('checked', false);
+            
+            processandoModoCadastro = false;
+        }
 
-        // Evento para o botão Sair do Cadastro (faz a mesma coisa que o botão X)
-        $('#btnSairCadastro').on('click', function() {
-            // Chama a mesma função que o botão de fechar
-            $('#btnFecharCadastro').trigger('click');
-            // Volta ao modo normal
-            controlarVisibilidadeBotoes('normal');
+        // Evento para fechar a div de cadastro (botão X)
+        $('#btnFecharCadastro').on('click', function() {
+            sairModoCadastro();
         });
 
         $(document).ready(async function() {
@@ -3187,13 +3242,12 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 'btnIncluirPoligono',      // Modo Quadra
                 'btnIncluirLinha',         // Modo Lote
                 'btnIncluirMarcador',      // Modo Marcador
-                'btnCadastro',             // Modo Cadastro
                 'btnLerPDF',               // Modo PDF
                 'btnFinalizarDesenho',     // Botão de sair do desenho
                 'btnSairModoMarcador',     // Botão de sair do marcador
-                'btnSairCadastro',         // Botão de sair do cadastro
                 'btnEditar',               // Botão de editar
-                'btnExcluir'               // Botão de excluir
+                'btnExcluir',              // Botão de excluir
+                'btnSairEdicao'            // Botão de sair da edição
             ];
 
             // Oculta todos os botões primeiro
@@ -3217,7 +3271,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     break;
                 
                 case 'cadastro':
-                    $('#btnSairCadastro').removeClass('d-none');
+                    // Modo cadastro agora é controlado pelo checkbox
+                    // Não há botão específico a mostrar
                     break;
                 
                 case 'pdf':
@@ -3229,7 +3284,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     // Modo normal - mostra botões principais
                     $('#btnIncluirPoligono').removeClass('d-none');
                     $('#btnIncluirLinha').removeClass('d-none');
-                    $('#btnCadastro').removeClass('d-none');
+                    // btnCadastro foi removido - agora é checkbox
                     // Botões de editar/excluir só aparecem se há quadra selecionada
                     // (serão controlados pelo framework.js)
                     break;

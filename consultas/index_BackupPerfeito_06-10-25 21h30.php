@@ -203,7 +203,7 @@ include("../connection.php");
             <div class="container-fluid">
 
                 <!-- Título -->
-                <a class="navbar-brand" href="#">Consultas</a>
+                <a class="navbar-brand" href="#">Plataforma Geo</a>
 
                 <!-- Botões -->
                 <div class="d-flex align-items-center flex-grow-1 gap-2">
@@ -358,8 +358,6 @@ include("../connection.php");
         function realizarConsulta(tabela, consultaId) {
             console.log('Iniciando consulta server-side...')
             
-            // Desabilitar apenas o botão clicado para evitar múltiplos cliques
-            $(`#btnConsulta${consultaId}`).prop('disabled', true);
             
             $('#avisoInicial').removeClass('d-flex');
             $('#avisoInicial').addClass('d-none');
@@ -411,7 +409,7 @@ include("../connection.php");
         function chamarTabelaServerSide(colunas, tiposColunas) {
             console.log('=== NOVA CONSULTA SERVER-SIDE ===');
             console.log('Configurando tabela server-side processing');
-            //console.log('Colunas da nova consulta:', colunas);
+            console.log('Colunas da nova consulta:', colunas);
             
             // Limpar filtros existentes
             $('#containerFiltros').empty();
@@ -488,10 +486,6 @@ include("../connection.php");
                 "ordering": true,
                 "info": true,
                 "destroy": true,
-                "dom": "<'row'<'col-sm-12 col-md-6'l><'col-sm-12 col-md-6'f>>" +
-                       "<'row'<'col-sm-12 col-md-6'i><'col-sm-12 col-md-6'p>>" +
-                       "<'row'<'col-sm-12'tr>>" +
-                       "<'row'<'col-sm-12 col-md-6'i><'col-sm-12 col-md-6'p>>",
                 "language": {
                     "decimal": ",",
                     "thousands": ".",

@@ -203,7 +203,7 @@ include("../connection.php");
             <div class="container-fluid">
 
                 <!-- Título -->
-                <a class="navbar-brand" href="#">Consultas</a>
+                <a class="navbar-brand" href="#">Plataforma Geo</a>
 
                 <!-- Botões -->
                 <div class="d-flex align-items-center flex-grow-1 gap-2">

@@ -17,7 +17,8 @@ try {
 
     $sql = "SELECT *
             FROM desenhos
-            WHERE quadricula = :quadricula";
+            WHERE quadricula = :quadricula
+            AND status > 0";
 
     $stmt = $pdo->prepare($sql);
     $stmt->bindValue(':quadricula', $quadricula, PDO::PARAM_STR);

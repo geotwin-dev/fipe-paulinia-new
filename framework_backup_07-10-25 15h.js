@@ -37,10 +37,6 @@ const MapFramework = {
 
     listenerGlobalClick: null,
 
-    // Modo de edição
-    modoEdicao: false,
-    desenhosEditados: [], // Array para armazenar desenhos que foram editados
-
     selecionarDesenho: function (objeto) {
         if (this.desenho.temporario) return; // Não selecionar durante desenho
 
@@ -74,22 +70,9 @@ const MapFramework = {
             });
         }
 
-        // Se estiver no modo de edição, torna o objeto editável e adiciona listeners
-        if (this.modoEdicao) {
-            objeto.setOptions({ editable: true });
-            this.adicionarListenersEdicao(objeto);
-        }
-
-        // Controla visibilidade dos botões
-        if (this.modoEdicao) {
-            // No modo edição, não mostra editar e excluir
-            $('#btnExcluir').addClass('d-none');
-            $('#btnEditar').addClass('d-none');
-        } else {
-            // Modo normal, mostra os botões
-            $('#btnExcluir').removeClass('d-none');
-            $('#btnEditar').removeClass('d-none');
-        }
+        // Aqui garantimos que o botão aparece
+        $('#btnExcluir').removeClass('d-none');
+        $('#btnEditar').removeClass('d-none');
     },
 
     desselecionarDesenho: function () {
@@ -99,11 +82,13 @@ const MapFramework = {
             if (obj instanceof google.maps.Polygon) {
                 obj.setOptions({
                     strokeColor: obj.corOriginal || '#0000FF', // azul como fallback
-                    fillColor: obj.corOriginal || '#0000FF'
+                    fillColor: obj.corOriginal || '#0000FF',
+                    zIndex: 1
                 });
             } else if (obj instanceof google.maps.Polyline) {
                 obj.setOptions({
                     strokeColor: obj.corOriginal || '#FF0000', // vermelho como fallback
+                    zIndex: 2
                 });
             }
 
@@ -112,270 +97,6 @@ const MapFramework = {
             // Aqui garantimos que o botão some
             $('#btnExcluir').addClass('d-none');
             $('#btnEditar').addClass('d-none');
-        }
-    },
-
-    abrirInfoWindowCores: function (poligono, posicao, idDesenho) {
-        // Fecha InfoWindow anterior se existir
-        if (this.infoWindow) {
-            this.infoWindow.close();
-        }
-
-        // Define as cores dos botões com seus respectivos valores hexadecimais
-        const cores = [
-            { classe: 'btn btn-primary', cor: 'blue', nome: 'A revisar' },
-            { classe: 'btn btn-warning', cor: 'orange', nome: 'Revisado parcialmente' },
-            { classe: 'btn btn-danger', cor: 'red', nome: 'Não conformidade' },
-            { classe: 'btn btn-success', cor: '#198754', nome: 'Revisão OK' }
-        ];
-
-        // Cria o conteúdo HTML do InfoWindow com os botões
-        let conteudoHTML = '<div style="padding: 10px;">';
-        conteudoHTML += '<h6 style="margin-bottom: 10px;">Situação da revisão:</h6>';
-        conteudoHTML += '<div style="display: flex; flex-direction: column; gap: 8px;">';
-        
-        cores.forEach(cor => {
-            conteudoHTML += `<button class="${cor.classe}" data-cor="${cor.cor}" data-id="${idDesenho}" style="width: 100%;">${cor.nome}</button>`;
-        });
-        
-        conteudoHTML += '</div></div>';
-
-        // Cria o InfoWindow
-        this.infoWindow = new google.maps.InfoWindow({
-            content: conteudoHTML,
-            position: posicao
-        });
-
-        // Abre o InfoWindow
-        this.infoWindow.open(this.map);
-
-        // Adiciona event listeners aos botões após o InfoWindow ser aberto
-        google.maps.event.addListenerOnce(this.infoWindow, 'domready', () => {
-            $('.btn[data-cor]').off('click').on('click', function() {
-                const novaCor = $(this).data('cor');
-                const idDesenho = $(this).data('id');
-
-                // Atualiza a cor do polígono visualmente
-                poligono.setOptions({
-                    strokeColor: novaCor,
-                    fillColor: novaCor
-                });
-
-                // Atualiza a cor original para manter a nova cor
-                poligono.corOriginal = novaCor;
-
-                // Envia a atualização para o servidor via AJAX
-                $.ajax({
-                    url: 'atualizar_cor_desenho.php',
-                    method: 'POST',
-                    data: {
-                        id_desenho: idDesenho,
-                        cor: novaCor
-                    },
-                    dataType: 'json',
-                    success: function(response) {
-                        if (response.status === 'sucesso') {
-                            console.log('Cor atualizada com sucesso!');
-                            // Fecha o InfoWindow após atualizar
-                            MapFramework.infoWindow.close();
-                        } else {
-                            console.error('Erro ao atualizar cor:', response.mensagem);
-                            //alert('Erro ao atualizar a cor: ' + response.mensagem);
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('Erro na requisição AJAX:', error);
-                        //alert('Erro ao comunicar com o servidor');
-                    }
-                });
-            });
-        });
-    },
-
-    obterCoordenadasObjeto: function (objeto) {
-        // Extrai as coordenadas de um Polygon ou Polyline
-        const path = objeto.getPath();
-        const coordenadas = [];
-        
-        for (let i = 0; i < path.getLength(); i++) {
-            const ponto = path.getAt(i);
-            coordenadas.push({ lat: ponto.lat(), lng: ponto.lng() });
-        }
-        
-        return coordenadas;
-    },
-
-    adicionarListenersEdicao: function (objeto) {
-        // Adiciona listeners para detectar mudanças no desenho
-        if (!objeto.editListenerAdded) {
-            const addToEditedList = () => {
-                if (!this.desenhosEditados.includes(objeto)) {
-                    this.desenhosEditados.push(objeto);
-                    console.log('📝 Desenho adicionado à lista de edição');
-                    console.log('   - ID:', objeto.identificador);
-                    console.log('   - Total na lista:', this.desenhosEditados.length);
-                }
-            };
-
-            if (objeto instanceof google.maps.Polygon) {
-                // Listeners para detectar mudanças
-                google.maps.event.addListener(objeto.getPath(), 'set_at', addToEditedList);
-                google.maps.event.addListener(objeto.getPath(), 'insert_at', addToEditedList);
-                google.maps.event.addListener(objeto.getPath(), 'remove_at', addToEditedList);
-                
-                // Listener para deletar vértice com botão direito
-                google.maps.event.addListener(objeto, 'rightclick', (e) => {
-                    if (typeof e.vertex === 'number') {
-                        const path = objeto.getPath();
-                        const totalVertices = path.getLength();
-                        
-                        if (totalVertices <= 3) {
-                            alert('⚠️ Não é possível remover este vértice.\nO polígono precisa ter pelo menos 3 vértices.');
-                            console.log('❌ Tentativa de remover vértice bloqueada (mínimo: 3)');
-                        } else {
-                            path.removeAt(e.vertex);
-                            console.log('🗑️ Vértice removido do polígono');
-                            console.log('   - Vértices restantes:', path.getLength());
-                            addToEditedList();
-                        }
-                    }
-                });
-                
-            } else if (objeto instanceof google.maps.Polyline) {
-                // Listeners para detectar mudanças
-                google.maps.event.addListener(objeto.getPath(), 'set_at', addToEditedList);
-                google.maps.event.addListener(objeto.getPath(), 'insert_at', addToEditedList);
-                google.maps.event.addListener(objeto.getPath(), 'remove_at', addToEditedList);
-                
-                // Listener para deletar vértice com botão direito
-                google.maps.event.addListener(objeto, 'rightclick', (e) => {
-                    if (typeof e.vertex === 'number') {
-                        const path = objeto.getPath();
-                        const totalVertices = path.getLength();
-                        
-                        if (totalVertices <= 2) {
-                            alert('⚠️ Não é possível remover este vértice.\nA linha precisa ter pelo menos 2 pontos.');
-                            console.log('❌ Tentativa de remover vértice bloqueada (mínimo: 2)');
-                        } else {
-                            path.removeAt(e.vertex);
-                            console.log('🗑️ Vértice removido da polilinha');
-                            console.log('   - Vértices restantes:', path.getLength());
-                            addToEditedList();
-                        }
-                    }
-                });
-            }
-            
-            objeto.editListenerAdded = true;
-            console.log('✅ Listeners de edição adicionados ao desenho ID:', objeto.identificador);
-        }
-    },
-
-    entrarModoEdicao: function () {
-        this.modoEdicao = true;
-        this.desenhosEditados = [];
-        
-        // Oculta botões editar e excluir
-        $('#btnEditar').addClass('d-none');
-        $('#btnExcluir').addClass('d-none');
-        
-        // Mostra botão sair da edição
-        $('#btnSairEdicao').removeClass('d-none');
-        
-        // Se houver objeto selecionado, torna editável e adiciona listeners
-        if (this.selecionado) {
-            this.selecionado.setOptions({ editable: true });
-            this.adicionarListenersEdicao(this.selecionado);
-        }
-        
-        console.log('🔧 Modo de edição ativado');
-    },
-
-    sairModoEdicao: async function () {
-        // Mostra loading
-        $('#loadingOverlay').fadeIn(200);
-        console.log('=== INICIANDO SAÍDA DO MODO EDIÇÃO ===');
-        console.log('Total de desenhos editados:', this.desenhosEditados.length);
-        
-        try {
-            // Se houver desenhos editados, salva todos
-            if (this.desenhosEditados.length > 0) {
-                console.log(`Salvando ${this.desenhosEditados.length} desenhos editados...`);
-                
-                // Prepara array com dados para salvar
-                const dadosParaSalvar = this.desenhosEditados.map((desenho, index) => {
-                    console.log(`Processando desenho ${index + 1}:`, desenho);
-                    let coordenadas;
-                    
-                    if (desenho instanceof google.maps.Polygon) {
-                        coordenadas = this.obterCoordenadasObjeto(desenho);
-                        console.log(`  - Tipo: Polígono`);
-                    } else if (desenho instanceof google.maps.Polyline) {
-                        coordenadas = this.obterCoordenadasObjeto(desenho);
-                        console.log(`  - Tipo: Polilinha`);
-                    }
-                    
-                    console.log(`  - ID: ${desenho.identificador}`);
-                    console.log(`  - Coordenadas extraídas: ${coordenadas.length} pontos`);
-                    
-                    return {
-                        id: desenho.identificador,
-                        coordenadas: JSON.stringify(coordenadas)
-                    };
-                });
-                
-                console.log('Dados preparados para salvar:', dadosParaSalvar);
-                
-                // Salva de forma síncrona
-                const response = await $.ajax({
-                    url: 'atualizar_coordenadas_desenhos.php',
-                    method: 'POST',
-                    data: {
-                        desenhos: JSON.stringify(dadosParaSalvar)
-                    },
-                    dataType: 'json'
-                });
-                
-                if (response.status === 'sucesso') {
-                    console.log('✅ Todos os desenhos foram salvos com sucesso!');
-                    console.log('Resposta do servidor:', response);
-                } else {
-                    console.error('❌ Erro ao salvar:', response.mensagem);
-                    alert('Erro ao salvar as alterações: ' + response.mensagem);
-                }
-            } else {
-                console.log('ℹ️ Nenhum desenho foi editado, nada para salvar');
-            }
-            
-            // Torna todos os desenhos não editáveis
-            this.desenhosEditados.forEach(desenho => {
-                desenho.setOptions({ editable: false });
-            });
-            
-            // Limpa array de editados
-            this.desenhosEditados = [];
-            
-            // Sai do modo de edição
-            this.modoEdicao = false;
-            
-            // Oculta botão sair da edição
-            $('#btnSairEdicao').addClass('d-none');
-            
-            // Se houver objeto selecionado, mostra botões normais
-            if (this.selecionado) {
-                $('#btnEditar').removeClass('d-none');
-                $('#btnExcluir').removeClass('d-none');
-            }
-            
-            console.log('=== MODO DE EDIÇÃO DESATIVADO ===');
-            
-        } catch (error) {
-            console.error('❌ Erro ao sair do modo de edição:', error);
-            alert('Erro ao salvar as alterações: ' + error.message);
-        } finally {
-            // Esconde loading
-            $('#loadingOverlay').fadeOut(200);
-            console.log('=== FIM DO PROCESSO ===');
         }
     },
 
@@ -788,21 +509,8 @@ const MapFramework = {
 
                             adicionarObjetoNaCamada(destino, objeto);
 
-                            google.maps.event.addListener(objeto, 'click', (event) => {
+                            google.maps.event.addListener(objeto, 'click', () => {
                                 MapFramework.selecionarDesenho(objeto);
-                                console.log(objeto.identificador)
-
-                                if(paginaAtual == 'index_2'){
-                                    // Se for polígono, abre InfoWindow com botões de cores
-                                    if (tipo === 'poligono' && event.latLng) {
-                                        console.log(paginaAtual)
-                                        MapFramework.abrirInfoWindowCores(objeto, event.latLng, desenho.id);
-                                    }else{
-                                        if(MapFramework.infoWindow){
-                                            MapFramework.infoWindow.close();
-                                        }
-                                    }
-                                }
                             });
                         }
                     });
@@ -2547,7 +2255,7 @@ const MapFramework = {
                                     fillOpacity: 0.3,          // Aumentei a opacidade para ser mais visível
                                     map: null,                 // Inicialmente não visível no mapa
                                     clickable: true,
-                                    zIndex: 5                 // Z-index mais alto para ficar por cima
+                                    zIndex: 10                 // Z-index mais alto para ficar por cima
                                 });
                                 
                                 // Adiciona InfoWindow ao polígono com os dados do GeoJSON
