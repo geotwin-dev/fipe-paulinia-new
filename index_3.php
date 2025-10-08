@@ -978,6 +978,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         #chkCinza {
             color:rgb(124, 124, 124);
         }
+
+        .marker-imagem-aerea{
+            width: 15px;
+            height: 15px;
+            background-color: rgb(0, 204, 255);
+            border-radius: 50%;
+            border: 1px solid #000;
+            cursor: pointer;
+            transform: translate(0, 10px);
+        }
     </style>
 </head>
 
@@ -1342,6 +1352,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                     <input class="form-check-input" type="checkbox" id="chkQuarteiroes">
                                     <label class="form-check-label" for="chkQuarteiroes">
                                         Quarteirões
+                                    </label>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkImagensAereas">
+                                    <label class="form-check-label" for="chkImagensAereas">
+                                        Imagens Aéreas
                                     </label>
                                 </div>
                             </li>
@@ -1727,6 +1745,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#chkQuarteiroes').on('change', function() {
             const visivel = $(this).is(':checked');
             MapFramework.alternarVisibilidadeCamada('quarteirao', visivel);
+        });
+
+        $('#chkImagensAereas').on('change', function() {
+            const visivel = $(this).is(':checked');
+            MapFramework.alternarVisibilidadeCamada('imagens_aereas', visivel);
         });
 
         // Eventos para os radio buttons de tipo de marcador
@@ -2484,6 +2507,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             await MapFramework.carregarPlanilha();
 
             await MapFramework.carregarMarcadoresSalvos(dadosOrto[0]['quadricula']);
+
+            await MapFramework.carregarImagensAereas(dadosOrto[0]['quadricula']);
 
 
             // Inicializa o modo normal (mostra botões principais)

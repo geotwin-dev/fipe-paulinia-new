@@ -323,7 +323,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         /* Estilos para o controle de desenhos da prefeitura */
         #controleDesenhosPrefeitura {
             position: absolute;
-            top: 60px;
+            top: 70px;
             left: 5px;
             /* Posicionado ao lado do controle de quadrículas */
             z-index: 1000;
@@ -909,6 +909,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         .btn-close-tooltip:hover {
             color: red;
         }
+
+        .marker-imagem-aerea{
+            width: 15px;
+            height: 15px;
+            background-color: rgb(0, 204, 255);
+            border-radius: 50%;
+            border: 1px solid #000;
+            cursor: pointer;
+            transform: translate(0, 10px);
+        }
     </style>
 </head>
 
@@ -1213,6 +1223,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                     <input class="form-check-input" type="checkbox" id="chkQuarteiroes">
                                     <label class="form-check-label" for="chkQuarteiroes">
                                         Quarteirões
+                                    </label>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkImagensAereas">
+                                    <label class="form-check-label" for="chkImagensAereas">
+                                        Imagens Aéreas
                                     </label>
                                 </div>
                             </li>
@@ -1601,6 +1619,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#chkQuarteiroes').on('change', function() {
             const visivel = $(this).is(':checked');
             MapFramework.alternarVisibilidadeCamada('quarteirao', visivel);
+        });
+
+        $('#chkImagensAereas').on('change', function() {
+            const visivel = $(this).is(':checked');
+            MapFramework.alternarVisibilidadeCamada('imagens_aereas', visivel);
         });
 
         $('#customRange1').on('input', function() {
@@ -2215,6 +2238,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             // Carrega os quarteirões da quadrícula atual
             MapFramework.carregaQuarteiroes(dadosOrto[0]['quadricula']);
+            await MapFramework.carregarImagensAereas(dadosOrto[0]['quadricula']);
+
 
             // Inicializa o modo normal (mostra botões principais)
             controlarVisibilidadeBotoes('normal');

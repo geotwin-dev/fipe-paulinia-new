@@ -1,5 +1,6 @@
 <?php
-// excluirDesenho.php
+session_start();
+
 header('Content-Type: application/json');
 
 // Evitar cache do navegador
@@ -13,8 +14,9 @@ $cliente   = $_POST['cliente']   ?? '';
 $ortofoto  = $_POST['ortofoto']  ?? '';
 $identificador = $_POST['identificador'] ?? '';
 $tipo      = $_POST['tipo']      ?? '';
+$usuario   = isset($_SESSION['usuario'][0]) ? trim($_SESSION['usuario'][0]) : null;
 
-if (empty($ortofoto) || empty($identificador) || empty($tipo)) {
+if (empty($ortofoto) || empty($identificador) || empty($tipo) || empty($usuario)) {
     echo json_encode(['status' => 'erro', 'mensagem' => 'Parâmetros incompletos']);
     exit;
 }
@@ -76,10 +78,11 @@ try {
         
     } elseif ($tipo === 'polilinha') {
         // Para linhas, o identificador já é o ID da linha - Soft delete
-        $sqlDelete = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), oque = 'DELETE' WHERE id = :id AND quadricula = :quadricula AND tipo = 'polilinha'";
+        $sqlDelete = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), user = :usuario, oque = 'DELETE' WHERE id = :id AND quadricula = :quadricula AND tipo = 'polilinha'";
         $stmtDel = $pdo->prepare($sqlDelete);
         $stmtDel->execute([
             ':id' => $identificador,
+            ":usuario" => $usuario,
             ':quadricula' => $ortofoto
         ]);
         $linhaRemovida = $stmtDel->rowCount();
