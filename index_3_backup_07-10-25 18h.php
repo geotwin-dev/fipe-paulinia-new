@@ -1285,30 +1285,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkCondominiosVerticais">
-                                    <label class="form-check-label" for="chkCondominiosVerticais">
-                                        Condomínios Verticais
-                                    </label>
-                                </div>
-                            </li>
-                            <li>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkCondominiosHorizontais">
-                                    <label class="form-check-label" for="chkCondominiosHorizontais">
-                                        Condomínios Horizontais
-                                    </label>
-                                </div>
-                            </li>
-                            <li>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkAreasPublicas">
-                                    <label class="form-check-label" for="chkAreasPublicas">
-                                        Áreas Públicas
-                                    </label>
-                                </div>
-                            </li>
-                            <li>
-                                <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="chkPrefeitura">
                                     <label class="form-check-label" for="chkPrefeitura">
                                         Cartografia Prefeitura
@@ -1669,33 +1645,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#chkLimite').on('change', function() {
             const visivel = $(this).is(':checked');
             MapFramework.alternarVisibilidadeCamada('limite', visivel);
-        });
-
-        $('#chkCondominiosVerticais').on('change', function() {
-            const visivel = $(this).is(':checked');
-            if (visivel && (!arrayCamadas.condominios_verticais || arrayCamadas.condominios_verticais.length === 0)) {
-                MapFramework.carregarCondominiosVerticaisKML();
-            } else {
-                MapFramework.alternarVisibilidadeCamada('condominios_verticais', visivel);
-            }
-        });
-
-        $('#chkCondominiosHorizontais').on('change', function() {
-            const visivel = $(this).is(':checked');
-            if (visivel && (!arrayCamadas.condominios_horizontais || arrayCamadas.condominios_horizontais.length === 0)) {
-                MapFramework.carregarCondominiosHorizontaisKML();
-            } else {
-                MapFramework.alternarVisibilidadeCamada('condominios_horizontais', visivel);
-            }
-        });
-
-        $('#chkAreasPublicas').on('change', function() {
-            const visivel = $(this).is(':checked');
-            if (visivel && (!arrayCamadas.areas_publicas || arrayCamadas.areas_publicas.length === 0)) {
-                MapFramework.carregarAreasPublicasKML();
-            } else {
-                MapFramework.alternarVisibilidadeCamada('areas_publicas', visivel);
-            }
         });
 
         $('#chkQuadriculas').on('change', function() {

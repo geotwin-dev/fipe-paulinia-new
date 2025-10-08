@@ -1,6 +1,12 @@
 <?php
 // excluirDesenho.php
 header('Content-Type: application/json');
+
+// Evitar cache do navegador
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 include 'connection.php'; // conexão PDO
 
 $cliente   = $_POST['cliente']   ?? '';
@@ -31,8 +37,8 @@ try {
         
         $idQuadra = $quadra['id'];
         
-        // 2. Apaga todas as linhas que pertencem a esta quadra (id_desenho = id da quadra)
-        $sqlDeleteLinhas = "DELETE FROM desenhos WHERE id_desenho = :id_quadra AND quadricula = :quadricula AND tipo = 'polilinha'";
+        // 2. Soft delete de todas as linhas que pertencem a esta quadra (id_desenho = id da quadra)
+        $sqlDeleteLinhas = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), oque = 'DELETE' WHERE id_desenho = :id_quadra AND quadricula = :quadricula AND tipo = 'polilinha'";
         $stmtDelLinhas = $pdo->prepare($sqlDeleteLinhas);
         $stmtDelLinhas->execute([
             ':id_quadra' => $idQuadra,
@@ -40,8 +46,8 @@ try {
         ]);
         $linhasRemovidas = $stmtDelLinhas->rowCount();
         
-        // 2b. Apaga todos os marcadores que pertencem a esta quadra (id_desenho = id da quadra, camada = 'marcador')
-        $sqlDeleteMarcadores = "DELETE FROM desenhos WHERE id_desenho = :id_quadra AND quadricula = :quadricula AND camada = 'marcador'";
+        // 2b. Soft delete de todos os marcadores que pertencem a esta quadra (id_desenho = id da quadra, camada = 'marcador')
+        $sqlDeleteMarcadores = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), oque = 'DELETE' WHERE id_desenho = :id_quadra AND quadricula = :quadricula AND camada = 'marcador'";
         $stmtDelMarcadores = $pdo->prepare($sqlDeleteMarcadores);
         $stmtDelMarcadores->execute([
             ':id_quadra' => $idQuadra,
@@ -49,8 +55,8 @@ try {
         ]);
         $marcadoresRemovidos = $stmtDelMarcadores->rowCount();
         
-        // 3. Apaga a quadra pelo ID encontrado
-        $sqlDeleteQuadra = "DELETE FROM desenhos WHERE id = :id_quadra AND quadricula = :quadricula AND tipo = 'poligono'";
+        // 3. Soft delete da quadra pelo ID encontrado
+        $sqlDeleteQuadra = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), oque = 'DELETE' WHERE id = :id_quadra AND quadricula = :quadricula AND tipo = 'poligono'";
         $stmtDelQuadra = $pdo->prepare($sqlDeleteQuadra);
         $stmtDelQuadra->execute([
             ':id_quadra' => $idQuadra,
@@ -61,7 +67,7 @@ try {
         if ($quadraRemovida > 0) {
             echo json_encode([
                 'status' => 'sucesso',
-                'mensagem' => "Quadra removida com sucesso. Linhas removidas: $linhasRemovidas, Marcadores removidos: $marcadoresRemovidos",
+                'mensagem' => "Quadra removida com sucesso (soft delete). Linhas removidas: $linhasRemovidas, Marcadores removidos: $marcadoresRemovidos",
                 'registros_afetados' => $linhasRemovidas + $marcadoresRemovidos + $quadraRemovida
             ]);
         } else {
@@ -69,8 +75,8 @@ try {
         }
         
     } elseif ($tipo === 'polilinha') {
-        // Para linhas, o identificador já é o ID da linha
-        $sqlDelete = "DELETE FROM desenhos WHERE id = :id AND quadricula = :quadricula AND tipo = 'polilinha'";
+        // Para linhas, o identificador já é o ID da linha - Soft delete
+        $sqlDelete = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), oque = 'DELETE' WHERE id = :id AND quadricula = :quadricula AND tipo = 'polilinha'";
         $stmtDel = $pdo->prepare($sqlDelete);
         $stmtDel->execute([
             ':id' => $identificador,
@@ -81,7 +87,7 @@ try {
         if ($linhaRemovida > 0) {
             echo json_encode([
                 'status' => 'sucesso',
-                'mensagem' => 'Linha removida com sucesso',
+                'mensagem' => 'Linha removida com sucesso (soft delete)',
                 'registros_afetados' => $linhaRemovida
             ]);
         } else {

@@ -862,122 +862,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         .btn-close-tooltip:hover {
             color: red;
         }
-
-        /* Botão dropdown de filtros de cores */
-        #btnFiltroCores {
-            position: absolute;
-            bottom: 20px;
-            left: 5px;
-            z-index: 1000;
-            background-color: rgba(0, 0, 0, 0.7);
-            color: white;
-            border: none;
-            padding: 10px 15px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-            display: none;
-            transition: all 0.3s ease;
-        }
-
-        #btnFiltroCores:hover {
-            background-color: rgba(0, 0, 0, 0.9);
-        }
-
-        #btnFiltroCores i {
-            margin-left: 8px;
-            transition: transform 0.3s ease;
-        }
-
-        #btnFiltroCores.aberto i {
-            transform: rotate(180deg);
-        }
-
-        /* Div de filtros de cores */
-        #divFiltroCores {
-            position: absolute;
-            bottom: 70px;
-            left: 5px;
-            z-index: 1000;
-            background-color: rgba(0, 0, 0, 0.7);
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            padding: 15px;
-            min-width: 200px;
-            display: none;
-        }
-
-        #divFiltroCores h6 {
-            margin: 0px 0 20px 0;
-            color: white;
-            font-size: 16px;
-            font-weight: 600;
-        }
-
-        #divFiltroCores .form-check {
-            margin-bottom: 8px;
-        }
-
-        #divFiltroCores .form-check-label {
-            font-size: 13px;
-            color: #333;
-            cursor: pointer;
-        }
-
-        /* Checkboxes coloridos customizados */
-        #divFiltroCores .form-check-input {
-            width: 18px;
-            height: 18px;
-            border: 2px solid #000;
-            border-radius: 3px;
-            background-color: white;
-            position: relative;
-            appearance: none;
-            -webkit-appearance: none;
-            cursor: pointer;
-            margin-top: 0;
-            vertical-align: middle;
-        }
-
-        #divFiltroCores .form-check-input:checked {
-            background-color: currentColor;
-            border-color: white;
-            border-width: 1px;
-        }
-
-
-        #divFiltroCores .form-check-label {
-            color: white;
-            vertical-align: middle;
-            margin-left: 8px;
-            line-height: 1.2;
-        }
-
-        /* Cores específicas para cada checkbox */
-        #chkVermelho {
-            color:rgb(255, 0, 0);
-        }
-
-        #chkAmarelo {
-            color:rgb(255, 234, 0);
-        }
-
-        #chkLaranja {
-            color:rgb(255, 102, 0);
-        }
-
-        #chkVerde {
-            color:rgb(43, 160, 43);
-        }
-
-        #chkAzul {
-            color:rgb(71, 204, 237);
-        }
-
-        #chkCinza {
-            color:rgb(124, 124, 124);
-        }
     </style>
 </head>
 
@@ -1047,52 +931,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             <div id="opcoesLotes">
                 <!-- Os botões radio serão criados dinamicamente aqui -->
             </div>
-        </div>
-    </div>
-
-    <!-- Botão de filtro de cores -->
-    <button id="btnFiltroCores">
-        <i class="fas fa-filter"></i> Filtros
-    </button>
-
-    <!-- Div de filtros de cores -->
-    <div id="divFiltroCores">
-        <h6>Visualizar Imóvel</h6>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkVermelho" checked>
-            <label class="form-check-label" for="chkVermelho">
-                Checar cadastro
-            </label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkAmarelo" checked>
-            <label class="form-check-label" for="chkAmarelo">
-                A desdobrar
-            </label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkLaranja" checked>
-            <label class="form-check-label" for="chkLaranja">
-                A unificar
-            </label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkCinza" checked>
-            <label class="form-check-label" for="chkCinza">
-                A cadastrar
-            </label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkVerde" checked>
-            <label class="form-check-label" for="chkVerde">
-                Cadastrado (privado)
-            </label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkAzul" checked>
-            <label class="form-check-label" for="chkAzul">
-                Próprios Públicos
-            </label>
         </div>
     </div>
 
@@ -1285,30 +1123,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkCondominiosVerticais">
-                                    <label class="form-check-label" for="chkCondominiosVerticais">
-                                        Condomínios Verticais
-                                    </label>
-                                </div>
-                            </li>
-                            <li>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkCondominiosHorizontais">
-                                    <label class="form-check-label" for="chkCondominiosHorizontais">
-                                        Condomínios Horizontais
-                                    </label>
-                                </div>
-                            </li>
-                            <li>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkAreasPublicas">
-                                    <label class="form-check-label" for="chkAreasPublicas">
-                                        Áreas Públicas
-                                    </label>
-                                </div>
-                            </li>
-                            <li>
-                                <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="chkPrefeitura">
                                     <label class="form-check-label" for="chkPrefeitura">
                                         Cartografia Prefeitura
@@ -1319,22 +1133,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="chkMarcadores">
                                     <label class="form-check-label" for="chkMarcadores">
-                                        Imóveis
+                                        Marcadores
                                     </label>
-                                </div>
-                                <div class="ms-3 mt-2" id="submenuMarcadores">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="tipoMarcador" id="radioLote" value="lote" checked>
-                                        <label id="labelRadioLote" class="form-check-label" for="radioLote">
-                                            Número do Lote
-                                        </label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="tipoMarcador" id="radioPredial" value="predial">
-                                        <label id="labelRadioPredial" class="form-check-label" for="radioPredial">
-                                            Número Predial
-                                        </label>
-                                    </div>
                                 </div>
                             </li>
                             <li>
@@ -1358,29 +1158,28 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                         </ul>
                     </div>
-                    
-                    <!--
+
                     <button id="btnIncluirPoligono" class="btn btn-primary">Quadra</button>
-                    <button id="btnIncluirLinha" class="btn btn-success">Lote</button>-->
+                    <button id="btnIncluirLinha" class="btn btn-success">Lote</button>
 
                     <!-- Botão para finalizar desenho (aparece quando está em modo de desenho) -->
-                    <!--<button id="btnFinalizarDesenho" class="btn btn-secondary d-none">Sair do modo desenho</button>-->
+                    <button id="btnFinalizarDesenho" class="btn btn-secondary d-none">Sair do modo desenho</button>
 
                     <!-- Botão específico para sair do modo inserção de marcadores -->
-                    <!--<button id="btnSairModoMarcador" class="btn btn-secondary d-none">Sair do modo marcador</button>-->
+                    <button id="btnSairModoMarcador" class="btn btn-secondary d-none">Sair do modo marcador</button>
 
                     <!-- Botões condicionais (aparecem se há seleção) -->
-                    <!--<button id="btnEditar" class="btn btn-warning d-none">Editar</button>-->
-                    <!--<button id="btnExcluir" class="btn btn-danger d-none">Excluir</button>-->
+                    <button id="btnEditar" class="btn btn-warning d-none">Editar</button>
+                    <button id="btnExcluir" class="btn btn-danger d-none">Excluir</button>
                     
                     <!-- Botão Sair da Edição (aparece quando está em modo de edição) -->
-                    <!--<button id="btnSairEdicao" class="btn btn-secondary d-none">Sair da Edição</button>-->
+                    <button id="btnSairEdicao" class="btn btn-secondary d-none">Sair da Edição</button>
 
                     <div class="divControle">
                         <input min="0" max="1" step="0.1" type="range" class="form-range" id="customRange1" value="0.3">
                     </div>
 
-                    <!--<button data-loteamento="" data-arquivos="" data-quadricula="" onclick="desenharNoPDF(this)" id="btnLerPDF" class="btn btn-warning d-none">Desenhar no PDF</button>-->
+                    <button data-loteamento="" data-arquivos="" data-quadricula="" onclick="desenharNoPDF(this)" id="btnLerPDF" class="btn btn-warning d-none">Desenhar no PDF</button>
 
                     <!-- Botões Cadastro removidos - agora é uma camada no dropdown -->
                     <!-- <button id="btnCadastro" class="btn btn-info">Cadastro</button> -->
@@ -1389,9 +1188,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     <!-- <button id="btnSairCadastro" class="btn btn-secondary d-none">Sair do Cadastro</button> -->
 
                     <!-- Botão Marcador e inputs text -->
-                    <!--<button id="btnIncluirMarcador" class="btn btn-danger d-none">Marcador</button>-->
-                    <!--<input type="text" id="inputLoteAtual" class="form-control" style="width: 80px; display: none;" placeholder="Lote">
-                    <input type="text" id="inputQuadraAtual" class="form-control" style="width: 80px; display: none;" placeholder="Quadra">-->
+                    <button id="btnIncluirMarcador" class="btn btn-danger d-none">Marcador</button>
+                    <input type="text" id="inputLoteAtual" class="form-control" style="width: 80px; display: none;" placeholder="Lote">
+                    <input type="text" id="inputQuadraAtual" class="form-control" style="width: 80px; display: none;" placeholder="Quadra">
 
                 </div>
 
@@ -1525,7 +1324,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
     </div>
 
     <script>
-        const paginaAtual = 'index_3';
+        const paginaAtual = 'index_2';
 
         const arrayCamadas = {
             prefeitura: [],
@@ -1671,33 +1470,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             MapFramework.alternarVisibilidadeCamada('limite', visivel);
         });
 
-        $('#chkCondominiosVerticais').on('change', function() {
-            const visivel = $(this).is(':checked');
-            if (visivel && (!arrayCamadas.condominios_verticais || arrayCamadas.condominios_verticais.length === 0)) {
-                MapFramework.carregarCondominiosVerticaisKML();
-            } else {
-                MapFramework.alternarVisibilidadeCamada('condominios_verticais', visivel);
-            }
-        });
-
-        $('#chkCondominiosHorizontais').on('change', function() {
-            const visivel = $(this).is(':checked');
-            if (visivel && (!arrayCamadas.condominios_horizontais || arrayCamadas.condominios_horizontais.length === 0)) {
-                MapFramework.carregarCondominiosHorizontaisKML();
-            } else {
-                MapFramework.alternarVisibilidadeCamada('condominios_horizontais', visivel);
-            }
-        });
-
-        $('#chkAreasPublicas').on('change', function() {
-            const visivel = $(this).is(':checked');
-            if (visivel && (!arrayCamadas.areas_publicas || arrayCamadas.areas_publicas.length === 0)) {
-                MapFramework.carregarAreasPublicasKML();
-            } else {
-                MapFramework.alternarVisibilidadeCamada('areas_publicas', visivel);
-            }
-        });
-
         $('#chkQuadriculas').on('change', function() {
             const visivel = $(this).is(':checked');
             MapFramework.alternarVisibilidadeCamada('quadriculas', visivel);
@@ -1705,21 +1477,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
         $('#chkMarcadores').on('change', function() {
             const visivel = $(this).is(':checked');
-            
-            // Mostra/oculta o botão de filtros
             if (visivel) {
-                $('#btnFiltroCores').fadeIn(200);
-                // Aplica o filtro atual quando ativa os marcadores
-                aplicarFiltroCores();
+                // Checkbox marcado = mostra TODOS os marcadores do mapa
+                MapFramework.alternarVisibilidadeTodosMarcadores(true);
             } else {
-                $('#btnFiltroCores').fadeOut(200);
-                $('#divFiltroCores').fadeOut(150);
-                $('#btnFiltroCores').removeClass('aberto');
-                // Oculta todos os marcadores quando desativa
-                if (arrayCamadas.marcador_quadra) {
-                    arrayCamadas.marcador_quadra.forEach(marker => {
-                        marker.setMap(null);
-                    });
+                // Checkbox desmarcado = volta a mostrar apenas os do quarteirão selecionado (se houver)
+                if (quarteiraoAtualSelecionado) {
+                    MapFramework.mostrarMarcadoresDoQuarteirao(quarteiraoAtualSelecionado);
+                } else {
+                    // Se não há quarteirão selecionado, oculta todos
+                    MapFramework.alternarVisibilidadeTodosMarcadores(false);
                 }
             }
         });
@@ -1729,156 +1496,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             MapFramework.alternarVisibilidadeCamada('quarteirao', visivel);
         });
 
-        // Eventos para os radio buttons de tipo de marcador
-        $('input[name="tipoMarcador"]').on('change', function() {
-            const tipoSelecionado = $(this).val();
-            atualizarRotulosMarcadores(tipoSelecionado);
-        });
-
-        // Eventos para o botão de filtro de cores
-        $('#btnFiltroCores').on('click', function() {
-            const divFiltro = $('#divFiltroCores');
-            const btn = $(this);
-            
-            if (divFiltro.is(':visible')) {
-                divFiltro.fadeOut(150);
-                btn.removeClass('aberto');
-            } else {
-                divFiltro.fadeIn(150);
-                btn.addClass('aberto');
-            }
-        });
-
-        // Eventos para os checkboxes de filtro de cores
-        $('#chkVermelho, #chkAmarelo, #chkLaranja, #chkVerde, #chkAzul, #chkCinza').on('change', function() {
-            aplicarFiltroCores();
-        });
-
-        // Função para aplicar filtro de cores nos marcadores
-        function aplicarFiltroCores() {
-            if (!arrayCamadas.marcador_quadra || arrayCamadas.marcador_quadra.length === 0) {
-                return;
-            }
-
-            // Verifica se o checkbox de marcadores está ativo
-            const marcadoresAtivos = $('#chkMarcadores').is(':checked');
-            
-            // Se o checkbox principal não está ativo, oculta todos os marcadores
-            if (!marcadoresAtivos) {
-                arrayCamadas.marcador_quadra.forEach(marker => {
-                    marker.setMap(null);
-                });
-                return;
-            }
-
-            // Verifica se estamos no modo cadastro (quarteirão selecionado)
-            const modoCadastro = quarteiraoAtualSelecionado !== null;
-            
-            if (modoCadastro) {
-                // No modo cadastro, se checkbox "Imóveis" está marcado, mostra TODOS os marcadores
-                // Senão, mostra apenas os do quarteirão selecionado
-                arrayCamadas.marcador_quadra.forEach(marker => {
-                    const corMarcador = marker.content.style.backgroundColor;
-                    let deveMostrar = false;
-
-                    // Mapeia cores para checkboxes (suporta RGB e hexadecimal)
-                    if (corMarcador.includes('#e84646') || corMarcador.includes('rgb(232, 70, 70)') || corMarcador === 'red') { // Vermelho
-                        deveMostrar = $('#chkVermelho').is(':checked');
-                    } else if (corMarcador.includes('#eddf47') || corMarcador.includes('rgb(237, 223, 71)')) { // Amarelo
-                        deveMostrar = $('#chkAmarelo').is(':checked');
-                    } else if (corMarcador.includes('#ed7947') || corMarcador.includes('rgb(237, 121, 71)')) { // Laranja
-                        deveMostrar = $('#chkLaranja').is(':checked');
-                    } else if (corMarcador.includes('#32CD32') || corMarcador.includes('rgb(50, 205, 50)')) { // Verde
-                        deveMostrar = $('#chkVerde').is(':checked');
-                    } else if (corMarcador.includes('#47cced') || corMarcador.includes('rgb(71, 204, 237)')) { // Azul
-                        deveMostrar = $('#chkAzul').is(':checked');
-                    }else if (corMarcador.includes('#7c7c7c') || corMarcador.includes('rgb(124, 124, 124)')) { // Azul
-                        deveMostrar = $('#chkCinza').is(':checked');
-                    }
-
-                    // Mostra ou oculta o marcador baseado no filtro
-                    if (deveMostrar) {
-                        marker.setMap(MapFramework.map);
-                    } else {
-                        marker.setMap(null);
-                    }
-                });
-            } else {
-                // No modo normal, filtra todos os marcadores
-                arrayCamadas.marcador_quadra.forEach(marker => {
-                    const corMarcador = marker.content.style.backgroundColor;
-                    let deveMostrar = false;
-
-                    // Mapeia cores para checkboxes (suporta RGB e hexadecimal)
-                    if (corMarcador.includes('#e84646') || corMarcador.includes('rgb(232, 70, 70)') || corMarcador === 'red') { // Vermelho
-                        deveMostrar = $('#chkVermelho').is(':checked');
-                    } else if (corMarcador.includes('#eddf47') || corMarcador.includes('rgb(237, 223, 71)')) { // Amarelo
-                        deveMostrar = $('#chkAmarelo').is(':checked');
-                    } else if (corMarcador.includes('#ed7947') || corMarcador.includes('rgb(237, 121, 71)')) { // Laranja
-                        deveMostrar = $('#chkLaranja').is(':checked');
-                    } else if (corMarcador.includes('#32CD32') || corMarcador.includes('rgb(50, 205, 50)')) { // Verde
-                        deveMostrar = $('#chkVerde').is(':checked');
-                    } else if (corMarcador.includes('#47cced') || corMarcador.includes('rgb(71, 204, 237)')) { // Azul
-                        deveMostrar = $('#chkAzul').is(':checked');
-                    }else if (corMarcador.includes('#7c7c7c') || corMarcador.includes('rgb(124, 124, 124)')) { // Azul
-                        deveMostrar = $('#chkCinza').is(':checked');
-                    }
-
-                    // Mostra ou oculta o marcador baseado no filtro
-                    if (deveMostrar) {
-                        marker.setMap(MapFramework.map);
-                    } else {
-                        marker.setMap(null);
-                    }
-                });
-            }
-        }
-
-
-        // Função para atualizar os rótulos dos marcadores
-        function atualizarRotulosMarcadores(tipo) {
-            if (!arrayCamadas.marcador_quadra || arrayCamadas.marcador_quadra.length === 0) {
-                return;
-            }
-
-            arrayCamadas.marcador_quadra.forEach(marker => {
-                let novoRotulo = '';
-                
-                if (tipo === 'lote') {
-                    // Usa o rótulo atual (número do lote)
-                    novoRotulo = marker.numeroMarcador || '-';
-                    
-                } else if (tipo === 'predial') {
-                    
-                    // Busca o número predial nos dados do morador
-                    const dadosMorador = MapFramework.dadosMoradores.find(morador => 
-                        morador.lote == marker.numeroMarcador && 
-                        morador.quadra == marker.quadra && 
-                        morador.cara_quarteirao == marker.quarteirao
-                    );
-
-                    
-                    novoRotulo = dadosMorador ? (dadosMorador.numero || '-') : '-';
-                }
-                
-                // Atualiza o texto do elemento HTML do marcador
-                if (marker.content && marker.content.textContent !== undefined) {
-                    marker.content.textContent = novoRotulo;
-                }
-            });
-        }
-
         $('#customRange1').on('input', function() {
             MapFramework.controlarOpacidade(this.value);
-            
-            // Controla também a opacidade dos loteamentos
-            if (window.loteamentosLayer) {
-                window.loteamentosLayer.forEach(polygon => {
-                    polygon.setOptions({
-                        fillOpacity: this.value
-                    });
-                });
-            }
         })
 
         // Controle de expansão do navegador de quadrículas
@@ -2474,17 +2093,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             await MapFramework.carregarDesenhosPrefeitura(dadosOrto[0]['quadricula']);
 
+            await MapFramework.carregarMarcadoresSalvos(dadosOrto[0]['quadricula']);
+
             MapFramework.carregarLimiteKML();
 
             MapFramework.carregarQuadriculasKML();
 
             // Carrega os quarteirões da quadrícula atual
-            await MapFramework.carregaQuarteiroes(dadosOrto[0]['quadricula']);
-
-            await MapFramework.carregarPlanilha();
-
-            await MapFramework.carregarMarcadoresSalvos(dadosOrto[0]['quadricula']);
-
+            MapFramework.carregaQuarteiroes(dadosOrto[0]['quadricula']);
 
             // Inicializa o modo normal (mostra botões principais)
             controlarVisibilidadeBotoes('normal');

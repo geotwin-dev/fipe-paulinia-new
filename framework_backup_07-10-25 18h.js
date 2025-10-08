@@ -1016,7 +1016,7 @@ const MapFramework = {
                 alert("Você precisa de pelo menos 3 pontos.");
                 return;
             }
-            console.log("Salvando...");
+
             this.salvarDesenho('Quadra', 0);
         });
     },
@@ -1052,7 +1052,7 @@ const MapFramework = {
                     strokeWeight: 3,
                     editable: true,
                     map: this.map,
-                    zIndex: 10
+                    zIndex: 3
                 });
 
 
@@ -1105,7 +1105,7 @@ const MapFramework = {
 
             // Define o identificador se encontrou uma quadra
             this.desenho.temporario.identificador = resultado.identificador;
-            console.log("Salvando...");
+
             // Salva o desenho
             this.salvarDesenho("lote");
         });
@@ -1127,7 +1127,7 @@ const MapFramework = {
         if (tipo != 'polilinha') {
             this.desenho.temporario.id_desenho = this.desenho.temporario.id_desenho || identificador;
         }
-        console.log("Chamando ajax...");
+
         $.ajax({
             url: 'salvarDesenho.php',
             method: 'POST',
@@ -1142,7 +1142,7 @@ const MapFramework = {
                 identificador: this.desenho.temporario.id_desenho
             },
             success: (response) => {
-                console.log("Resposta positiva");
+
                 try {
                     const resultado = response;
                     if (resultado.status === 'sucesso') {
@@ -1182,8 +1182,6 @@ const MapFramework = {
                             this.desenho.pontos = [];
                             // Não chama finalizarDesenho() para manter o modo ativo
                         }
-
-                        console.log("Deu tudo certo");
                     } else {
                         alert('Erro ao salvar: ' + resultado.mensagem);
                         this.desenho.temporario.setMap(null);
@@ -1462,165 +1460,6 @@ const MapFramework = {
                             zIndex: 10
                         });
                         arrayCamadas.limite.push(polyline);
-                    }
-                });
-            });
-    },
-
-    carregarCondominiosVerticaisKML: function (urlKML = 'cartografia_prefeitura/Condominios_Verticais.kml') {
-        if (!window.toGeoJSON) {
-            alert('toGeoJSON não está carregado!');
-            return;
-        }
-        if (!this.map) {
-            alert('O mapa ainda não foi inicializado!');
-            return;
-        }
-        // Garante que a camada existe
-        if (!arrayCamadas.condominios_verticais) arrayCamadas.condominios_verticais = [];
-        // Remove linhas antigas
-        arrayCamadas.condominios_verticais.forEach(obj => { if (obj.setMap) obj.setMap(null); });
-        arrayCamadas.condominios_verticais = [];
-        // Carrega o KML
-        fetch(urlKML)
-            .then(res => res.text())
-            .then(kmlText => {
-                const parser = new DOMParser();
-                const kml = parser.parseFromString(kmlText, 'text/xml');
-                const geojson = toGeoJSON.kml(kml);
-                geojson.features.forEach(f => {
-                    if (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString' || f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon') {
-                        let paths = [];
-                        if (f.geometry.type === 'LineString') {
-                            paths = f.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
-                        } else if (f.geometry.type === 'MultiLineString') {
-                            f.geometry.coordinates.forEach(line => {
-                                paths = paths.concat(line.map(([lng, lat]) => ({ lat, lng })));
-                            });
-                        } else if (f.geometry.type === 'Polygon') {
-                            // Para Polygon, desenha o contorno
-                            paths = f.geometry.coordinates[0].map(([lng, lat]) => ({ lat, lng }));
-                        } else if (f.geometry.type === 'MultiPolygon') {
-                            f.geometry.coordinates.forEach(poly => {
-                                paths = paths.concat(poly[0].map(([lng, lat]) => ({ lat, lng })));
-                            });
-                        }
-                        const polyline = new google.maps.Polyline({
-                            path: paths,
-                            strokeColor: '#d900ff',
-                            clickable: false,
-                            strokeOpacity: 1.0,
-                            strokeWeight: 3,
-                            map: this.map,
-                            zIndex: 10
-                        });
-                        arrayCamadas.condominios_verticais.push(polyline);
-                    }
-                });
-            });
-    },
-
-    carregarCondominiosHorizontaisKML: function (urlKML = 'cartografia_prefeitura/Condominios_Horizontais.kml') {
-        if (!window.toGeoJSON) {
-            alert('toGeoJSON não está carregado!');
-            return;
-        }
-        if (!this.map) {
-            alert('O mapa ainda não foi inicializado!');
-            return;
-        }
-        // Garante que a camada existe
-        if (!arrayCamadas.condominios_horizontais) arrayCamadas.condominios_horizontais = [];
-        // Remove linhas antigas
-        arrayCamadas.condominios_horizontais.forEach(obj => { if (obj.setMap) obj.setMap(null); });
-        arrayCamadas.condominios_horizontais = [];
-        // Carrega o KML
-        fetch(urlKML)
-            .then(res => res.text())
-            .then(kmlText => {
-                const parser = new DOMParser();
-                const kml = parser.parseFromString(kmlText, 'text/xml');
-                const geojson = toGeoJSON.kml(kml);
-                geojson.features.forEach(f => {
-                    if (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString' || f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon') {
-                        let paths = [];
-                        if (f.geometry.type === 'LineString') {
-                            paths = f.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
-                        } else if (f.geometry.type === 'MultiLineString') {
-                            f.geometry.coordinates.forEach(line => {
-                                paths = paths.concat(line.map(([lng, lat]) => ({ lat, lng })));
-                            });
-                        } else if (f.geometry.type === 'Polygon') {
-                            // Para Polygon, desenha o contorno
-                            paths = f.geometry.coordinates[0].map(([lng, lat]) => ({ lat, lng }));
-                        } else if (f.geometry.type === 'MultiPolygon') {
-                            f.geometry.coordinates.forEach(poly => {
-                                paths = paths.concat(poly[0].map(([lng, lat]) => ({ lat, lng })));
-                            });
-                        }
-                        const polyline = new google.maps.Polyline({
-                            path: paths,
-                            strokeColor: '#d900ff',
-                            clickable: false,
-                            strokeOpacity: 1.0,
-                            strokeWeight: 3,
-                            map: this.map,
-                            zIndex: 10
-                        });
-                        arrayCamadas.condominios_horizontais.push(polyline);
-                    }
-                });
-            });
-    },
-
-    carregarAreasPublicasKML: function (urlKML = 'cartografia_prefeitura/Areas_Publicas.kml') {
-        if (!window.toGeoJSON) {
-            alert('toGeoJSON não está carregado!');
-            return;
-        }
-        if (!this.map) {
-            alert('O mapa ainda não foi inicializado!');
-            return;
-        }
-        // Garante que a camada existe
-        if (!arrayCamadas.areas_publicas) arrayCamadas.areas_publicas = [];
-        // Remove linhas antigas
-        arrayCamadas.areas_publicas.forEach(obj => { if (obj.setMap) obj.setMap(null); });
-        arrayCamadas.areas_publicas = [];
-        // Carrega o KML
-        fetch(urlKML)
-            .then(res => res.text())
-            .then(kmlText => {
-                const parser = new DOMParser();
-                const kml = parser.parseFromString(kmlText, 'text/xml');
-                const geojson = toGeoJSON.kml(kml);
-                geojson.features.forEach(f => {
-                    if (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString' || f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon') {
-                        let paths = [];
-                        if (f.geometry.type === 'LineString') {
-                            paths = f.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
-                        } else if (f.geometry.type === 'MultiLineString') {
-                            f.geometry.coordinates.forEach(line => {
-                                paths = paths.concat(line.map(([lng, lat]) => ({ lat, lng })));
-                            });
-                        } else if (f.geometry.type === 'Polygon') {
-                            // Para Polygon, desenha o contorno
-                            paths = f.geometry.coordinates[0].map(([lng, lat]) => ({ lat, lng }));
-                        } else if (f.geometry.type === 'MultiPolygon') {
-                            f.geometry.coordinates.forEach(poly => {
-                                paths = paths.concat(poly[0].map(([lng, lat]) => ({ lat, lng })));
-                            });
-                        }
-                        const polyline = new google.maps.Polyline({
-                            path: paths,
-                            strokeColor: '#d900ff',
-                            clickable: false,
-                            strokeOpacity: 1.0,
-                            strokeWeight: 3,
-                            map: this.map,
-                            zIndex: 10
-                        });
-                        arrayCamadas.areas_publicas.push(polyline);
                     }
                 });
             });
@@ -1918,19 +1757,6 @@ const MapFramework = {
                 fillOpacity: value
             });
         });
-    },
-
-    controlarEspessuraLotes: function (value) {
-        // Converte o valor do range (0-1) para uma espessura de linha apropriada (1-10 pixels)
-        const espessura = 1 + (value * 9); // Range de 1 a 10 pixels
-        
-        if (arrayCamadas['lote'] && arrayCamadas['lote'].length > 0) {
-            arrayCamadas['lote'].forEach(lote => {
-                lote.setOptions({
-                    strokeWeight: espessura
-                });
-            });
-        }
     },
 
     carregaQuarteiroes: function (quadricula) {

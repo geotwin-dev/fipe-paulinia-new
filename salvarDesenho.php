@@ -12,7 +12,7 @@ try {
     $coordenadas  = isset($_POST['coordenadas']) ? trim($_POST['coordenadas']) : null; // JSON string
     $quadricula   = isset($_POST['ortofoto']) ? trim($_POST['ortofoto']) : null;       // usar o 'card' enviado
     $id_desenho   = isset($_POST['identificador']) ? trim($_POST['identificador']) : null; // identificador da quadra/linha
-    $usuario      = isset($_SESSION['userPaulinia']) ? trim($_SESSION['userPaulinia']) : null;
+    $usuario      = isset($_SESSION['usuario'][0]) ? trim($_SESSION['usuario'][0]) : null;
 
     if (!$tipo || !$cor || !$coordenadas || !$quadricula) {
         echo json_encode([
@@ -48,8 +48,8 @@ try {
     }
 
     // INSERT
-    $sql = "INSERT INTO desenhos (data_hora, usuario, quadricula, id_desenho, camada, tipo, cor, coordenadas)
-            VALUES (NOW(), :usuario, :quadricula, :id_desenho, :camada, :tipo, :cor, :coordenadas)";
+    $sql = "INSERT INTO desenhos (data_hora, usuario, quadricula, id_desenho, camada, tipo, cor, coordenadas, status, ult_modificacao, user, oque)
+            VALUES (NOW(), :usuario, :quadricula, :id_desenho, :camada, :tipo, :cor, :coordenadas, 1, NOW(), :user, 'INSERT')";
 
     $stmt = $pdo->prepare($sql);
     $stmt->bindValue(':usuario',     $usuario !== '' ? $usuario : null, PDO::PARAM_NULL | PDO::PARAM_STR);
@@ -59,6 +59,7 @@ try {
     $stmt->bindValue(':tipo',        $tipo, PDO::PARAM_STR);
     $stmt->bindValue(':cor',         $cor, PDO::PARAM_STR);
     $stmt->bindValue(':coordenadas', $coordenadas, PDO::PARAM_STR);
+    $stmt->bindValue(':user',        $usuario !== '' ? $usuario : null, PDO::PARAM_NULL | PDO::PARAM_STR);
 
     $stmt->execute();
 
