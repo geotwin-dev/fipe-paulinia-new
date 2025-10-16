@@ -134,15 +134,9 @@ if ($array_dados[7] == "true") {
     unset($_SESSION['nao_autorizado']);
   }
 
-  $_SESSION['usuario'] = [$array_dados[1], $array_dados[2]];
-
-  if($array_dados[8] == "true"){
-    header('Location: index_2.php?quadricula=K7');
-    exit();
-  }else{
-    header('Location: painel.php');
-    exit();
-  }
+  $_SESSION['usuario'] = [$array_dados[1], $array_dados[2], $array_dados[8]];
+  header('Location: painel.php');
+  exit();
   
   
 } else {

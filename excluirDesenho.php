@@ -40,28 +40,31 @@ try {
         $idQuadra = $quadra['id'];
         
         // 2. Soft delete de todas as linhas que pertencem a esta quadra (id_desenho = id da quadra)
-        $sqlDeleteLinhas = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), oque = 'DELETE' WHERE id_desenho = :id_quadra AND quadricula = :quadricula AND tipo = 'polilinha'";
+        $sqlDeleteLinhas = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), user = :usuario, oque = 'DELETE' WHERE id_desenho = :id_quadra AND quadricula = :quadricula AND tipo = 'polilinha'";
         $stmtDelLinhas = $pdo->prepare($sqlDeleteLinhas);
         $stmtDelLinhas->execute([
             ':id_quadra' => $idQuadra,
+            ":usuario" => $usuario,
             ':quadricula' => $ortofoto
         ]);
         $linhasRemovidas = $stmtDelLinhas->rowCount();
         
         // 2b. Soft delete de todos os marcadores que pertencem a esta quadra (id_desenho = id da quadra, camada = 'marcador')
-        $sqlDeleteMarcadores = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), oque = 'DELETE' WHERE id_desenho = :id_quadra AND quadricula = :quadricula AND camada = 'marcador'";
+        $sqlDeleteMarcadores = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), user = :usuario, oque = 'DELETE' WHERE id_desenho = :id_quadra AND quadricula = :quadricula AND camada = 'marcador'";
         $stmtDelMarcadores = $pdo->prepare($sqlDeleteMarcadores);
         $stmtDelMarcadores->execute([
             ':id_quadra' => $idQuadra,
+            ":usuario" => $usuario,
             ':quadricula' => $ortofoto
         ]);
         $marcadoresRemovidos = $stmtDelMarcadores->rowCount();
         
         // 3. Soft delete da quadra pelo ID encontrado
-        $sqlDeleteQuadra = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), oque = 'DELETE' WHERE id = :id_quadra AND quadricula = :quadricula AND tipo = 'poligono'";
+        $sqlDeleteQuadra = "UPDATE desenhos SET status = 0, ult_modificacao = NOW(), user = :usuario, oque = 'DELETE' WHERE id = :id_quadra AND quadricula = :quadricula AND tipo = 'poligono'";
         $stmtDelQuadra = $pdo->prepare($sqlDeleteQuadra);
         $stmtDelQuadra->execute([
             ':id_quadra' => $idQuadra,
+            ":usuario" => $usuario,
             ':quadricula' => $ortofoto
         ]);
         $quadraRemovida = $stmtDelQuadra->rowCount();

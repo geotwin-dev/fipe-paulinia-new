@@ -13,14 +13,12 @@ if (isset($_GET['quadricula'])) {
         $dadosOrto = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (PDOException $e) {
         $dadosOrto = [];
-        echo 'erro';
     }
 } else {
     $dadosOrto = [];
 }
 
 echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
-
 ?>
 
 <!DOCTYPE html>
@@ -58,22 +56,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
     <!-- Nosso framework -->
     <script src="framework.js"></script>
 
-    <!-- PDF.js para o leitor integrado -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script>
-        // Configure PDF.js worker to avoid deprecated warning
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    </script>
-
-    <!-- Fabric.js para canvas do PDF -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
-
-    <!-- Interact.js para manipulação -->
-    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
-
-    <!-- PDF Viewer Integrado -->
-    <script src="pdfViewerIntegrado.js"></script>
-
     <!--CSS GERAL DA PAGINA DE MAPA -->
     <link href="styleMap.css" rel="stylesheet">
 
@@ -95,39 +77,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             border-left: 1px solid black;
             border-right: 1px solid black;
             border-bottom: 1px solid black;
-        }
-
-        /* Estilos para o leitor PDF integrado */
-        #divLeitorPDF {
-            display: none;
-            width: 100%;
-            height: 100vh;
-            background-color: rgb(63, 63, 63);
-            position: relative;
-            z-index: 1000;
-            /* Garantir que ocupe a tela toda logo abaixo do mapa */
-            top: 0;
-            left: 0;
-        }
-
-        #divLeitorPDF .toolbar-buttons {
-            gap: 10px;
-        }
-
-        #divLeitorPDF .toolbar-buttons .btn {
-            min-width: 80px;
-        }
-
-        #divLeitorPDF .mode-indicator {
-            position: absolute;
-            top: 70px;
-            right: 20px;
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-            z-index: 1001;
-            display: none;
         }
 
         gmp-internal-camera-control {
@@ -1060,52 +1009,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         </div>
     </div>
 
-    <!-- Botão de filtro de cores -->
-    <button id="btnFiltroCores">
-        <i class="fas fa-filter"></i> Filtros
-    </button>
-
-    <!-- Div de filtros de cores -->
-    <div id="divFiltroCores">
-        <h6>Visualizar Imóvel</h6>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkVermelho" checked>
-            <label class="form-check-label" for="chkVermelho">
-                Checar cadastro
-            </label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkAmarelo" checked>
-            <label class="form-check-label" for="chkAmarelo">
-                A desdobrar
-            </label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkLaranja" checked>
-            <label class="form-check-label" for="chkLaranja">
-                A unificar
-            </label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkCinza" checked>
-            <label class="form-check-label" for="chkCinza">
-                A cadastrar
-            </label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkVerde" checked>
-            <label class="form-check-label" for="chkVerde">
-                Cadastrado (privado)
-            </label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="chkAzul" checked>
-            <label class="form-check-label" for="chkAzul">
-                Próprios Públicos
-            </label>
-        </div>
-    </div>
-
     <!-- Aqui vai ter um controle de navegação entre as quadriculas -->
     <div id="controleNavegacaoQuadriculas">
         <!-- Grade 3x3 padrão -->
@@ -1158,57 +1061,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         </div>
     </div>
 
-    <!-- Controle de desenhos da prefeitura -->
-    <div id="controleDesenhosPrefeitura">
-        <div style="text-align: center; margin-bottom: 10px; font-weight: bold; font-size: 14px;">
-            Controle Desenhos
-        </div>
-        
-        <!-- Seleção de distância -->
-        <div class="selecao-distancia">
-            <div style="margin-bottom: 5px; font-weight: bold; font-size: 11px;">Distância (metros):</div>
-            <label><input type="radio" name="distancia" value="0.1" checked> 100cm</label>
-            <label><input type="radio" name="distancia" value="0.5" checked> 500cm</label>
-            <label><input type="radio" name="distancia" value="1" checked> 1m</label>
-            <label><input type="radio" name="distancia" value="5"> 5m</label>
-            <label><input type="radio" name="distancia" value="10"> 10m</label>
-        </div>
-
-        <!-- Grade de direções 3x3 -->
-        <div class="grade-direcoes">
-            <button class="controle-desenhos-btn controle-desenhos-btn-direcao" onclick="moverDesenhosPrefeitura('noroeste')" title="Noroeste">↖</button>
-            <button class="controle-desenhos-btn controle-desenhos-btn-direcao" onclick="moverDesenhosPrefeitura('norte')" title="Norte">↑</button>
-            <button class="controle-desenhos-btn controle-desenhos-btn-direcao" onclick="moverDesenhosPrefeitura('nordeste')" title="Nordeste">↗</button>
-            
-            <button class="controle-desenhos-btn controle-desenhos-btn-direcao" onclick="moverDesenhosPrefeitura('oeste')" title="Oeste">←</button>
-            <button class="controle-desenhos-btn vazio"></button>
-            <button class="controle-desenhos-btn controle-desenhos-btn-direcao" onclick="moverDesenhosPrefeitura('leste')" title="Leste">→</button>
-            
-            <button class="controle-desenhos-btn controle-desenhos-btn-direcao" onclick="moverDesenhosPrefeitura('sudoeste')" title="Sudoeste">↙</button>
-            <button class="controle-desenhos-btn controle-desenhos-btn-direcao" onclick="moverDesenhosPrefeitura('sul')" title="Sul">↓</button>
-            <button class="controle-desenhos-btn controle-desenhos-btn-direcao" onclick="moverDesenhosPrefeitura('sudeste')" title="Sudeste">↘</button>
-        </div>
-
-        <!-- Controles de rotação -->
-        <div class="controles-rotacao">
-            <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-                <button class="controle-desenhos-btn-rotacao controle-desenhos-btn-rotacao-individual" onclick="rotacionarDesenhosPrefeitura('individual-esquerda')" title="Rotação Individual Esquerda">↶ Ind</button>
-                <button class="controle-desenhos-btn-rotacao controle-desenhos-btn-rotacao-individual" onclick="rotacionarDesenhosPrefeitura('individual-direita')" title="Rotação Individual Direita">Ind ↷</button>
-            </div>
-            <div style="display: flex; gap: 5px;">
-                <button class="controle-desenhos-btn-rotacao controle-desenhos-btn-rotacao-coletiva" onclick="rotacionarDesenhosPrefeitura('coletiva-esquerda')" title="Rotação Coletiva Esquerda">↶ Col</button>
-                <button class="controle-desenhos-btn-rotacao controle-desenhos-btn-rotacao-coletiva" onclick="rotacionarDesenhosPrefeitura('coletiva-direita')" title="Rotação Coletiva Direita">Col ↷</button>
-            </div>
-        </div>
-
-        <!-- Botões de ação -->
-        <div class="grade-botoes">
-            <button class="controle-desenhos-btn controle-desenhos-btn-resetar" onclick="resetarDesenhosPrefeitura()" title="Resetar">Reset</button>
-            <button class="controle-desenhos-btn controle-desenhos-btn-salvar" onclick="salvarDesenhosPrefeitura()" title="Salvar">Salvar</button>
-            <button class="controle-desenhos-btn controle-desenhos-btn-cancelar" onclick="cancelarControleDesenhos()" title="Cancelar">Cancel</button>
-        </div>
-    </div>
-
     <!-- Tooltip para marcadores -->
     <div id="tooltipMarcador">
         <div class="tooltip-header" style="display: flex; justify-content: space-between; align-items: center;">
@@ -1225,15 +1077,64 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         </div>
     </div>
 
+    <!-- Botão de filtro de cores -->
+    <button id="btnFiltroCores">
+        <i class="fas fa-filter"></i> Filtros
+    </button>
+
+    <!-- Div de filtros de cores -->
+    <div id="divFiltroCores">
+        <h6>Visualizar Imóvel</h6>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="chkVermelho" checked>
+            <label class="form-check-label" for="chkVermelho">
+                Checar cadastro
+            </label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="chkAmarelo" checked>
+            <label class="form-check-label" for="chkAmarelo">
+                A desdobrar
+            </label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="chkLaranja" checked>
+            <label class="form-check-label" for="chkLaranja">
+                A unificar
+            </label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="chkCinza" checked>
+            <label class="form-check-label" for="chkCinza">
+                A cadastrar
+            </label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="chkVerde" checked>
+            <label class="form-check-label" for="chkVerde">
+                Cadastrado (privado)
+            </label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="chkAzul" checked>
+            <label class="form-check-label" for="chkAzul">
+                Próprios Públicos
+            </label>
+        </div>
+    </div>
+
     <div class="divContainerMap">
         <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
             <div class="container-fluid">
 
+                <!-- Botao voltar para o painel -->
+                <button id="btnVoltarPainel" class="btn btn-light" onclick="voltarParaPainel()">Voltar para o Painel</button>
+
                 <!-- Título -->
-                <a class="navbar-brand" href="#">Plataforma Geo</a>
+                <a class="navbar-brand" style="margin-left: 10px;" href="#">Visualizador</a>
 
                 <!-- Botões -->
-                <div class="d-flex align-items-center flex-grow-1 gap-2">
+                <div id="divBots" class="d-flex align-items-center flex-grow-1 gap-2">
 
                     <!-- Botão Tipo de Mapa -->
                     <button id="btnTipoMapa" class="btn btn-light">Mapa</button>
@@ -1376,7 +1277,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                         </ul>
                     </div>
-                    
+                     
                     <!--
                     <button id="btnIncluirPoligono" class="btn btn-primary">Quadra</button>
                     <button id="btnIncluirLinha" class="btn btn-success">Lote</button>-->
@@ -1397,6 +1298,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     <div class="divControle">
                         <input min="0" max="1" step="0.1" type="range" class="form-range" id="customRange1" value="0.3">
                     </div>
+
+                    <!-- Botão de Navegação para Quadrícula Selecionada -->
+                    <button class="btn btn-warning" id="btnIrConsulta" onclick="irConsulta()">
+                        <i class="fas fa-external-link-alt"></i> Consultas
+                    </button>
 
                     <!--<button data-loteamento="" data-arquivos="" data-quadricula="" onclick="desenharNoPDF(this)" id="btnLerPDF" class="btn btn-warning d-none">Desenhar no PDF</button>-->
 
@@ -1421,129 +1327,34 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         </nav>
 
         <div id="map"></div>
-    </div>
-
-    <!-- Div do Leitor de PDF integrado - Fora da divContainerMap -->
-    <div id="divLeitorPDF" style="display: none; width: 100%; height: 100vh; background-color: rgb(63, 63, 63); position: relative;">
-        <!-- Carregamento dinâmico gerenciado pelo JavaScript -->
-        
-                    <!-- Cabeçalho com botão fechar -->
-            <div id="cabecalhoLeitorPDF" style="position: absolute; top: 0; left: 0; right: 0; height: 60px; background-color: #212529; z-index: 1001; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; opacity: 1;">
-                <div class="d-flex align-items-center flex-grow-1 gap-2 toolbar-buttons">
-                    <!-- Botão Fechar -->
-                    <button id="btnFecharLeitorPDF" class="btn btn-danger">
-                        <i class="fas fa-times"></i> Fechar
-                    </button>
-                    
-                    <!-- Carregar PDFs - Oculto (apenas automático) -->
-                    <input type="file" id="pdfInputIntegrado" accept=".pdf" multiple style="display: none;">
-
-                    <!-- Ferramentas de desenho -->
-                    <button id="btnIncluirPoligonoIntegrado" class="btn btn-secondary" style="display: none;">
-                        <i class="fas fa-draw-polygon"></i> Polígono
-                    </button>
-                    <button id="btnIncluirMarcadorIntegrado" class="btn btn-secondary" style="display: none;">
-                        <i class="fas fa-map-marker-alt"></i> Marcador
-                    </button>
-                    <button id="btnDeleteDesenhoIntegrado" class="btn btn-secondary" style="display: none;">
-                        <i class="fas fa-trash-alt"></i> Deletar
-                    </button>
-
-                    <!-- Controles de modo -->
-                    <button id="btnTravamentoIntegrado" class="btn btn-info">
-                        <i class="fas fa-lock-open"></i> Travar PDF
-                    </button>
-
-
-
-                    <!-- Controles de rotação -->
-                    <div class="btn-group">
-                        <button id="btnRotateLeftIntegrado" class="btn btn-outline-light" title="Rotacionar 90° Esquerda">
-                            <i class="fas fa-undo"></i>
-                        </button>
-                        <button id="btnRotateRightIntegrado" class="btn btn-outline-light" title="Rotacionar 90° Direita">
-                            <i class="fas fa-redo"></i>
-                        </button>
-                    </div>
-
-
-
-                    <!-- Zoom controls -->
-                    <div class="btn-group">
-                        <button id="btnFindPDFsIntegrado" class="btn btn-outline-light" title="Localizar PDF">
-                            <i class="fas fa-crosshairs"></i>
-                        </button>
-                    </div>
-
-                    <input type="text" id="inputLoteAtualIntegrado" class="form-control" style="width: 80px;" placeholder="Lote">
-                </div>
-            </div>
-
-            <!-- Indicador de modo -->
-            <div id="modeIndicatorIntegrado" class="mode-indicator" style="display: none;">
-                Modo: Visualização
-            </div>
-
-            <!-- Container do canvas principal -->
-            <div class="canvas-container" style="position: absolute; top: 60px; left: 0; width: 100%; height: calc(100vh - 60px); background: #2a2a2a; overflow: hidden;">
-                <canvas id="mainCanvasIntegrado"></canvas>
-            </div>
-
-            <!-- Controles de seleção integrados -->
-            
-            <!-- Cópia do divCadastro para loteamentos na área do PDF -->
-            <div id="divCadastroIntegrado" style="display:none; position: absolute; top: 70px; right: 60px; z-index: 1002; width: 280px; max-height: 300px; background-color: white; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); overflow: hidden;">
-                <div class="div-cadastro-header">
-                    <h6>Loteamentos da Quadrícula <span id="quadriculaAtualIntegrado"></span></h6>
-                </div>
-                <div class="div-cadastro-body">
-                    <div id="opcoesLoteamentosIntegrado">
-                        <!-- Os botões radio serão criados dinamicamente aqui -->
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Cópia do divCadastro2 para quarteirões na área do PDF -->
-            <div id="divCadastro2Integrado" style="display:none; position: absolute; top: 390px; right: 60px; z-index: 1002; width: 280px; max-height: 300px; background-color: white; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); overflow: hidden;">
-                <div class="div-cadastro-header">
-                    <h6>Quarteirões do <span id="quarteiraoSelecionadoIntegrado"></span></h6>
-                </div>
-                <div class="div-cadastro-body">
-                    <div id="opcoesQuarteiresIntegrado">
-                        <!-- Os botões radio serão criados dinamicamente aqui -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Indicador de PDF removido: informações visíveis nos controles integrados -->
-
-            <style>
-                            @keyframes spin {
-                to { transform: rotate(360deg); }
-            }
-            
-            /* Estilo para botões ativos */
-            .active-tool {
-                background-color: #28a745 !important;
-                border-color: #20c997 !important;
-                color: white !important;
-                box-shadow: 0 0 10px rgba(40, 167, 69, 0.5) !important;
-                transform: scale(1.05);
-            }
-            
-            .active-tool:hover {
-                background-color: #218838 !important;
-                border-color: #1e7e34 !important;
-            }
-        </style>
-
-            <!-- Legenda removida -->
-
-        </div>
-    </div>
+    </div>    
 
     <script>
         const paginaAtual = 'index_3';
+        const userControl = <?php echo json_encode($_SESSION['usuario'][2]); ?>;
+
+        function criaBotAdm(){
+            
+            let botAdm = document.createElement('button');
+            botAdm.className = 'btn btn-primary';
+            botAdm.innerHTML = 'Desenhar';
+            botAdm.onclick = function(){
+                window.location.href = `index_2.php?quadricula=${dadosOrto[0]['quadricula']}`;
+            };
+            
+            if(userControl == 'true'){
+                document.getElementById('divBots').appendChild(botAdm);
+            }
+
+        }
+
+        function voltarParaPainel(){
+            window.location.href = `painel.php`;
+        }
+
+        function irConsulta(){
+            window.location.href = `consultas`;
+        }
 
         const arrayCamadas = {
             prefeitura: [],
@@ -1553,10 +1364,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             quadriculas: [],
             ortofoto: [],
             quadra: [],
+            lotesPref: [],
             lote: [],
             quarteirao: [],
             semCamadas: []
         };
+
+        
+
 
         $('#btnCloseTooltip').on('click', function() {
             $('#tooltipMarcador').hide();
@@ -1982,7 +1797,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 $('#opcoesLoteamentos').html('<div class="text-center"><i class="fas fa-spinner fa-spin fa-2x"></i><p>Carregando loteamentos...</p></div>');
 
                 // Carrega o JSON da quadrícula
-                const response = await fetch(`loteamentos_quadriculas/json/resultados_quadricula_${quadricula}.json`);
+                const response = await fetch(`loteamentos_quadriculas/json/resultados_quadricula_${quadricula}.json`, {
+                    cache: "no-store"
+                });
                 if (!response.ok) {
                     if (response.status === 404) {
                         throw new Error(`Arquivo de loteamentos não encontrado para a quadrícula ${quadricula}`);
@@ -2068,6 +1885,20 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         function abrirPDFNovaAba(nomeArquivo) {
             const nomeDecodificado = normalizarString(nomeArquivo);
             window.open('loteamentos_quadriculas/pdf/' + nomeDecodificado, '_blank');
+        }
+
+        // Função para abrir PDF de quarteirão com tratamento de erro
+        async function abrirPDFQuarteirao(nomeArquivo) {
+            console.log('Nome original PDF quarteirão:', nomeArquivo);
+            const nomeDecodificado = normalizarString(nomeArquivo);
+            
+            // Se o caminho já inclui a pasta, usa diretamente
+            if (nomeArquivo.includes('/')) {
+                window.open('loteamentos_quadriculas/pdfs_quarteiroes/' + nomeDecodificado, '_blank');
+            } else {
+                // Caso contrário, usa o caminho padrão
+                window.open('loteamentos_quadriculas/pdfs_quarteiroes/' + nomeDecodificado, '_blank');
+            }
         }
 
         // Função para criar as opções de loteamentos na div
@@ -2828,28 +2659,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             }
         }
 
-        function desenharNoPDF(element) {
-
-            let lotBtn = element.getAttribute('data-loteamento');
-            let arqBtn = element.getAttribute('data-arquivos');
-            let quadBtn = element.getAttribute('data-quadricula');
-
-            let url = `desenhar_pdf.php?quadricula=${quadBtn}&loteamento=${lotBtn}&pdf=${arqBtn}`;
-
-            window.open(url, '_blank');
-        }
-
-        /*
-        function desenharNoPDF(element) {
-           // console.log(element);
-            let loteamento = element.getAttribute('data-loteamento');
-            let arquivo = element.getAttribute('data-arquivos'); // Agora é um único arquivo
-            let quadricula = element.getAttribute('data-quadricula');
-
-            // Ao invés de abrir nova janela, abrir div na mesma página
-            abrirLeitorPDF(loteamento, arquivo, quadricula);
-        }
-        */
+        
 
         // Função para abrir a divCadastro2 com os quarteirões do loteamento selecionado
         function abrirDivCadastro2(indexLoteamento) {
@@ -2872,6 +2682,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
         // Variável global para armazenar os dados dos quarteirões
         let dadosQuarteiroesLoteamentos = null;
+        
+        // Variável global para armazenar os dados dos PDFs dos quarteirões
+        let dadosPDFsQuarteiroes = null;
 
         // Função para carregar os dados complementares dos quarteirões
         function carregarDadosQuarteiroes() {
@@ -2891,6 +2704,49 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 return null;
             });
         }
+        // Função para carregar os dados dos PDFs dos quarteirões
+        function carregarDadosPDFsQuarteiroes(numeroQuarteirao = null) {
+            console.log('carregarDadosPDFsQuarteiroes', numeroQuarteirao);
+            // Se um número de quarteirão foi especificado, tenta carregar o JSON específico
+            if (numeroQuarteirao) {
+                return $.ajax({
+                    url: `loteamentos_quadriculas/pdfs_quarteiroes/${numeroQuarteirao}/quarteiroes.json`,
+                    method: 'GET',
+                    dataType: 'json'
+                }).then(function(data) {
+                    return data;
+                }).catch(function(error) {
+                    // Se falhar, carrega o arquivo geral e filtra apenas os dados deste quarteirão
+                    //console.log(`Arquivo específico não encontrado para quarteirão ${numeroQuarteirao}, usando arquivo geral`);
+                    return carregarDadosPDFsQuarteiroes().then(function(dadosGerais) {
+                        if (dadosGerais && Array.isArray(dadosGerais)) {
+                            // Filtra apenas os dados relacionados ao quarteirão específico
+                            return dadosGerais.filter(item => 
+                                item.quarteiroes && item.quarteiroes.includes(numeroQuarteirao)
+                            );
+                        }
+                        return [];
+                    });
+                });
+            }
+
+            // Comportamento original para carregamento geral
+            if (dadosPDFsQuarteiroes) {
+                return Promise.resolve(dadosPDFsQuarteiroes);
+            }
+
+            return $.ajax({
+                url: 'loteamentos_quadriculas/quarteiroes.json',
+                method: 'GET',
+                dataType: 'json'
+            }).then(function(data) {
+                dadosPDFsQuarteiroes = data;
+                return data;
+            }).catch(function(error) {
+                console.error('Erro ao carregar dados dos PDFs dos quarteirões:', error);
+                return null;
+            });
+        }
 
         // Função para obter informações complementares de um quarteirão
         function obterInfoComplementarQuarteirao(nomeLoteamento, nomeQuarteirao) {
@@ -2906,6 +2762,33 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             }
 
             return null;
+        }
+        // Função para obter PDFs de um quarteirão específico
+        function obterPDFsQuarteirao(nomeQuarteirao, dadosPDFs = null) {
+            // Usa os dados passados como parâmetro ou a variável global como fallback
+            const dadosParaUsar = dadosPDFs || dadosPDFsQuarteiroes;
+            
+            if (!dadosParaUsar || !Array.isArray(dadosParaUsar)) {
+                return [];
+            }
+
+            // Procura por arquivos que contenham este quarteirão
+            const arquivosComQuarteirao = dadosParaUsar.filter(item => {
+                return item.quarteiroes && item.quarteiroes.includes(nomeQuarteirao);
+            });
+
+            // Retorna os nomes dos arquivos encontrados
+            return arquivosComQuarteirao.map(item => {
+                // Se os dados vieram de um arquivo específico (pasta do quarteirão), adiciona o caminho
+                if (dadosPDFs && dadosPDFs.length > 0 && dadosPDFs[0] && dadosPDFs[0].nome_arquivo) {
+                    // Se o nome do arquivo não começa com o caminho da pasta, adiciona o caminho
+                    if (!item.nome_arquivo.startsWith(`${nomeQuarteirao}/`)) {
+                        return `${nomeQuarteirao}/${item.nome_arquivo}`;
+                    }
+                }
+                // Para a estrutura atual (arquivo geral), usa o caminho padrão
+                return `pdfs_quarteiroes/${item.nome_arquivo}`;
+            });
         }
 
         // Função para popular a lista de quarteirões
@@ -2959,6 +2842,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             });
 
             //mostra todos os quarteirões de dentro do loteamento
+            console.log('🗺️ Mostrando', quarteiroesDoLoteamento.length, 'quarteirões no mapa');
             quarteiroesDoLoteamento.forEach(quarteirao => {
 
                 quarteirao.polygon.setOptions({
@@ -2981,8 +2865,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     }
 
                     // Centraliza no quarteirão e aplica zoom 18
-                    MapFramework.map.setCenter(bounds.getCenter());
-                    MapFramework.map.setZoom(18);
+                    //MapFramework.map.setCenter(bounds.getCenter());
+                    //MapFramework.map.setZoom(18);
 
                     // Seleciona o radio correspondente no divCadastro2
                     const nomeQuarteirao = quarteirao.properties.impreciso_name || quarteirao.id;
@@ -3018,6 +2902,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
                 //mostra o poligono do quarteirão
                 quarteirao.polygon.setMap(MapFramework.map);
+                console.log('✅ Quarteirão mostrado no mapa - ID:', quarteirao.id, 'Nome:', quarteirao.properties.impreciso_name);
             });
 
             if (quarteiroesDoLoteamento.length === 0) {
@@ -3027,6 +2912,25 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             // Carrega os dados complementares e depois cria os botões
             carregarDadosQuarteiroes().then(function() {
+                // Ordena os quarteirões numericamente
+                quarteiroesDoLoteamento.sort((a, b) => {
+                    const nomeA = a.properties.impreciso_name || a.id;
+                    const nomeB = b.properties.impreciso_name || b.id;
+                    
+                    // Extrai números dos nomes dos quarteirões
+                    const numeroA = parseInt(nomeA.replace(/\D/g, '')) || 0;
+                    const numeroB = parseInt(nomeB.replace(/\D/g, '')) || 0;
+                    
+                    //console.log(`Comparando: ${nomeA} (${numeroA}) vs ${nomeB} (${numeroB})`);
+                    
+                    // Ordenação numérica
+                    return numeroA - numeroB;
+                });
+                
+                //console.log('Quarteirões ordenados:', quarteiroesDoLoteamento.map(q => q.properties.impreciso_name || q.id));
+                
+                // Array para armazenar todos os elementos criados
+                const elementosQuarteiroes = [];
                 // Cria os botões radio para cada quarteirão
                 quarteiroesDoLoteamento.forEach((quarteirao, index) => {
                     // Obtém o nome do quarteirão (impreciso_name ou id)
@@ -3035,43 +2939,94 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     // Busca informações complementares
                     const infoComplementar = obterInfoComplementarQuarteirao(loteamento.nome, nomeQuarteirao);
 
-                    // Cria o texto do small baseado nas informações disponíveis
-                    let textoSmall = ''; //`ID: ${quarteirao.id}`;
-                    if (infoComplementar) {
-                        textoSmall += `Quadras: ${infoComplementar}`;
-                    }
+                    // Carrega os dados dos PDFs específicos para este quarteirão
+                    carregarDadosPDFsQuarteiroes(nomeQuarteirao).then(function(dadosPDFs) {
+                        // Busca PDFs do quarteirão passando os dados carregados
+                        const pdfsQuarteirao = obterPDFsQuarteirao(nomeQuarteirao, dadosPDFs);
+                        const temPDFs = pdfsQuarteirao && pdfsQuarteirao.length > 0;
 
-                    const opcao = $(`
-                        <div class="opcao-quarteirao">
-                            <div class="d-flex align-items-start">
-                                <input style="margin-top: 2px;" type="radio" id="quarteirao_${quarteirao.id}" data-nome="${nomeQuarteirao}" name="quarteirao" value="${quarteirao.id}">
-                                <label for="quarteirao_${quarteirao.id}">
-                                    Quarteirão ${nomeQuarteirao}
-                                    <small class="d-block text-muted">${textoSmall}</small>
-                                </label>
+                        // Cria o texto do small baseado nas informações disponíveis
+                        let textoSmall = ''; //`ID: ${quarteirao.id}`;
+                        if (infoComplementar) {
+                            textoSmall += `Quadras: ${infoComplementar}`;
+                        }
+
+                        const opcao = $(`
+                            <div class="opcao-quarteirao">
+                                <div class="d-flex align-items-start">
+                                    <input style="margin-top: 2px;" type="radio" id="quarteirao_${quarteirao.id}" data-nome="${nomeQuarteirao}" name="quarteirao" value="${quarteirao.id}">
+                                    <label for="quarteirao_${quarteirao.id}" class="flex-grow-1">
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <div>
+                                                Quarteirão ${nomeQuarteirao}
+                                                <small class="d-block text-muted">${textoSmall}</small>
+                                            </div>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm ms-2 btn-docs-quarteirao" data-quarteirao="${nomeQuarteirao}" style="margin-top: -10px; font-size: 10px; padding: 2px 6px; border-radius: 3px;">
+                                                Docs
+                                            </button>
+                                        </div>
+                                    </label>
+                                </div>
+                                ${temPDFs ? 
+                                    `<div class="submenu-pdfs">
+                                        ${pdfsQuarteirao.map(arquivo => {
+                                            // Extrai apenas o nome do arquivo para exibição
+                                            const nomeArquivo = arquivo.split('/').pop();
+                                            return `<a href="javascript:void(0)" onclick="abrirPDFQuarteirao('${arquivo}')" title="${arquivo}">
+                                                <i class="fas fa-file-pdf"></i>${nomeArquivo.length > 20 ? nomeArquivo.substring(0, 20) + '...' : nomeArquivo}
+                                            </a>`;
+                                        }).join('')}
+                                    </div>` : 
+                                    '<div class="submenu-pdfs"><em class="text-muted">Sem PDFs</em></div>'
+                                }
                             </div>
-                        </div>
-                    `);
+                        `);
 
-                    container.append(opcao);
+                        // Armazena o elemento no array com o índice correto
+                        elementosQuarteiroes[index] = opcao;
+                        
+                        // Verifica se todos os elementos foram criados
+                        if (elementosQuarteiroes.filter(el => el !== undefined).length === quarteiroesDoLoteamento.length) {
+                            // Adiciona todos os elementos ao container na ordem correta
+                            elementosQuarteiroes.forEach(elemento => {
+                                if (elemento) {
+                                    container.append(elemento);
+                                }
+                            });
+                            
+                            // Adiciona evento para o botão Docs de cada quarteirão usando delegação
+                            // IMPORTANTE: Adicionar APÓS os elementos estarem no DOM
+                            $(document).off('click', '.btn-docs-quarteirao').on('click', '.btn-docs-quarteirao', function(e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                
+                                const nomeQuarteirao = $(this).data('quarteirao');
+                                console.log('Botão Docs clicado para quarteirão:', nomeQuarteirao);
+                                abrirModalGerenciarDocs(nomeQuarteirao);
+                            });
+                            
+                            // Adiciona evento para destacar seleção de quarteirão
+                            // IMPORTANTE: Adicionar APÓS os radio buttons estarem no DOM
+                            $('input[name="quarteirao"]').off('change').on('change', function() {
+                                const quarteiraoId = $(this).val();
+                                const nomeQuarteirao = $(this).data('nome');
+                                
+                                console.log('📻 Radio quarteirão clicado:', nomeQuarteirao, 'ID:', quarteiraoId);
+
+                                // Define as variáveis globais do quarteirão
+                                quarteiraoAtualSelecionado = nomeQuarteirao;
+                                quarteiraoIdAtualSelecionado = quarteiraoId;
+
+                                if (quarteiraoId) {
+                                    // Destaca o quarteirão selecionado passando apenas o ID
+                                    destacarQuarteiraoSelecionado(nomeQuarteirao, quarteiraoId);
+                                }
+                            });
+                        }
+                    });
 
                 });
 
-                // Adiciona evento para destacar seleção de quarteirão
-                $('input[name="quarteirao"]').on('change', function() {
-                    const quarteiraoId = $(this).val();
-                    const nomeQuarteirao = $(this).data('nome');
-
-                    // Define as variáveis globais do quarteirão
-                    quarteiraoAtualSelecionado = nomeQuarteirao;
-                    quarteiraoIdAtualSelecionado = quarteiraoId;
-
-
-                    if (quarteiraoId) {
-                        // Destaca o quarteirão selecionado passando apenas o ID
-                        destacarQuarteiraoSelecionado(nomeQuarteirao, quarteiraoId);
-                    }
-                });
             });
 
         }
@@ -3103,12 +3058,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
         // Função para destacar o quarteirão selecionado
         function destacarQuarteiraoSelecionado(nomeQuarteirao, idQuarteirao) {
+            console.log('🎯 destacarQuarteiraoSelecionado chamado:', nomeQuarteirao, idQuarteirao);
+            console.log('📊 Total de quarteirões em arrayCamadas:', arrayCamadas.quarteirao ? arrayCamadas.quarteirao.length : 0);
 
             // Primeiro, redefine TODOS os quarteirões visíveis para cor branca
             if (arrayCamadas.quarteirao) {
+                let quarteiresVisiveis = 0;
                 arrayCamadas.quarteirao.forEach(obj => {
                     // Só mexe nos quarteirões que estão visíveis no mapa
                     if (obj.polygon && obj.polygon.getMap()) {
+                        quarteiresVisiveis++;
                         obj.polygon.setOptions({
                             strokeColor: '#1275C3',
                             strokeWeight: 2,
@@ -3116,23 +3075,30 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         });
                     }
                 });
+                console.log('👁️ Quarteirões visíveis no mapa:', quarteiresVisiveis);
             }
 
             // Obtém o quarteirão pelo ID usando a função do framework
             const quarteirao = MapFramework.obterQuarteiraoPorId(idQuarteirao);
+            console.log('🔍 Quarteirão encontrado:', quarteirao ? 'SIM' : 'NÃO');
 
             if (!quarteirao) {
+                console.error('❌ Quarteirão não encontrado com ID:', idQuarteirao);
                 return;
             }
 
             // Destaca APENAS o quarteirão selecionado em amarelo
             if (quarteirao.polygon) {
+                console.log('🎨 Destacando quarteirão com cor branca e peso 5');
                 quarteirao.polygon.setOptions({
                     strokeColor: 'white',
                     strokeWeight: 5,
                     zIndex: 15
                 });
                 quarteirao.polygon.setMap(MapFramework.map);
+                console.log('✅ Quarteirão destacado com sucesso!');
+            } else {
+                console.error('❌ Quarteirão não tem polygon!');
             }
 
             if (quarteirao.marker) {
@@ -3180,7 +3146,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     $('#inputQuadraAtual').show();
 
                     // Abre a divCadastro3
-                    $('#divCadastro3').fadeIn(150);
+                    //$('#divCadastro3').fadeIn(150);
                 },
                 error: function(xhr, status, error) {
                     console.error('Erro ao buscar lotes:', error);
@@ -4633,8 +4599,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         
         // ============================================================================
         // FUNÇÕES DO CONTROLE DE DESENHOS DA PREFEITURA
-        // ============================================================================
-        
         // Variáveis para armazenar as coordenadas originais dos desenhos
         let coordenadasOriginaisDesenhos = [];
         let desenhosCarregados = false;
@@ -5003,8 +4967,538 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     controle.removeClass('show');
                 }
             });
+
+            criaBotAdm()
         });
+        // ============================================================================
+        
+        let quarteiraoAtualModal = null;
+        let imovelAtualModal = null;
+        let dadosImovelAtualModal = null;
+
+        // Função para abrir o modal de gerenciamento de documentos
+        function abrirModalGerenciarDocs(nomeQuarteirao) {
+            console.log('Função abrirModalGerenciarDocs chamada para:', nomeQuarteirao);
+            quarteiraoAtualModal = nomeQuarteirao;
+            
+            // Atualiza as informações do modal
+            $('#nomeQuarteiraoModal').text(`Quarteirão ${nomeQuarteirao}`);
+            $('#caminhoPastaModal').text(`Pasta: loteamentos_quadriculas/pdfs_quarteiroes/`);
+            
+            // Limpa a lista de arquivos
+            $('#listaArquivos').empty();
+            $('#inputArquivos').val('');
+            $('#btnUploadArquivos').prop('disabled', true);
+            
+            // Carrega a lista de arquivos
+            carregarListaArquivosQuarteirao(nomeQuarteirao);
+            
+            // Verifica se o modal existe
+            const modal = $('#modalGerenciarDocs');
+            console.log('Modal encontrado:', modal.length > 0);
+            
+            // Mostra o modal
+            if (modal.length > 0) {
+                modal.modal('show');
+                console.log('Modal.show() executado');
+            } else {
+                console.error('Modal não encontrado!');
+            }
+        }
+
+        // Função para carregar a lista de arquivos do quarteirão
+        function carregarListaArquivosQuarteirao(nomeQuarteirao) {
+            console.log('Carregando lista de arquivos para quarteirão:', nomeQuarteirao);
+            
+            // Tenta carregar arquivos da pasta física do quarteirão
+            $.ajax({
+                url: 'consultas/listar_arquivos_quarteirao.php',
+                method: 'POST',
+                data: { quarteirao: nomeQuarteirao },
+                dataType: 'json',
+                success: function(response) {
+                    console.log('Resposta da listagem:', response);
+                    if (response.success && response.arquivos.length > 0) {
+                        exibirListaArquivos(response.arquivos);
+                    } else {
+                        // Se não encontrar arquivos na pasta, tenta carregar do JSON
+                        carregarDadosPDFsQuarteiroes(nomeQuarteirao).then(function(dadosPDFs) {
+                            if (dadosPDFs && Array.isArray(dadosPDFs)) {
+                                const arquivos = dadosPDFs.map(item => {
+                                    return item.nome_arquivo.split('/').pop();
+                                });
+                                exibirListaArquivos(arquivos);
+                            } else {
+                                $('#listaArquivos').html('<div class="alert alert-warning">Nenhum arquivo encontrado.</div>');
+                            }
+                        }).catch(function(error) {
+                            console.error('Erro ao carregar dados dos PDFs:', error);
+                            $('#listaArquivos').html('<div class="alert alert-warning">Nenhum arquivo encontrado.</div>');
+                        });
+                    }
+                },
+                error: function() {
+                    $('#listaArquivos').html('<div class="alert alert-danger">Erro ao carregar arquivos.</div>');
+                }
+            });
+        }
+
+        // Função para exibir a lista de arquivos
+        function exibirListaArquivos(arquivos) {
+            const container = $('#listaArquivos');
+            container.empty();
+            
+            if (arquivos.length === 0) {
+                container.html('<div class="alert alert-info">Nenhum arquivo encontrado nesta pasta.</div>');
+                return;
+            }
+            
+            arquivos.forEach(function(arquivo) {
+                const extensao = arquivo.split('.').pop().toLowerCase();
+                const icone = getIconeArquivo(extensao);
+                
+                const item = $(`
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <i class="${icone} me-2"></i>
+                            <span>${arquivo}</span>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary me-2" onclick="visualizarArquivo('${arquivo}')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="excluirArquivoQuarteirao('${arquivo}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `);
+                
+                container.append(item);
+            });
+        }
+
+        // Função para obter o ícone baseado na extensão do arquivo
+        function getIconeArquivo(extensao) {
+            const icones = {
+                'pdf': 'fas fa-file-pdf text-danger',
+                'doc': 'fas fa-file-word text-primary',
+                'docx': 'fas fa-file-word text-primary',
+                'jpg': 'fas fa-file-image text-success',
+                'jpeg': 'fas fa-file-image text-success',
+                'png': 'fas fa-file-image text-success',
+                'gif': 'fas fa-file-image text-success'
+            };
+            return icones[extensao] || 'fas fa-file text-secondary';
+        }
+
+        // Função para visualizar um arquivo
+        function visualizarArquivo(nomeArquivo) {
+            const caminho = `loteamentos_quadriculas/pdfs_quarteiroes/${quarteiraoAtualModal}/${nomeArquivo}`;
+            window.open(caminho, '_blank');
+        }
+
+        // Função para excluir um arquivo
+        function excluirArquivoQuarteirao(nomeArquivo) {
+            if (!confirm(`Tem certeza que deseja excluir o arquivo "${nomeArquivo}"?`)) {
+                return;
+            }
+            
+            $.ajax({
+                url: 'consultas/excluir_arquivo_quarteirao.php',
+                method: 'POST',
+                data: { 
+                    quarteirao: quarteiraoAtualModal,
+                    arquivo: nomeArquivo 
+                },
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success) {
+                        alert('Arquivo excluído com sucesso!');
+                        // Atualiza a lista do modal
+                        carregarListaArquivosQuarteirao(quarteiraoAtualModal);
+                        // Atualiza a lista de PDFs na interface principal
+                        atualizarListaPDFsQuarteirao(quarteiraoAtualModal);
+                    } else {
+                        alert('Erro ao excluir arquivo: ' + response.message);
+                    }
+                },
+                error: function() {
+                    alert('Erro ao excluir arquivo.');
+                }
+            });
+        }
+
+        // Função para atualizar a lista de PDFs na divCadastro2
+        function atualizarListaPDFsQuarteirao(nomeQuarteirao) {
+            console.log('Atualizando lista de PDFs para quarteirão:', nomeQuarteirao);
+            
+            // Carrega arquivos da pasta física do quarteirão
+            $.ajax({
+                url: 'consultas/listar_arquivos_quarteirao.php',
+                method: 'POST',
+                data: { quarteirao: nomeQuarteirao },
+                dataType: 'json',
+                success: function(response) {
+                    console.log('Resposta da atualização:', response);
+                    
+                    // Encontra o elemento do quarteirão na divCadastro2
+                    const radioSelector = `input[name="quarteirao"][data-nome="${nomeQuarteirao}"]`;
+                    const radioElement = $(radioSelector);
+                    
+                    if (radioElement.length > 0) {
+                        const opcaoQuarteirao = radioElement.closest('.opcao-quarteirao');
+                        const submenuPdfs = opcaoQuarteirao.find('.submenu-pdfs');
+                        
+                        // Atualiza o conteúdo do submenu de PDFs
+                        if (response.success && response.arquivos.length > 0) {
+                            const novosPDFs = response.arquivos.map(arquivo => {
+                                const caminhoCompleto = `${nomeQuarteirao}/${arquivo}`;
+                                return `<a href="javascript:void(0)" onclick="abrirPDFQuarteirao('${caminhoCompleto}')" title="${caminhoCompleto}">
+                                    <i class="fas fa-file-pdf"></i>${arquivo.length > 20 ? arquivo.substring(0, 20) + '...' : arquivo}
+                                </a>`;
+                            }).join('');
+                            
+                            submenuPdfs.html(novosPDFs);
+                        } else {
+                            submenuPdfs.html('<em class="text-muted">Sem PDFs</em>');
+                        }
+                    }
+                },
+                error: function() {
+                    console.error('Erro ao atualizar lista de PDFs');
+                }
+            });
+        }
+
+        // Event listeners para o modal
+        $(document).ready(function() {
+            // Habilita o botão de upload quando arquivos são selecionados
+            $('#inputArquivos').on('change', function() {
+                const files = this.files;
+                $('#btnUploadArquivos').prop('disabled', files.length === 0);
+            });
+
+            // Upload de arquivos
+            $('#btnUploadArquivos').on('click', function() {
+                const files = $('#inputArquivos')[0].files;
+                if (files.length === 0) return;
+
+                const formData = new FormData();
+                formData.append('quarteirao', quarteiraoAtualModal);
+                
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('arquivos[]', files[i]);
+                }
+
+                // Mostra loading
+                $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Enviando...');
+
+                console.log('Enviando arquivos para quarteirão:', quarteiraoAtualModal);
+                console.log('FormData:', formData);
+                
+                $.ajax({
+                    url: 'consultas/upload_arquivos_quarteirao.php',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json',
+                    success: function(response) {
+                        console.log('Resposta do servidor:', response);
+                        if (response.success) {
+                            alert('Arquivos enviados com sucesso!');
+                            $('#inputArquivos').val('');
+                            
+                            // Atualiza a lista do modal
+                            carregarListaArquivosQuarteirao(quarteiraoAtualModal);
+                            
+                            // Atualiza a lista de PDFs na divCadastro2
+                            atualizarListaPDFsQuarteirao(quarteiraoAtualModal);
+                        } else {
+                            alert('Erro ao enviar arquivos: ' + response.message);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Erro na requisição:', xhr, status, error);
+                        console.error('Resposta do servidor:', xhr.responseText);
+                        alert('Erro ao enviar arquivos.');
+                    },
+                    complete: function() {
+                        $('#btnUploadArquivos').prop('disabled', true).html('Adicionar Arquivos');
+                    }
+                });
+            });
+        });
+
+        // ============================================================================
+        // FUNÇÕES PARA GERENCIAR DOCUMENTOS DE IMÓVEIS
+        // ============================================================================
+        
+        // Função para abrir o modal de gerenciamento de documentos de imóveis
+        function abrirModalGerenciarDocsImovel(imobId, dadosImovel) {
+            console.log('Função abrirModalGerenciarDocsImovel chamada para:', imobId);
+            imovelAtualModal = imobId;
+            dadosImovelAtualModal = dadosImovel;
+            
+            // Atualiza as informações do modal
+            $('#nomeImovelModal').text(`Imóvel ID: ${imobId}`);
+            $('#caminhoPastaImovelModal').text(`Pasta: loteamentos_quadriculas/imoveis/${imobId}/`);
+            
+            // Adiciona informações do imóvel
+            let infoTexto = '';
+            if (dadosImovel.cadastro) {
+                infoTexto += `Logradouro: ${dadosImovel.cadastro.logradouro || 'N/A'}, `;
+                infoTexto += `Nº: ${dadosImovel.cadastro.numero || 'N/A'} `;
+                infoTexto += `- ${dadosImovel.cadastro.bairro || 'N/A'}`;
+            }
+            if (dadosImovel.desenhos) {
+                infoTexto += ` | Quadra: ${dadosImovel.desenhos.quadra || 'N/A'}, Lote: ${dadosImovel.desenhos.lote || 'N/A'}`;
+            }
+            $('#infoImovelModal').text(infoTexto);
+            
+            // Limpa a lista de arquivos
+            $('#listaArquivosImovel').empty();
+            $('#inputArquivosImovel').val('');
+            $('#btnUploadArquivosImovel').prop('disabled', true);
+            
+            // Carrega a lista de arquivos
+            carregarListaArquivosImovel(imobId);
+            
+            // Mostra o modal
+            const modal = $('#modalGerenciarDocsImovel');
+            if (modal.length > 0) {
+                modal.modal('show');
+                console.log('Modal de imóvel exibido');
+            } else {
+                console.error('Modal de imóvel não encontrado!');
+            }
+        }
+
+        // Função para carregar a lista de arquivos do imóvel
+        function carregarListaArquivosImovel(imobId) {
+            console.log('Carregando lista de arquivos para imóvel:', imobId);
+            
+            $.ajax({
+                url: 'consultas/listar_arquivos_imovel.php',
+                method: 'POST',
+                data: { imob_id: imobId },
+                dataType: 'json',
+                success: function(response) {
+                    console.log('Resposta da listagem de imóvel:', response);
+                    if (response.success && response.arquivos && response.arquivos.length > 0) {
+                        exibirListaArquivosImovel(response.arquivos);
+                    } else {
+                        $('#listaArquivosImovel').html('<div class="alert alert-info">Nenhum arquivo encontrado para este imóvel.</div>');
+                    }
+                },
+                error: function() {
+                    $('#listaArquivosImovel').html('<div class="alert alert-danger">Erro ao carregar arquivos.</div>');
+                }
+            });
+        }
+
+        // Função para exibir a lista de arquivos do imóvel
+        function exibirListaArquivosImovel(arquivos) {
+            const container = $('#listaArquivosImovel');
+            container.empty();
+            
+            if (arquivos.length === 0) {
+                container.html('<div class="alert alert-info">Nenhum arquivo encontrado nesta pasta.</div>');
+                return;
+            }
+            
+            arquivos.forEach(function(arquivo) {
+                const extensao = arquivo.split('.').pop().toLowerCase();
+                const icone = getIconeArquivo(extensao);
+                
+                const item = $(`
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <i class="${icone} me-2"></i>
+                            <span>${arquivo}</span>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary me-2" onclick="visualizarArquivoImovel('${arquivo}')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="excluirArquivoImovel('${arquivo}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `);
+                
+                container.append(item);
+            });
+        }
+
+        // Função para visualizar um arquivo do imóvel
+        function visualizarArquivoImovel(nomeArquivo) {
+            const caminho = `loteamentos_quadriculas/imoveis/${imovelAtualModal}/${nomeArquivo}`;
+            window.open(caminho, '_blank');
+        }
+
+        // Função para excluir um arquivo do imóvel
+        function excluirArquivoImovel(nomeArquivo) {
+            if (!confirm(`Tem certeza que deseja excluir o arquivo "${nomeArquivo}"?`)) {
+                return;
+            }
+            
+            $.ajax({
+                url: 'consultas/excluir_arquivo_imovel.php',
+                method: 'POST',
+                data: { 
+                    imob_id: imovelAtualModal,
+                    arquivo: nomeArquivo 
+                },
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success) {
+                        alert('Arquivo excluído com sucesso!');
+                        carregarListaArquivosImovel(imovelAtualModal);
+                    } else {
+                        alert('Erro ao excluir arquivo: ' + response.message);
+                    }
+                },
+                error: function() {
+                    alert('Erro ao excluir arquivo.');
+                }
+            });
+        }
+
+        // Event listeners para o modal de imóveis
+        $(document).ready(function() {
+            // Habilita o botão de upload quando arquivos são selecionados
+            $('#inputArquivosImovel').on('change', function() {
+                const files = this.files;
+                $('#btnUploadArquivosImovel').prop('disabled', files.length === 0);
+            });
+
+            // Upload de arquivos de imóveis
+            $('#btnUploadArquivosImovel').on('click', function() {
+                const files = $('#inputArquivosImovel')[0].files;
+                if (files.length === 0) return;
+
+                const formData = new FormData();
+                formData.append('imob_id', imovelAtualModal);
+                
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('arquivos[]', files[i]);
+                }
+
+                // Mostra loading
+                $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Enviando...');
+
+                console.log('Enviando arquivos para imóvel:', imovelAtualModal);
+                
+                $.ajax({
+                    url: 'consultas/upload_arquivos_imovel.php',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json',
+                    success: function(response) {
+                        console.log('Resposta do servidor:', response);
+                        if (response.success) {
+                            alert('Arquivos enviados com sucesso!');
+                            $('#inputArquivosImovel').val('');
+                            carregarListaArquivosImovel(imovelAtualModal);
+                        } else {
+                            alert('Erro ao enviar arquivos: ' + response.message);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Erro na requisição:', xhr, status, error);
+                        console.error('Resposta do servidor:', xhr.responseText);
+                        alert('Erro ao enviar arquivos.');
+                    },
+                    complete: function() {
+                        $('#btnUploadArquivosImovel').prop('disabled', true).html('Adicionar Arquivos');
+                    }
+                });
+            });
+        });
+
+        
     </script>
+    
+    <!-- Modal para gerenciar arquivos dos quarteirões -->
+    <div class="modal fade" id="modalGerenciarDocs" tabindex="-1" aria-labelledby="modalGerenciarDocsLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalGerenciarDocsLabel">Gerenciar Documentos</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="infoQuarteirao" class="mb-3">
+                        <h6 id="nomeQuarteiraoModal"></h6>
+                        <small class="text-muted" id="caminhoPastaModal"></small>
+                    </div>
+                    
+                    <!-- Área de upload -->
+                    <div class="mb-4">
+                        <label for="inputArquivos" class="form-label">Adicionar Arquivos</label>
+                        <input type="file" class="form-control" id="inputArquivos" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif">
+                        <div class="form-text">Selecione um ou mais arquivos para adicionar à pasta do quarteirão.</div>
+                    </div>
+                    
+                    <!-- Lista de arquivos -->
+                    <div>
+                        <h6>Arquivos Existentes</h6>
+                        <div id="listaArquivos" class="list-group">
+                            <!-- Arquivos serão carregados aqui dinamicamente -->
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-primary" id="btnUploadArquivos" disabled>Adicionar Arquivos</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para gerenciar arquivos dos imóveis -->
+    <div class="modal fade" id="modalGerenciarDocsImovel" tabindex="-1" aria-labelledby="modalGerenciarDocsImovelLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalGerenciarDocsImovelLabel">Gerenciar Documentos do Imóvel</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="infoImovel" class="mb-3">
+                        <h6 id="nomeImovelModal"></h6>
+                        <small class="text-muted d-block" id="infoImovelModal"></small>
+                        <small class="text-muted d-block" id="caminhoPastaImovelModal"></small>
+                    </div>
+                    
+                    <!-- Área de upload -->
+                    <div class="mb-4">
+                        <label for="inputArquivosImovel" class="form-label">Adicionar Arquivos</label>
+                        <input type="file" class="form-control" id="inputArquivosImovel" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif">
+                        <div class="form-text">Selecione um ou mais arquivos para adicionar à pasta do imóvel.</div>
+                    </div>
+                    
+                    <!-- Lista de arquivos -->
+                    <div>
+                        <h6>Arquivos Existentes</h6>
+                        <div id="listaArquivosImovel" class="list-group">
+                            <!-- Arquivos serão carregados aqui dinamicamente -->
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-primary" id="btnUploadArquivosImovel" disabled>Adicionar Arquivos</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </body>
 
 </html>

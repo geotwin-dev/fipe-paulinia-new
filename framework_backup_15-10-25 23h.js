@@ -2514,27 +2514,8 @@ const MapFramework = {
                                         e.preventDefault();
                                         e.stopPropagation();
                                         
-                                        // Obtém o imob_id do cadastro se existir
-                                        const imobId = dadosMorador ? dadosMorador.imob_id : null;
-                                        
-                                        if (imobId) {
-                                            // Se tem imob_id, usa ele como identificador
-                                            if (typeof abrirModalGerenciarDocsImovel === 'function') {
-                                                abrirModalGerenciarDocsImovel(imobId, {
-                                                    desenhos: desenho,
-                                                    cadastro: dadosMorador
-                                                });
-                                            }
-                                        } else {
-                                            // Se não tem imob_id, cria um identificador único baseado em quarteirao_quadra_lote
-                                            const identificadorUnico = `${desenho.quarteirao}_${desenho.quadra}_${desenho.lote}`;
-                                            if (typeof abrirModalGerenciarDocsImovel === 'function') {
-                                                abrirModalGerenciarDocsImovel(identificadorUnico, {
-                                                    desenhos: desenho,
-                                                    cadastro: dadosMorador
-                                                });
-                                            }
-                                        }
+                                        const loteInfo = desenho ? desenho.id : "atual.";
+                                        alert(`Aqui você poderá incluir, alterar e excluir documentos relacionados com o imóvel ${loteInfo}`);
                                     });
                                 }
                             });

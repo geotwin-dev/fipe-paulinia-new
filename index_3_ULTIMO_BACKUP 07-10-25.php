@@ -2418,42 +2418,42 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         const pdfsQuarteirao = obterPDFsQuarteirao(nomeQuarteirao, dadosPDFs);
                         const temPDFs = pdfsQuarteirao && pdfsQuarteirao.length > 0;
 
-                    // Cria o texto do small baseado nas informações disponíveis
-                    let textoSmall = ''; //`ID: ${quarteirao.id}`;
-                    if (infoComplementar) {
-                        textoSmall += `Quadras: ${infoComplementar}`;
-                    }
+                        // Cria o texto do small baseado nas informações disponíveis
+                        let textoSmall = ''; //`ID: ${quarteirao.id}`;
+                        if (infoComplementar) {
+                            textoSmall += `Quadras: ${infoComplementar}`;
+                        }
 
-                    const opcao = $(`
-                        <div class="opcao-quarteirao">
-                            <div class="d-flex align-items-start">
-                                <input style="margin-top: 2px;" type="radio" id="quarteirao_${quarteirao.id}" data-nome="${nomeQuarteirao}" name="quarteirao" value="${quarteirao.id}">
-                                <label for="quarteirao_${quarteirao.id}" class="flex-grow-1">
-                                    <div class="d-flex align-items-center justify-content-between">
-                                        <div>
-                                            Quarteirão ${nomeQuarteirao}
-                                            <small class="d-block text-muted">${textoSmall}</small>
+                        const opcao = $(`
+                            <div class="opcao-quarteirao">
+                                <div class="d-flex align-items-start">
+                                    <input style="margin-top: 2px;" type="radio" id="quarteirao_${quarteirao.id}" data-nome="${nomeQuarteirao}" name="quarteirao" value="${quarteirao.id}">
+                                    <label for="quarteirao_${quarteirao.id}" class="flex-grow-1">
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <div>
+                                                Quarteirão ${nomeQuarteirao}
+                                                <small class="d-block text-muted">${textoSmall}</small>
+                                            </div>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm ms-2 btn-docs-quarteirao" data-quarteirao="${nomeQuarteirao}" style="margin-top: -10px; font-size: 10px; padding: 2px 6px; border-radius: 3px;">
+                                                Docs
+                                            </button>
                                         </div>
-                                        <button type="button" class="btn btn-outline-secondary btn-sm ms-2 btn-docs-quarteirao" data-quarteirao="${nomeQuarteirao}" style="margin-top: -10px; font-size: 10px; padding: 2px 6px; border-radius: 3px;">
-                                            Docs
-                                        </button>
-                                    </div>
-                                </label>
+                                    </label>
+                                </div>
+                                ${temPDFs ? 
+                                    `<div class="submenu-pdfs">
+                                        ${pdfsQuarteirao.map(arquivo => {
+                                            // Extrai apenas o nome do arquivo para exibição
+                                            const nomeArquivo = arquivo.split('/').pop();
+                                            return `<a href="javascript:void(0)" onclick="abrirPDFQuarteirao('${arquivo}')" title="${arquivo}">
+                                                <i class="fas fa-file-pdf"></i>${nomeArquivo.length > 20 ? nomeArquivo.substring(0, 20) + '...' : nomeArquivo}
+                                            </a>`;
+                                        }).join('')}
+                                    </div>` : 
+                                    '<div class="submenu-pdfs"><em class="text-muted">Sem PDFs</em></div>'
+                                }
                             </div>
-                            ${temPDFs ? 
-                                `<div class="submenu-pdfs">
-                                    ${pdfsQuarteirao.map(arquivo => {
-                                        // Extrai apenas o nome do arquivo para exibição
-                                        const nomeArquivo = arquivo.split('/').pop();
-                                        return `<a href="javascript:void(0)" onclick="abrirPDFQuarteirao('${arquivo}')" title="${arquivo}">
-                                            <i class="fas fa-file-pdf"></i>${nomeArquivo.length > 20 ? nomeArquivo.substring(0, 20) + '...' : nomeArquivo}
-                                        </a>`;
-                                    }).join('')}
-                                </div>` : 
-                                '<div class="submenu-pdfs"><em class="text-muted">Sem PDFs</em></div>'
-                            }
-                        </div>
-                    `);
+                        `);
 
                         // Armazena o elemento no array com o índice correto
                         elementosQuarteiroes[index] = opcao;
