@@ -3,7 +3,7 @@
 // Inclui a conexão com o banco de dados
 require_once 'connection.php';
 
-$quarteiroes = $_POST['quarteiroes'];
+$quarteiroes = isset($_POST['quarteiroes']) ? $_POST['quarteiroes'] : [];
 
 $dadosPlanilha = [];
 

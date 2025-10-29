@@ -1148,6 +1148,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkUnidades" checked>
+                                    <label class="form-check-label" for="chkUnidades">
+                                        Blocos
+                                    </label>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="chkLotes" checked>
                                     <label class="form-check-label" for="chkLotes">
                                         Lotes Ortofoto
@@ -1249,6 +1257,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     </div>
 
                     <button id="btnIncluirPoligono" class="btn btn-primary">Quadra</button>
+                    <button id="btnIncluirUnidade" class="btn" style="background-color: #ff00ff; color: white;">Bloco</button>
                     <button id="btnIncluirLinha" class="btn btn-success">Lote</button>
 
                     <!-- Botão para finalizar desenho (aparece quando está em modo de desenho) -->
@@ -1433,6 +1442,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             quadriculas: [],
             ortofoto: [],
             quadra: [],
+            unidade: [],
             lote: [],
             quarteirao: [],
             semCamadas: []
@@ -1477,6 +1487,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#btnIncluirPoligono').on('click', function() {
             MapFramework.iniciarDesenhoQuadra();
             controlarVisibilidadeBotoes('quadra');
+        });
+
+        $('#btnIncluirUnidade').on('click', function() {
+            MapFramework.iniciarDesenhoUnidade();
+            controlarVisibilidadeBotoes('unidade');
         });
 
         $('#btnIncluirLinha').on('click', function() {
@@ -1555,6 +1570,12 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#chkQuadras').on('change', function() {
             const visivel = $(this).is(':checked');
             MapFramework.alternarVisibilidadeCamada('quadra', visivel);
+        });
+
+        // Checkbox das Unidades
+        $('#chkUnidades').on('change', function() {
+            const visivel = $(this).is(':checked');
+            MapFramework.alternarVisibilidadeCamada('unidade', visivel);
         });
 
         // Checkbox dos Lotes
@@ -1682,9 +1703,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 // Controla visibilidade dos botões
                 controlarVisibilidadeBotoes('cadastro');
 
-                //aqui desabilita o clique no poligonos quadra e lote
+                //aqui desabilita o clique no poligonos quadra, unidade e lote
                 arrayCamadas.quadra.forEach(quadra => {
                     quadra.setOptions({
+                        clickable: false
+                    });
+                });
+                arrayCamadas.unidade.forEach(unidade => {
+                    unidade.setOptions({
                         clickable: false
                     });
                 });
@@ -2169,6 +2195,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     clickable: true
                 });
             });
+            arrayCamadas.unidade.forEach(unidade => {
+                unidade.setOptions({
+                    clickable: true
+                });
+            });
             arrayCamadas.lote.forEach(lote => {
                 lote.setOptions({
                     clickable: true
@@ -2233,9 +2264,15 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             await MapFramework.carregarDesenhosSalvos('paulinia', dadosOrto[0]['quadricula']);
 
+            // Garante que os z-index estejam corretos após carregamento
+            MapFramework.aplicarZIndexCorreto();
+
             await MapFramework.carregarDesenhosPrefeitura(dadosOrto[0]['quadricula']);
 
             await MapFramework.carregarMarcadoresSalvos(dadosOrto[0]['quadricula']);
+
+            // Garante que os z-index estejam corretos após todos os carregamentos
+            MapFramework.aplicarZIndexCorreto();
 
             MapFramework.carregarLimiteKML();
 
@@ -2243,6 +2280,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             // Carrega os quarteirões da quadrícula atual
             MapFramework.carregaQuarteiroes(dadosOrto[0]['quadricula']);
+
+            await MapFramework.carregarPlanilha();
+
             await MapFramework.carregarImagensAereas(dadosOrto[0]['quadricula']);
 
 
@@ -2494,7 +2534,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         return false;
                     }
 
-                    // Função para ativar as linhas que pertencem a uma quadra
+                    // Função para ativar as linhas e unidades que pertencem a uma quadra
                     function ativarLinhasDaQuadra(quadra) {
                         if (arrayCamadas["lote"]) {
                             arrayCamadas["lote"].forEach(lote => {
@@ -2512,6 +2552,21 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                 }
                             });
                         }
+
+                        if (arrayCamadas["unidade"]) {
+                            arrayCamadas["unidade"].forEach(unidade => {
+                                // Verifica se a unidade pertence a esta quadra
+                                if (parseInt(unidade.id_desenho) === parseInt(quadra.identificador)) {
+                                    // Restaura cor magenta da unidade
+                                    unidade.setOptions({
+                                        strokeColor: '#ff00ff',
+                                        fillColor: '#ff00ff',
+                                        fillOpacity: 0.30
+                                    });
+                                    unidade.desativado = false;
+                                }
+                            });
+                        }
                     }
 
                     // Primeiro, deixa TODOS os desenhos cinza (mantendo grossuras originais)
@@ -2525,6 +2580,19 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                 // strokeWeight não é alterado - mantém o original
                             });
                             quadra.desativado = true;
+                        });
+                    }
+
+                    if (arrayCamadas["unidade"]) {
+                        arrayCamadas["unidade"].forEach(unidade => {
+                            // Deixa cinza por padrão, mantendo grossura original
+                            unidade.setOptions({
+                                strokeColor: 'gray',
+                                fillColor: 'gray',
+                                fillOpacity: 0.3
+                                // strokeWeight não é alterado - mantém o original
+                            });
+                            unidade.desativado = true;
                         });
                     }
 
@@ -3386,6 +3454,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             // Lista de todos os botões de modos
             const botoesModos = [
                 'btnIncluirPoligono', // Modo Quadra
+                'btnIncluirUnidade', // Modo Unidade
                 'btnIncluirLinha', // Modo Lote
                 'btnIncluirMarcador', // Modo Marcador
                 'btnLerPDF', // Modo PDF
@@ -3404,6 +3473,10 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             // Mostra apenas os botões do modo ativo
             switch (modoAtivo) {
                 case 'quadra':
+                    $('#btnFinalizarDesenho').removeClass('d-none');
+                    break;
+
+                case 'unidade':
                     $('#btnFinalizarDesenho').removeClass('d-none');
                     break;
 
@@ -3429,6 +3502,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 default:
                     // Modo normal - mostra botões principais
                     $('#btnIncluirPoligono').removeClass('d-none');
+                    $('#btnIncluirUnidade').removeClass('d-none');
                     $('#btnIncluirLinha').removeClass('d-none');
                     // btnCadastro foi removido - agora é checkbox
                     // Botões de editar/excluir só aparecem se há quadra selecionada
@@ -4325,6 +4399,19 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         // strokeWeight não é alterado - mantém o original
                     });
                     quadra.desativado = false;
+                });
+            }
+
+            // Restaura cores originais de todas as unidades (mantendo grossuras originais)
+            if (arrayCamadas["unidade"]) {
+                arrayCamadas["unidade"].forEach(unidade => {
+                    unidade.setOptions({
+                        strokeColor: unidade.corOriginal || '#ff00ff',
+                        fillColor: unidade.corOriginal || '#ff00ff',
+                        fillOpacity: 0.30
+                        // strokeWeight não é alterado - mantém o original
+                    });
+                    unidade.desativado = false;
                 });
             }
 

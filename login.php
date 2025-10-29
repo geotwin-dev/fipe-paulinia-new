@@ -79,7 +79,7 @@ $consulta->execute();
 $array_dados = [];
 
 foreach ($consulta as $result) {
-  array_push($array_dados, $result['id'], $result['nome'], $result['email'], $result['login'], $result['senha'], $result['pass'], $result['data_cadastro'], $result['habilitado'], $result['automa']);
+  array_push($array_dados, $result['id'], $result['nome'], $result['email'], $result['login'], $result['senha'], $result['pass'], $result['data_cadastro'], $result['habilitado'], $result['automa'], $result['admin']);
 }
 
 if(empty($array_dados)){
@@ -134,7 +134,7 @@ if ($array_dados[7] == "true") {
     unset($_SESSION['nao_autorizado']);
   }
 
-  $_SESSION['usuario'] = [$array_dados[1], $array_dados[2], $array_dados[8]];
+  $_SESSION['usuario'] = [$array_dados[1], $array_dados[2], $array_dados[8], $array_dados[9]];
   header('Location: painel.php');
   exit();
   

@@ -19,6 +19,7 @@ const MapFramework = {
     quarteiroesNumeros: [],
     dadosMoradores: [],
     infoWindow: null,
+    infoWindow_unidade: null,
 
     desenho: {
         modo: null,
@@ -58,10 +59,13 @@ const MapFramework = {
                     zIndex: this.selecionado.zIndexOriginal || 7 // Restaura z-index original
                 });
             }
-
+            
             // Fecha o InfoWindow se estiver aberto
             if (this.infoWindow) {
                 this.infoWindow.close();
+            }
+            if (this.infoWindow_unidade) {
+                this.infoWindow_unidade.close();
             }
         }
 
@@ -128,6 +132,9 @@ const MapFramework = {
             if (this.infoWindow) {
                 this.infoWindow.close();
             }
+            if (this.infoWindow_unidade) {
+                this.infoWindow_unidade.close();
+            }
 
             // Aqui garantimos que o botão some
             $('#btnExcluir').addClass('d-none');
@@ -153,11 +160,11 @@ const MapFramework = {
         let conteudoHTML = '<div style="padding: 10px;">';
         conteudoHTML += '<h6 style="margin-bottom: 10px;">Situação da revisão:</h6>';
         conteudoHTML += '<div style="display: flex; flex-direction: column; gap: 8px;">';
-
+        
         cores.forEach(cor => {
             conteudoHTML += `<button class="${cor.classe}" data-cor="${cor.cor}" data-id="${idDesenho}" style="width: 100%;">${cor.nome}</button>`;
         });
-
+        
         conteudoHTML += '</div></div>';
 
         // Cria o InfoWindow
@@ -171,7 +178,7 @@ const MapFramework = {
 
         // Adiciona event listeners aos botões após o InfoWindow ser aberto
         google.maps.event.addListenerOnce(this.infoWindow, 'domready', () => {
-            $('.btn[data-cor]').off('click').on('click', function () {
+            $('.btn[data-cor]').off('click').on('click', function() {
                 const novaCor = $(this).data('cor');
                 const idDesenho = $(this).data('id');
 
@@ -193,7 +200,7 @@ const MapFramework = {
                         cor: novaCor
                     },
                     dataType: 'json',
-                    success: function (response) {
+                    success: function(response) {
                         if (response.status === 'sucesso') {
                             console.log('Cor atualizada com sucesso!');
                             // Fecha o InfoWindow após atualizar
@@ -203,7 +210,7 @@ const MapFramework = {
                             //alert('Erro ao atualizar a cor: ' + response.mensagem);
                         }
                     },
-                    error: function (xhr, status, error) {
+                    error: function(xhr, status, error) {
                         console.error('Erro na requisição AJAX:', error);
                         //alert('Erro ao comunicar com o servidor');
                     }
@@ -212,461 +219,455 @@ const MapFramework = {
         });
     },
 
-    abrirInfoWindowUnidade: function (poligono, posicao, idDesenho) {
-        // Fecha InfoWindow anterior se existir
-        if (this.infoWindow) {
-            this.infoWindow.close();
-        }
-
-        // Calcula a área do polígono em metros quadrados (float)
-        let areaPoligono = 0;
-        if (poligono.coordenadasGeoJSON && turf) {
-            try {
-                areaPoligono = turf.area(poligono.coordenadasGeoJSON);
-                // Mantém como float, não arredonda
-            } catch (e) {
-                console.error('Erro ao calcular área:', e);
-            }
-        }
-
-        // Mostra loading no InfoWindow
-        this.infoWindow = new google.maps.InfoWindow({
-            content: '<div style="padding: 10px; text-align: center;"><i class="fas fa-spinner fa-spin"></i> Carregando dados...</div>',
-            position: posicao
-        });
-
-        this.infoWindow.open(this.map);
-
-        // Armazena referência ao polígono para uso nos event listeners
-        const self = this;
-        const poligonoRef = poligono;
-        const idDesenhoRef = idDesenho;
-
-        // Busca dados da unidade
+    carregarCorUnidade: function(objeto, idDesenho) {
+        // Busca informações do bloco para aplicar cor revisado
         $.ajax({
-            url: 'buscar_dados_unidade.php',
+            url: 'buscar_informacoes_bloco.php',
             method: 'GET',
-            data: {
-                id_desenho: idDesenho
-            },
+            data: { id_desenhos: idDesenho },
             dataType: 'json',
             success: (response) => {
-                if (response.status === 'sucesso') {
-                    const dados = response.dados || {};
-                    const revisadoAtual = dados.revisado || 0;
-
-                    // Cores para revisado/não revisado
-                    const corRevisado = '#90EE90'; // Verde limão
-                    const corNaoRevisado = '#ff00ff'; // Magenta
-
-                    let conteudoHTML = '<div style="padding: 15px; min-width: 400px; max-width: 500px; font-size: 13px;">';
-                    conteudoHTML += '<h6 style="margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #ff00ff; padding-bottom: 8px;">Informações do Bloco</h6>';
-
-                    // Qtde. Pavimentos
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Qtde. Pavimentos:</label>';
-                    conteudoHTML += '<input type="number" id="inputPavimentosUnidade" value="' + (dados.pavimentos || '') + '" min="1" step="1" style="width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 3px;" onkeypress="return event.charCode >= 48 && event.charCode <= 57">';
-                    conteudoHTML += '</div>';
-
-                    // Utilização
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Utilização:</label>';
-                    conteudoHTML += '<select id="selectUtilizacaoUnidade" style="width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 3px;">';
-                    conteudoHTML += '<option value="">Selecione...</option>';
-                    conteudoHTML += '<option value="Residencial"' + (dados.utilizacao === 'Residencial' ? ' selected' : '') + '>Residencial</option>';
-                    conteudoHTML += '<option value="Comercial"' + (dados.utilizacao === 'Comercial' ? ' selected' : '') + '>Comercial</option>';
-                    conteudoHTML += '<option value="Mista"' + (dados.utilizacao === 'Mista' ? ' selected' : '') + '>Mista</option>';
-                    conteudoHTML += '</select>';
-                    conteudoHTML += '</div>';
-
-                    // Pavimento Térreo
-                    conteudoHTML += '<div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd;">';
-                    conteudoHTML += '<h6 style="margin: 0 0 12px 0; color: #666; font-weight: bold;">Pavimento Térreo</h6>';
-
-                    // Térreo - Usos
-                    //conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    //conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Usos:</label>';
-                    //conteudoHTML += '<select id="selectTerreoUsoUnidade" style="width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 3px;">';
-                    //conteudoHTML += '<option value="">Selecione...</option>';
-                    //conteudoHTML += '<option value="Area A Residencial"' + (dados.terreo_uso === 'Area A Residencial' ? ' selected' : '') + '>Area A Residencial</option>';
-                    //conteudoHTML += '<option value="Area A Comercial"' + (dados.terreo_uso === 'Area A Comercial' ? ' selected' : '') + '>Area A Comercial</option>';
-                    //conteudoHTML += '<option value="Área A Residencial, Área B Comercial"' + (dados.terreo_uso === 'Área A Residencial, Área B Comercial' ? ' selected' : '') + '>Área A Residencial, Área B Comercial</option>';
-                    //conteudoHTML += '<option value="Área A Comercial, Área B Residencial"' + (dados.terreo_uso === 'Área A Comercial, Área B Residencial' ? ' selected' : '') + '>Área A Comercial, Área B Residencial</option>';
-                    //conteudoHTML += '<option value="Área A Residencial, Área B Residencial"' + (dados.terreo_uso === 'Área A Residencial, Área B Residencial' ? ' selected' : '') + '>Área A Residencial, Área B Residencial</option>';
-                    //conteudoHTML += '</select>';
-                    //conteudoHTML += '</div>';
-
-                    // Térreo - Tipo da Construção
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Tipo da Construção:</label>';
-                    conteudoHTML += '<select id="selectTerreoTipoUnidade" style="width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 3px;">';
-                    conteudoHTML += '<option value="">Selecione...</option>';
-                    conteudoHTML += '<option value="Casa / Sobrado"' + (dados.terreo_tipo === 'Casa / Sobrado' ? ' selected' : '') + '>Casa / Sobrado</option>';
-                    conteudoHTML += '<option value="Apartamento"' + (dados.terreo_tipo === 'Apartamento' ? ' selected' : '') + '>Apartamento</option>';
-                    conteudoHTML += '<option value="Comercial ou prestação de Serviços"' + (dados.terreo_tipo === 'Comercial ou prestação de Serviços' ? ' selected' : '') + '>Comercial ou prestação de Serviços</option>';
-                    conteudoHTML += '<option value="Industrial"' + (dados.terreo_tipo === 'Industrial' ? ' selected' : '') + '>Industrial</option>';
-                    conteudoHTML += '<option value="Galpão / Telheiro"' + (dados.terreo_tipo === 'Galpão / Telheiro' ? ' selected' : '') + '>Galpão / Telheiro</option>';
-                    conteudoHTML += '<option value="Outro tipo"' + (dados.terreo_tipo === 'Outro tipo' ? ' selected' : '') + '>Outro tipo</option>';
-                    conteudoHTML += '</select>';
-                    conteudoHTML += '</div>';
-
-                    // Térreo - Classificação
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Classificação:</label>';
-                    conteudoHTML += '<select id="selectTerreoClassificacaoUnidade" style="width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 3px;">';
-                    conteudoHTML += '<option value="">Selecione...</option>';
-                    conteudoHTML += '<option value="Luxo"' + (dados.terreo_classificacao === 'Luxo' ? ' selected' : '') + '>Luxo</option>';
-                    conteudoHTML += '<option value="Boa"' + (dados.terreo_classificacao === 'Boa' ? ' selected' : '') + '>Boa</option>';
-                    conteudoHTML += '<option value="Média"' + (dados.terreo_classificacao === 'Média' ? ' selected' : '') + '>Média</option>';
-                    conteudoHTML += '<option value="Popular"' + (dados.terreo_classificacao === 'Popular' ? ' selected' : '') + '>Popular</option>';
-                    conteudoHTML += '<option value="Rústica / Precária"' + (dados.terreo_classificacao === 'Rústica / Precária' ? ' selected' : '') + '>Rústica / Precária</option>';
-                    conteudoHTML += '</select>';
-                    conteudoHTML += '</div>';
-
-                    // Térreo - Área construída (sempre calculada, não busca do banco)
-                    conteudoHTML += '<div style="margin-bottom: 15px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Área construída:</label>';
-                    conteudoHTML += '<input type="text" id="inputTerreoAreaUnidade" value="' + areaPoligono.toFixed(2) + '" readonly style="width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5;">';
-                    conteudoHTML += '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Demais Pavimentos (só aparece se pavimentos > 1)
-                    const pavimentosAtual = parseInt(dados.pavimentos) || 1;
-                    const mostrarDemaisPavimentos = pavimentosAtual > 1;
-                    conteudoHTML += '<div id="divDemaisPavimentosUnidade" style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd; ' + (mostrarDemaisPavimentos ? '' : 'display: none;') + '">';
-                    conteudoHTML += '<h6 style="margin: 0 0 12px 0; color: #666; font-weight: bold;">Demais Pavimentos</h6>';
-
-                    // Demais - Usos
-                    //conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    //conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Usos:</label>';
-                    //conteudoHTML += '<select id="selectDemaisUsoUnidade" style="width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 3px;">';
-                    //conteudoHTML += '<option value="">Selecione...</option>';
-                    //conteudoHTML += '<option value="Area A Residencial"' + (dados.demais_uso === 'Area A Residencial' ? ' selected' : '') + '>Area A Residencial</option>';
-                    //conteudoHTML += '<option value="Area A Comercial"' + (dados.demais_uso === 'Area A Comercial' ? ' selected' : '') + '>Area A Comercial</option>';
-                    //conteudoHTML += '<option value="Área A Residencial, Área B Comercial"' + (dados.demais_uso === 'Área A Residencial, Área B Comercial' ? ' selected' : '') + '>Área A Residencial, Área B Comercial</option>';
-                    //conteudoHTML += '<option value="Área A Comercial, Área B Residencial"' + (dados.demais_uso === 'Área A Comercial, Área B Residencial' ? ' selected' : '') + '>Área A Comercial, Área B Residencial</option>';
-                    //conteudoHTML += '<option value="Área A Residencial, Área B Residencial"' + (dados.demais_uso === 'Área A Residencial, Área B Residencial' ? ' selected' : '') + '>Área A Residencial, Área B Residencial</option>';
-                    //conteudoHTML += '</select>';
-                    //conteudoHTML += '</div>';
-
-                    // Demais - Tipo da Construção
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Tipo da Construção:</label>';
-                    conteudoHTML += '<select id="selectDemaisTipoUnidade" style="width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 3px;">';
-                    conteudoHTML += '<option value="">Selecione...</option>';
-                    conteudoHTML += '<option value="Casa / Sobrado"' + (dados.demais_tipo === 'Casa / Sobrado' ? ' selected' : '') + '>Casa / Sobrado</option>';
-                    conteudoHTML += '<option value="Apartamento"' + (dados.demais_tipo === 'Apartamento' ? ' selected' : '') + '>Apartamento</option>';
-                    conteudoHTML += '<option value="Comercial ou prestação de Serviços"' + (dados.demais_tipo === 'Comercial ou prestação de Serviços' ? ' selected' : '') + '>Comercial ou prestação de Serviços</option>';
-                    conteudoHTML += '<option value="Industrial"' + (dados.demais_tipo === 'Industrial' ? ' selected' : '') + '>Industrial</option>';
-                    conteudoHTML += '<option value="Galpão / Telheiro"' + (dados.demais_tipo === 'Galpão / Telheiro' ? ' selected' : '') + '>Galpão / Telheiro</option>';
-                    conteudoHTML += '<option value="Outro tipo"' + (dados.demais_tipo === 'Outro tipo' ? ' selected' : '') + '>Outro tipo</option>';
-                    conteudoHTML += '</select>';
-                    conteudoHTML += '</div>';
-
-                    // Demais - Classificação
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Classificação:</label>';
-                    conteudoHTML += '<select id="selectDemaisClassificacaoUnidade" style="width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 3px;">';
-                    conteudoHTML += '<option value="">Selecione...</option>';
-                    conteudoHTML += '<option value="Luxo"' + (dados.demais_classificacao === 'Luxo' ? ' selected' : '') + '>Luxo</option>';
-                    conteudoHTML += '<option value="Boa"' + (dados.demais_classificacao === 'Boa' ? ' selected' : '') + '>Boa</option>';
-                    conteudoHTML += '<option value="Média"' + (dados.demais_classificacao === 'Média' ? ' selected' : '') + '>Média</option>';
-                    conteudoHTML += '<option value="Popular"' + (dados.demais_classificacao === 'Popular' ? ' selected' : '') + '>Popular</option>';
-                    conteudoHTML += '<option value="Rústica / Precária"' + (dados.demais_classificacao === 'Rústica / Precária' ? ' selected' : '') + '>Rústica / Precária</option>';
-                    conteudoHTML += '</select>';
-                    conteudoHTML += '</div>';
-
-                    // Demais - Área construída (calculada: área × (pavimentos - 1))
-                    const areaDemaisPavimentos = mostrarDemaisPavimentos ? (areaPoligono * (pavimentosAtual - 1)) : 0;
-                    conteudoHTML += '<div style="margin-bottom: 15px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Área construída:</label>';
-                    conteudoHTML += '<input type="text" id="inputDemaisAreaUnidade" value="' + areaDemaisPavimentos.toFixed(2) + '" readonly style="width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5;">';
-                    conteudoHTML += '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Botões Revisado / Não Revisado
-                    conteudoHTML += '<div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd; display: flex; gap: 10px;">';
-                    conteudoHTML += '<button id="btnRevisadoUnidade" style="flex: 1; padding: 8px; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; background-color: ' + (revisadoAtual == 1 ? corRevisado : '#ccc') + '; color: ' + (revisadoAtual == 1 ? '#000' : '#666') + ';">REVISADO</button>';
-                    conteudoHTML += '<button id="btnNaoRevisadoUnidade" style="flex: 1; padding: 8px; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; background-color: ' + (revisadoAtual == 0 ? corNaoRevisado : '#ccc') + '; color: ' + (revisadoAtual == 0 ? '#fff' : '#666') + ';">NÃO REVISADO</button>';
-                    conteudoHTML += '</div>';
-
-                    // Botão Salvar
-                    conteudoHTML += '<div style="margin-top: 15px; text-align: center;">';
-                    conteudoHTML += '<button id="btnSalvarUnidade" style="padding: 10px 30px; background-color: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 14px;"><i class="fas fa-save"></i> Salvar</button>';
-                    conteudoHTML += '</div>';
-
-                    conteudoHTML += '</div>';
-
-                    this.infoWindow.setContent(conteudoHTML);
-
-                    // Variável para armazenar estado de revisado
-                    let revisadoEstado = revisadoAtual;
-
-                    // Define a cor inicial do polígono baseado no estado de revisado
-                    if (revisadoAtual == 1) {
-                        poligonoRef.setOptions({
-                            strokeColor: corRevisado,
-                            fillColor: corRevisado
-                        });
-                        poligonoRef.corOriginal = corRevisado;
-                    } else {
-                        poligonoRef.setOptions({
-                            strokeColor: corNaoRevisado,
-                            fillColor: corNaoRevisado
-                        });
-                        poligonoRef.corOriginal = corNaoRevisado;
-                    }
-
-                    // Adiciona event listeners após o InfoWindow ser aberto
-                    google.maps.event.addListenerOnce(this.infoWindow, 'domready', () => {
-                        // Função para atualizar área de demais pavimentos e mostrar/ocultar seção
-                        const atualizarAreaDemaisPavimentos = function () {
-                            const pavimentos = parseInt($('#inputPavimentosUnidade').val()) || 1;
-                            const divDemaisPavimentos = $('#divDemaisPavimentosUnidade');
-
-                            if (pavimentos > 1) {
-                                divDemaisPavimentos.show();
-                                const areaDemais = areaPoligono * (pavimentos - 1);
-                                $('#inputDemaisAreaUnidade').val(areaDemais.toFixed(2));
-                            } else {
-                                divDemaisPavimentos.hide();
-                                $('#inputDemaisAreaUnidade').val('0.00');
-                            }
-                        };
-
-                        // Event listener no campo de pavimentos
-                        $('#inputPavimentosUnidade').on('input change', function () {
-                            atualizarAreaDemaisPavimentos();
-                        });
-
-                        // Botão Revisado
-                        $('#btnRevisadoUnidade').on('click', function () {
-                            revisadoEstado = 1;
-                            $(this).css('background-color', corRevisado).css('color', '#000');
-                            $('#btnNaoRevisadoUnidade').css('background-color', '#ccc').css('color', '#666');
-                            poligonoRef.setOptions({
-                                strokeColor: corRevisado,
-                                fillColor: corRevisado
-                            });
-                            poligonoRef.corOriginal = corRevisado;
-                        });
-
-                        // Botão Não Revisado
-                        $('#btnNaoRevisadoUnidade').on('click', function () {
-                            revisadoEstado = 0;
-                            $(this).css('background-color', corNaoRevisado).css('color', '#fff');
-                            $('#btnRevisadoUnidade').css('background-color', '#ccc').css('color', '#666');
-                            poligonoRef.setOptions({
-                                strokeColor: corNaoRevisado,
-                                fillColor: corNaoRevisado
-                            });
-                            poligonoRef.corOriginal = corNaoRevisado;
-                        });
-
-                        // Botão Salvar
-                        $('#btnSalvarUnidade').on('click', function () {
-                            const btnSalvar = $(this);
-                            btnSalvar.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Salvando...');
-
-                            const dadosSalvar = {
-                                id_desenho: idDesenhoRef,
-                                revisado: revisadoEstado,
-                                pavimentos: $('#inputPavimentosUnidade').val(),
-                                utilizacao: $('#selectUtilizacaoUnidade').val(),
-                                terreo_uso: $('#selectTerreoUsoUnidade').val(),
-                                terreo_tipo: $('#selectTerreoTipoUnidade').val(),
-                                terreo_classificacao: $('#selectTerreoClassificacaoUnidade').val(),
-                                terreo_area: $('#inputTerreoAreaUnidade').val(),
-                                demais_uso: $('#selectDemaisUsoUnidade').val(),
-                                demais_tipo: $('#selectDemaisTipoUnidade').val(),
-                                demais_classificacao: $('#selectDemaisClassificacaoUnidade').val(),
-                                demais_area: $('#inputDemaisAreaUnidade').val(),
-                                cor: poligonoRef.corOriginal,
-                                quadricula: dadosOrto[0]['quadricula']
-                            };
-
-                            $.ajax({
-                                url: 'salvar_dados_unidade.php',
-                                method: 'POST',
-                                data: dadosSalvar,
-                                dataType: 'json',
-                                success: function (response) {
-                                    if (response.status === 'sucesso') {
-                                        btnSalvar.prop('disabled', false).html('<i class="fas fa-check"></i> Salvo!');
-                                        setTimeout(() => {
-                                            self.infoWindow.close();
-                                        }, 1000);
-                                    } else {
-                                        alert('Erro ao salvar: ' + response.mensagem);
-                                        btnSalvar.prop('disabled', false).html('<i class="fas fa-save"></i> Salvar');
-                                    }
-                                },
-                                error: function () {
-                                    alert('Erro ao comunicar com o servidor');
-                                    btnSalvar.prop('disabled', false).html('<i class="fas fa-save"></i> Salvar');
-                                }
-                            });
-                        });
+                if (response.status === 'sucesso' && response.dados && response.dados.revisado == 1) {
+                    // Se revisado, muda para verde limão
+                    const cor = '#00FF00';
+                    objeto.setOptions({
+                        strokeColor: cor,
+                        fillColor: cor
                     });
+                    objeto.corOriginal = cor;
+                    objeto.revisado = 1;
                 } else {
-                    this.infoWindow.setContent('<div style="padding: 10px; color: red;">Erro ao carregar dados: ' + (response.mensagem || 'Erro desconhecido') + '</div>');
+                    // Se não revisado, mantém magenta
+                    objeto.revisado = 0;
                 }
             },
             error: () => {
-                this.infoWindow.setContent('<div style="padding: 10px; color: red;">Erro ao carregar dados da unidade</div>');
+                // Se não encontrar, mantém cor padrão (magenta)
+                objeto.revisado = 0;
             }
         });
     },
 
-    abrirInfoWindowUnidade2: function (poligono, posicao, idDesenho) {
-        // Fecha InfoWindow anterior se existir
-        if (this.infoWindow) {
-            this.infoWindow.close();
+    calcularAreaPoligono: function (poligono) {
+        const path = poligono.getPath();
+        const pontos = [];
+        
+        for (let i = 0; i < path.getLength(); i++) {
+            const ponto = path.getAt(i);
+            pontos.push([ponto.lng(), ponto.lat()]);
         }
+        
+        // Fecha o polígono
+        pontos.push(pontos[0]);
+        
+        try {
+            const poligonoGeoJSON = turf.polygon([pontos]);
+            const area = turf.area(poligonoGeoJSON); // retorna em metros quadrados
+            return area.toFixed(2);
+        } catch (e) {
+            console.error('Erro ao calcular área:', e);
+            return '0.00';
+        }
+    },
 
-        // Calcula a área do polígono em metros quadrados (float)
-        let areaPoligono = 0;
-        if (poligono.coordenadasGeoJSON && turf) {
+    abrirInfoWindowUnidade: function (poligono, posicao, idDesenho) {
+        // Fecha InfoWindow anterior se existir
+        if (this.infoWindow_unidade) {
             try {
-                areaPoligono = turf.area(poligono.coordenadasGeoJSON);
+                this.infoWindow_unidade.close();
             } catch (e) {
-                console.error('Erro ao calcular área:', e);
+                console.log('Erro ao fechar InfoWindow anterior:', e);
+            }
+        }
+        if (this.infoWindow) {
+            try {
+                this.infoWindow.close();
+            } catch (e) {
+                console.log('Erro ao fechar InfoWindow anterior:', e);
             }
         }
 
-        // Mostra loading no InfoWindow
-        this.infoWindow = new google.maps.InfoWindow({
-            content: '<div style="padding: 10px; text-align: center;"><i class="fas fa-spinner fa-spin"></i> Carregando dados...</div>',
-            position: posicao
-        });
+        // Verifica se o mapa está inicializado
+        if (!this.map) {
+            console.error('Mapa não está inicializado');
+            return;
+        }
 
-        this.infoWindow.open(this.map);
+        // Calcula a área do polígono
+        const areaTerreo = this.calcularAreaPoligono(poligono);
+        const areaDemais = areaTerreo; // Por padrão, mesma área (pode ser calculada diferente depois)
 
-        // Busca dados da unidade
+        // Busca dados salvos se existirem
         $.ajax({
-            url: 'buscar_dados_unidade.php',
+            url: 'buscar_informacoes_bloco.php',
             method: 'GET',
-            data: {
-                id_desenho: idDesenho
+            data: { id_desenhos: idDesenho },
+            dataType: 'json',
+            success: (response) => {
+                try {
+                    // Se for string, faz parse
+                    if (typeof response === 'string') {
+                        response = JSON.parse(response);
+                    }
+                    
+                    const dados = (response.status === 'sucesso' && response.dados) ? response.dados : null;
+                    this.criarHTMLInfoWindowUnidade(poligono, posicao, idDesenho, areaTerreo, areaDemais, dados);
+                } catch (e) {
+                    console.error('Erro ao processar resposta:', e, response);
+                    // Se houver erro, cria com valores padrão
+                    this.criarHTMLInfoWindowUnidade(poligono, posicao, idDesenho, areaTerreo, areaDemais, null);
+                }
             },
+            error: (xhr, status, error) => {
+                console.log('Erro ao buscar informações:', {
+                    status: status,
+                    error: error,
+                    responseText: xhr.responseText,
+                    statusCode: xhr.status
+                });
+                // Se não encontrar dados ou houver erro, cria com valores padrão
+                this.criarHTMLInfoWindowUnidade(poligono, posicao, idDesenho, areaTerreo, areaDemais, null);
+            }
+        });
+    },
+
+    criarHTMLInfoWindowUnidade: function (poligono, posicao, idDesenho, areaTerreo, areaDemais, dados) {
+        const revisado = dados ? dados.revisado : 0;
+        const corAtual = revisado ? '#00FF00' : '#ff00ff'; // Verde limão ou magenta
+        
+        let conteudoHTML = `
+            <div style="width: 400px; padding: 10px; font-family: Arial, sans-serif;">
+                <h4 style="margin-top: 0; margin-bottom: 15px; color: #333;">Informações da Unidade</h4>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Qtde. Pavimentos:</label>
+                    <input type="number" id="pavimentos" min="1" value="${dados ? dados.pavimentos || '' : ''}" 
+                           style="width: 100%; padding: 5px; box-sizing: border-box;" 
+                           onkeypress="return event.charCode >= 48 && event.charCode <= 57">
+                </div>
+
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Utilização:</label>
+                    <select id="utilizacao" style="width: 100%; padding: 5px; box-sizing: border-box;">
+                        <option value="">Selecione...</option>
+                        <option value="Residencial" ${dados && dados.utilizacao === 'Residencial' ? 'selected' : ''}>Residencial</option>
+                        <option value="Comercial" ${dados && dados.utilizacao === 'Comercial' ? 'selected' : ''}>Comercial</option>
+                        <option value="Mista" ${dados && dados.utilizacao === 'Mista' ? 'selected' : ''}>Mista</option>
+                    </select>
+                </div>
+
+                <h5 style="margin-top: 15px; margin-bottom: 10px; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 5px;">Pavimento Térreo</h5>
+
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Usos:</label>
+                    <select id="terreo_uso" style="width: 100%; padding: 5px; box-sizing: border-box;">
+                        <option value="">Selecione...</option>
+                        <option value="Area A Residencial" ${dados && dados.terreo_uso === 'Area A Residencial' ? 'selected' : ''}>Area A Residencial</option>
+                        <option value="Area A Comercial" ${dados && dados.terreo_uso === 'Area A Comercial' ? 'selected' : ''}>Area A Comercial</option>
+                        <option value="Área A Residencial, Área B Comercial" ${dados && dados.terreo_uso === 'Área A Residencial, Área B Comercial' ? 'selected' : ''}>Área A Residencial, Área B Comercial</option>
+                        <option value="Área A Comercial, Área B Residencial" ${dados && dados.terreo_uso === 'Área A Comercial, Área B Residencial' ? 'selected' : ''}>Área A Comercial, Área B Residencial</option>
+                        <option value="Área A Residencial, Área B Residencial" ${dados && dados.terreo_uso === 'Área A Residencial, Área B Residencial' ? 'selected' : ''}>Área A Residencial, Área B Residencial</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Tipo da Construção:</label>
+                    <select id="terreo_tipo" style="width: 100%; padding: 5px; box-sizing: border-box;">
+                        <option value="">Selecione...</option>
+                        <option value="Casa / Sobrado" ${dados && dados.terreo_tipo === 'Casa / Sobrado' ? 'selected' : ''}>Casa / Sobrado</option>
+                        <option value="Apartamento" ${dados && dados.terreo_tipo === 'Apartamento' ? 'selected' : ''}>Apartamento</option>
+                        <option value="Comercial ou prestação de Serviços" ${dados && dados.terreo_tipo === 'Comercial ou prestação de Serviços' ? 'selected' : ''}>Comercial ou prestação de Serviços</option>
+                        <option value="Industrial" ${dados && dados.terreo_tipo === 'Industrial' ? 'selected' : ''}>Industrial</option>
+                        <option value="Galpão / Telheiro" ${dados && dados.terreo_tipo === 'Galpão / Telheiro' ? 'selected' : ''}>Galpão / Telheiro</option>
+                        <option value="Outro tipo" ${dados && dados.terreo_tipo === 'Outro tipo' ? 'selected' : ''}>Outro tipo</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Classificação:</label>
+                    <select id="terreo_classificacao" style="width: 100%; padding: 5px; box-sizing: border-box;">
+                        <option value="">Selecione...</option>
+                        <option value="Luxo" ${dados && dados.terreo_classificacao === 'Luxo' ? 'selected' : ''}>Luxo</option>
+                        <option value="Boa" ${dados && dados.terreo_classificacao === 'Boa' ? 'selected' : ''}>Boa</option>
+                        <option value="Média" ${dados && dados.terreo_classificacao === 'Média' ? 'selected' : ''}>Média</option>
+                        <option value="Popular" ${dados && dados.terreo_classificacao === 'Popular' ? 'selected' : ''}>Popular</option>
+                        <option value="Rústica / Precária" ${dados && dados.terreo_classificacao === 'Rústica / Precária' ? 'selected' : ''}>Rústica / Precária</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Área construída:</label>
+                    <input type="text" id="terreo_area" value="${areaTerreo}" readonly 
+                           style="width: 100%; padding: 5px; box-sizing: border-box; background-color: #f0f0f0;">
+                </div>
+
+                <h5 style="margin-top: 15px; margin-bottom: 10px; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 5px;">Demais Pavimentos</h5>
+
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Usos:</label>
+                    <select id="demais_uso" style="width: 100%; padding: 5px; box-sizing: border-box;">
+                        <option value="">Selecione...</option>
+                        <option value="Area A Residencial" ${dados && dados.demais_uso === 'Area A Residencial' ? 'selected' : ''}>Area A Residencial</option>
+                        <option value="Area A Comercial" ${dados && dados.demais_uso === 'Area A Comercial' ? 'selected' : ''}>Area A Comercial</option>
+                        <option value="Área A Residencial, Área B Comercial" ${dados && dados.demais_uso === 'Área A Residencial, Área B Comercial' ? 'selected' : ''}>Área A Residencial, Área B Comercial</option>
+                        <option value="Área A Comercial, Área B Residencial" ${dados && dados.demais_uso === 'Área A Comercial, Área B Residencial' ? 'selected' : ''}>Área A Comercial, Área B Residencial</option>
+                        <option value="Área A Residencial, Área B Residencial" ${dados && dados.demais_uso === 'Área A Residencial, Área B Residencial' ? 'selected' : ''}>Área A Residencial, Área B Residencial</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Tipo da Construção:</label>
+                    <select id="demais_tipo" style="width: 100%; padding: 5px; box-sizing: border-box;">
+                        <option value="">Selecione...</option>
+                        <option value="Casa / Sobrado" ${dados && dados.demais_tipo === 'Casa / Sobrado' ? 'selected' : ''}>Casa / Sobrado</option>
+                        <option value="Apartamento" ${dados && dados.demais_tipo === 'Apartamento' ? 'selected' : ''}>Apartamento</option>
+                        <option value="Comercial ou prestação de Serviços" ${dados && dados.demais_tipo === 'Comercial ou prestação de Serviços' ? 'selected' : ''}>Comercial ou prestação de Serviços</option>
+                        <option value="Industrial" ${dados && dados.demais_tipo === 'Industrial' ? 'selected' : ''}>Industrial</option>
+                        <option value="Galpão / Telheiro" ${dados && dados.demais_tipo === 'Galpão / Telheiro' ? 'selected' : ''}>Galpão / Telheiro</option>
+                        <option value="Outro tipo" ${dados && dados.demais_tipo === 'Outro tipo' ? 'selected' : ''}>Outro tipo</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Classificação:</label>
+                    <select id="demais_classificacao" style="width: 100%; padding: 5px; box-sizing: border-box;">
+                        <option value="">Selecione...</option>
+                        <option value="Luxo" ${dados && dados.demais_classificacao === 'Luxo' ? 'selected' : ''}>Luxo</option>
+                        <option value="Boa" ${dados && dados.demais_classificacao === 'Boa' ? 'selected' : ''}>Boa</option>
+                        <option value="Média" ${dados && dados.demais_classificacao === 'Média' ? 'selected' : ''}>Média</option>
+                        <option value="Popular" ${dados && dados.demais_classificacao === 'Popular' ? 'selected' : ''}>Popular</option>
+                        <option value="Rústica / Precária" ${dados && dados.demais_classificacao === 'Rústica / Precária' ? 'selected' : ''}>Rústica / Precária</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Área construída:</label>
+                    <input type="text" id="demais_area" value="${areaDemais}" readonly 
+                           style="width: 100%; padding: 5px; box-sizing: border-box; background-color: #f0f0f0;">
+                </div>
+
+                <div style="margin-bottom: 15px; display: flex; gap: 10px;">
+                    <button id="btnRevisado" data-id="${idDesenho}" 
+                            style="flex: 1; padding: 8px; background-color: ${revisado ? '#00FF00' : '#e0e0e0'}; 
+                                   color: ${revisado ? '#000' : '#666'}; border: 1px solid #ccc; cursor: pointer; 
+                                   font-weight: ${revisado ? 'bold' : 'normal'};">
+                        REVISADO
+                    </button>
+                    <button id="btnNaoRevisado" data-id="${idDesenho}" 
+                            style="flex: 1; padding: 8px; background-color: ${!revisado ? '#ff00ff' : '#e0e0e0'}; 
+                                   color: ${!revisado ? '#fff' : '#666'}; border: 1px solid #ccc; cursor: pointer; 
+                                   font-weight: ${!revisado ? 'bold' : 'normal'};">
+                        NÃO REVISADO
+                    </button>
+                </div>
+
+                <button id="btnSalvarUnidade" data-id="${idDesenho}" 
+                        style="width: 100%; padding: 10px; background-color: #007bff; color: white; 
+                               border: none; cursor: pointer; font-weight: bold; margin-top: 10px;">
+                    Salvar
+                </button>
+            </div>
+        `;
+
+        // Cria o InfoWindow com tratamento de erro
+        try {
+            // Fecha InfoWindow anterior se existir
+            if (this.infoWindow_unidade) {
+                try {
+                    this.infoWindow_unidade.close();
+                    this.infoWindow_unidade = null;
+                } catch (e) {
+                    // Ignora erros ao fechar
+                    this.infoWindow_unidade = null;
+                }
+            }
+
+            // Verifica se google.maps.InfoWindow está disponível
+            if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+                console.error('Google Maps não está disponível');
+                alert('Erro: Google Maps não está totalmente carregado. Aguarde alguns instantes e tente novamente.');
+                return;
+            }
+
+            // Tenta criar o InfoWindow, se falhar pode ser problema de módulo
+            let InfoWindowClass = google.maps.InfoWindow;
+            
+            // Se InfoWindow não estiver disponível diretamente, tenta alternativa
+            if (!InfoWindowClass) {
+                console.error('InfoWindow não está disponível, tentando alternativa...');
+                // Retorna e mostra mensagem
+                alert('InfoWindow não está disponível. Verifique se o Google Maps está carregado corretamente.');
+                return;
+            }
+
+            // Cria o InfoWindow
+            try {
+                this.infoWindow_unidade = new InfoWindowClass({
+                    content: conteudoHTML,
+                    position: posicao,
+                    maxWidth: 450
+                });
+
+                // Abre o InfoWindow
+                if (this.map) {
+                    // Usa requestAnimationFrame para garantir que está pronto
+                    const self = this;
+                    requestAnimationFrame(() => {
+                        try {
+                            if (self.infoWindow_unidade && self.map) {
+                                self.infoWindow_unidade.open(self.map);
+                            }
+                        } catch (e) {
+                            console.error('Erro ao abrir InfoWindow:', e);
+                            // Tenta novamente após pequeno delay
+                            setTimeout(() => {
+                                try {
+                                    if (self.infoWindow_unidade && self.map) {
+                                        self.infoWindow_unidade.open(self.map);
+                                    }
+                                } catch (e2) {
+                                    console.error('Erro ao abrir InfoWindow após retry:', e2);
+                                }
+                            }, 200);
+                        }
+                    });
+                } else {
+                    console.error('Mapa não está disponível para abrir InfoWindow');
+                }
+            } catch (e) {
+                console.error('Erro ao criar InfoWindow:', e);
+                throw e; // Re-lança para ser capturado pelo try-catch externo
+            }
+        } catch (e) {
+            console.error('Erro ao criar InfoWindow:', e);
+            alert('Erro ao abrir informações da unidade. Tente novamente.');
+        }
+
+        // Adiciona event listeners após o InfoWindow ser aberto
+        if (this.infoWindow_unidade) {
+            google.maps.event.addListenerOnce(this.infoWindow_unidade, 'domready', () => {
+                try {
+                    const self = this;
+                    
+                    // Botão Revisado
+                    $('#btnRevisado').off('click').on('click', function() {
+                        const id = $(this).data('id');
+                        self.alterarStatusRevisadoUnidade(poligono, id, 1, true);
+                    });
+
+                    // Botão Não Revisado
+                    $('#btnNaoRevisado').off('click').on('click', function() {
+                        const id = $(this).data('id');
+                        self.alterarStatusRevisadoUnidade(poligono, id, 0, false);
+                    });
+
+                    // Botão Salvar
+                    $('#btnSalvarUnidade').off('click').on('click', function() {
+                        const id = $(this).data('id');
+                        self.salvarInformacoesUnidade(id, poligono);
+                    });
+
+                    // Impede que apenas números inteiros sejam digitados no campo pavimentos
+                    $('#pavimentos').on('keypress', function(e) {
+                        if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                            e.preventDefault();
+                        }
+                    });
+                } catch (e) {
+                    console.error('Erro ao adicionar listeners do InfoWindow:', e);
+                }
+            });
+        }
+    },
+
+    alterarStatusRevisadoUnidade: function(poligono, idDesenho, revisado, isRevisado) {
+        const cor = isRevisado ? '#00FF00' : '#ff00ff'; // Verde limão ou magenta
+        
+        // Atualiza a cor do polígono
+        poligono.setOptions({
+            strokeColor: cor,
+            fillColor: cor
+        });
+        poligono.corOriginal = cor;
+        
+        // Armazena o estado revisado no polígono para uso na hora de salvar
+        poligono.revisado = revisado;
+
+        // Atualiza os botões visualmente
+        if (isRevisado) {
+            $('#btnRevisado').css({
+                'background-color': '#00FF00',
+                'color': '#000',
+                'font-weight': 'bold'
+            });
+            $('#btnNaoRevisado').css({
+                'background-color': '#e0e0e0',
+                'color': '#666',
+                'font-weight': 'normal'
+            });
+        } else {
+            $('#btnRevisado').css({
+                'background-color': '#e0e0e0',
+                'color': '#666',
+                'font-weight': 'normal'
+            });
+            $('#btnNaoRevisado').css({
+                'background-color': '#ff00ff',
+                'color': '#fff',
+                'font-weight': 'bold'
+            });
+        }
+
+        console.log('Status revisado alterado para:', isRevisado ? 'Revisado' : 'Não Revisado');
+    },
+
+    salvarInformacoesUnidade: function(idDesenho, poligono) {
+        // Usa o estado revisado do polígono ou verifica o botão
+        const revisado = poligono.revisado !== undefined ? poligono.revisado : 
+                        ($('#btnRevisado').css('background-color') === 'rgb(0, 255, 0)' || 
+                         $('#btnRevisado').css('background-color') === '#00FF00') ? 1 : 0;
+        
+        const dados = {
+            id_desenhos: idDesenho,
+            revisado: revisado,
+            pavimentos: $('#pavimentos').val() || '',
+            utilizacao: $('#utilizacao').val() || '',
+            terreo_uso: $('#terreo_uso').val() || '',
+            terreo_tipo: $('#terreo_tipo').val() || '',
+            terreo_classificacao: $('#terreo_classificacao').val() || '',
+            terreo_area: $('#terreo_area').val() || '',
+            demais_uso: $('#demais_uso').val() || '',
+            demais_tipo: $('#demais_tipo').val() || '',
+            demais_classificacao: $('#demais_classificacao').val() || '',
+            demais_area: $('#demais_area').val() || ''
+        };
+
+        $.ajax({
+            url: 'salvar_informacoes_bloco.php',
+            method: 'POST',
+            data: dados,
             dataType: 'json',
             success: (response) => {
                 if (response.status === 'sucesso') {
-                    const dados = response.dados || {};
-                    const revisadoAtual = dados.revisado || 0;
-
-                    // Cores para revisado/não revisado
-                    const corRevisado = '#90EE90'; // Verde limão
-                    const corNaoRevisado = '#ff00ff'; // Magenta
-
-                    let conteudoHTML = '<div style="padding: 15px; min-width: 400px; max-width: 500px; font-size: 13px;">';
-                    conteudoHTML += '<h6 style="margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #ff00ff; padding-bottom: 8px;">Informações do Bloco (Somente Leitura)</h6>';
-
-                    // Qtde. Pavimentos
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Qtde. Pavimentos:</label>';
-                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.pavimentos || 'Não informado') + '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Utilização
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Utilização:</label>';
-                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.utilizacao || 'Não informado') + '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Pavimento Térreo
-                    conteudoHTML += '<div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd;">';
-                    conteudoHTML += '<h6 style="margin: 0 0 12px 0; color: #666; font-weight: bold;">Pavimento Térreo</h6>';
-
-                    // Térreo - Usos
-                    //conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    //conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Usos:</label>';
-                    //conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.terreo_uso || 'Não informado') + '</div>';
-                    //conteudoHTML += '</div>';
-
-                    // Térreo - Tipo da Construção
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Tipo da Construção:</label>';
-                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.terreo_tipo || 'Não informado') + '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Térreo - Classificação
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Classificação:</label>';
-                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.terreo_classificacao || 'Não informado') + '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Térreo - Área construída
-                    conteudoHTML += '<div style="margin-bottom: 15px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Área construída:</label>';
-                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + areaPoligono.toFixed(2) + ' m²</div>';
-                    conteudoHTML += '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Demais Pavimentos (só aparece se pavimentos > 1)
-                    const pavimentosAtual = parseInt(dados.pavimentos) || 1;
-                    const mostrarDemaisPavimentos = pavimentosAtual > 1;
-                    if (mostrarDemaisPavimentos) {
-                        conteudoHTML += '<div id="divDemaisPavimentosUnidade" style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd;">';
-                        conteudoHTML += '<h6 style="margin: 0 0 12px 0; color: #666; font-weight: bold;">Demais Pavimentos</h6>';
-
-                        // Demais - Usos
-                        //conteudoHTML += '<div style="margin-bottom: 12px;">';
-                        //conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Usos:</label>';
-                        //conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.demais_uso || 'Não informado') + '</div>';
-                        //conteudoHTML += '</div>';
-
-                        // Demais - Tipo da Construção
-                        conteudoHTML += '<div style="margin-bottom: 12px;">';
-                        conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Tipo da Construção:</label>';
-                        conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.demais_tipo || 'Não informado') + '</div>';
-                        conteudoHTML += '</div>';
-
-                        // Demais - Classificação
-                        conteudoHTML += '<div style="margin-bottom: 12px;">';
-                        conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Classificação:</label>';
-                        conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.demais_classificacao || 'Não informado') + '</div>';
-                        conteudoHTML += '</div>';
-
-                        // Demais - Área construída (calculada: área × (pavimentos - 1))
-                        const areaDemaisPavimentos = areaPoligono * (pavimentosAtual - 1);
-                        conteudoHTML += '<div style="margin-bottom: 15px;">';
-                        conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Área construída:</label>';
-                        conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + areaDemaisPavimentos.toFixed(2) + ' m²</div>';
-                        conteudoHTML += '</div>';
-                        conteudoHTML += '</div>';
-                    }
-
-                    // Status de Revisão (somente visualização)
-                    conteudoHTML += '<div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd; display: flex; gap: 10px; pointer-events: none;">';
-                    conteudoHTML += '<div style="flex: 1; padding: 8px; border: 2px solid ' + (revisadoAtual == 1 ? corRevisado : '#ddd') + '; border-radius: 3px; font-weight: bold; text-align: center; background-color: ' + (revisadoAtual == 1 ? corRevisado : '#fff') + '; color: ' + (revisadoAtual == 1 ? '#000' : '#999') + ';">REVISADO</div>';
-                    conteudoHTML += '<div style="flex: 1; padding: 8px; border: 2px solid ' + (revisadoAtual == 0 ? corNaoRevisado : '#ddd') + '; border-radius: 3px; font-weight: bold; text-align: center; background-color: ' + (revisadoAtual == 0 ? corNaoRevisado : '#fff') + '; color: ' + (revisadoAtual == 0 ? '#fff' : '#999') + ';">NÃO REVISADO</div>';
-                    conteudoHTML += '</div>';
-
-                    conteudoHTML += '</div>';
-
-                    this.infoWindow.setContent(conteudoHTML);
-
-                    // Define a cor do polígono baseado no estado de revisado
-                    if (revisadoAtual == 1) {
-                        poligono.setOptions({
-                            strokeColor: corRevisado,
-                            fillColor: corRevisado
-                        });
-                        poligono.corOriginal = corRevisado;
-                    } else {
-                        poligono.setOptions({
-                            strokeColor: corNaoRevisado,
-                            fillColor: corNaoRevisado
-                        });
-                        poligono.corOriginal = corNaoRevisado;
+                    alert('Informações salvas com sucesso!');
+                    // Atualiza a cor baseada no status revisado
+                    const cor = dados.revisado ? '#00FF00' : '#ff00ff';
+                    poligono.setOptions({
+                        strokeColor: cor,
+                        fillColor: cor
+                    });
+                    poligono.corOriginal = cor;
+                    // Fecha o InfoWindow
+                    if (this.infoWindow_unidade) {
+                        this.infoWindow_unidade.close();
                     }
                 } else {
-                    this.infoWindow.setContent('<div style="padding: 10px; color: red;">Nenhum dado cadastrado para esta unidade</div>');
+                    alert('Erro ao salvar: ' + (response.mensagem || 'Erro desconhecido'));
                 }
             },
-            error: () => {
-                this.infoWindow.setContent('<div style="padding: 10px; color: red;">Erro ao carregar dados da unidade</div>');
+            error: (xhr, status, error) => {
+                console.error('Erro na requisição AJAX:', error);
+                alert('Erro ao comunicar com o servidor');
             }
         });
     },
@@ -675,12 +676,12 @@ const MapFramework = {
         // Extrai as coordenadas de um Polygon ou Polyline
         const path = objeto.getPath();
         const coordenadas = [];
-
+        
         for (let i = 0; i < path.getLength(); i++) {
             const ponto = path.getAt(i);
             coordenadas.push({ lat: ponto.lat(), lng: ponto.lng() });
         }
-
+        
         return coordenadas;
     },
 
@@ -701,13 +702,13 @@ const MapFramework = {
                 google.maps.event.addListener(objeto.getPath(), 'set_at', addToEditedList);
                 google.maps.event.addListener(objeto.getPath(), 'insert_at', addToEditedList);
                 google.maps.event.addListener(objeto.getPath(), 'remove_at', addToEditedList);
-
+                
                 // Listener para deletar vértice com botão direito
                 google.maps.event.addListener(objeto, 'rightclick', (e) => {
                     if (typeof e.vertex === 'number') {
                         const path = objeto.getPath();
                         const totalVertices = path.getLength();
-
+                        
                         if (totalVertices <= 3) {
                             alert('⚠️ Não é possível remover este vértice.\nO polígono precisa ter pelo menos 3 vértices.');
                             console.log('❌ Tentativa de remover vértice bloqueada (mínimo: 3)');
@@ -719,19 +720,19 @@ const MapFramework = {
                         }
                     }
                 });
-
+                
             } else if (objeto instanceof google.maps.Polyline) {
                 // Listeners para detectar mudanças
                 google.maps.event.addListener(objeto.getPath(), 'set_at', addToEditedList);
                 google.maps.event.addListener(objeto.getPath(), 'insert_at', addToEditedList);
                 google.maps.event.addListener(objeto.getPath(), 'remove_at', addToEditedList);
-
+                
                 // Listener para deletar vértice com botão direito
                 google.maps.event.addListener(objeto, 'rightclick', (e) => {
                     if (typeof e.vertex === 'number') {
                         const path = objeto.getPath();
                         const totalVertices = path.getLength();
-
+                        
                         if (totalVertices <= 2) {
                             alert('⚠️ Não é possível remover este vértice.\nA linha precisa ter pelo menos 2 pontos.');
                             console.log('❌ Tentativa de remover vértice bloqueada (mínimo: 2)');
@@ -744,7 +745,7 @@ const MapFramework = {
                     }
                 });
             }
-
+            
             objeto.editListenerAdded = true;
             console.log('✅ Listeners de edição adicionados ao desenho ID:', objeto.identificador);
         }
@@ -753,20 +754,20 @@ const MapFramework = {
     entrarModoEdicao: function () {
         this.modoEdicao = true;
         this.desenhosEditados = [];
-
+        
         // Oculta botões editar e excluir
         $('#btnEditar').addClass('d-none');
         $('#btnExcluir').addClass('d-none');
-
+        
         // Mostra botão sair da edição
         $('#btnSairEdicao').removeClass('d-none');
-
+        
         // Se houver objeto selecionado, torna editável e adiciona listeners
         if (this.selecionado) {
             this.selecionado.setOptions({ editable: true });
             this.adicionarListenersEdicao(this.selecionado);
         }
-
+        
         console.log('🔧 Modo de edição ativado');
     },
 
@@ -775,17 +776,17 @@ const MapFramework = {
         $('#loadingOverlay').fadeIn(200);
         console.log('=== INICIANDO SAÍDA DO MODO EDIÇÃO ===');
         console.log('Total de desenhos editados:', this.desenhosEditados.length);
-
+        
         try {
             // Se houver desenhos editados, salva todos
             if (this.desenhosEditados.length > 0) {
                 console.log(`Salvando ${this.desenhosEditados.length} desenhos editados...`);
-
+                
                 // Prepara array com dados para salvar
                 const dadosParaSalvar = this.desenhosEditados.map((desenho, index) => {
                     console.log(`Processando desenho ${index + 1}:`, desenho);
                     let coordenadas;
-
+                    
                     if (desenho instanceof google.maps.Polygon) {
                         coordenadas = this.obterCoordenadasObjeto(desenho);
                         console.log(`  - Tipo: Polígono`);
@@ -793,18 +794,18 @@ const MapFramework = {
                         coordenadas = this.obterCoordenadasObjeto(desenho);
                         console.log(`  - Tipo: Polilinha`);
                     }
-
+                    
                     console.log(`  - ID: ${desenho.identificador}`);
                     console.log(`  - Coordenadas extraídas: ${coordenadas.length} pontos`);
-
+                    
                     return {
                         id: desenho.identificador,
                         coordenadas: JSON.stringify(coordenadas)
                     };
                 });
-
+                
                 console.log('Dados preparados para salvar:', dadosParaSalvar);
-
+                
                 // Salva de forma síncrona
                 const response = await $.ajax({
                     url: 'atualizar_coordenadas_desenhos.php',
@@ -814,7 +815,7 @@ const MapFramework = {
                     },
                     dataType: 'json'
                 });
-
+                
                 if (response.status === 'sucesso') {
                     console.log('✅ Todos os desenhos foram salvos com sucesso!');
                     console.log('Resposta do servidor:', response);
@@ -825,29 +826,29 @@ const MapFramework = {
             } else {
                 console.log('ℹ️ Nenhum desenho foi editado, nada para salvar');
             }
-
+            
             // Torna todos os desenhos não editáveis
             this.desenhosEditados.forEach(desenho => {
                 desenho.setOptions({ editable: false });
             });
-
+            
             // Limpa array de editados
             this.desenhosEditados = [];
-
+            
             // Sai do modo de edição
             this.modoEdicao = false;
-
+            
             // Oculta botão sair da edição
             $('#btnSairEdicao').addClass('d-none');
-
+            
             // Se houver objeto selecionado, mostra botões normais
             if (this.selecionado) {
                 $('#btnEditar').removeClass('d-none');
                 $('#btnExcluir').removeClass('d-none');
             }
-
+            
             console.log('=== MODO DE EDIÇÃO DESATIVADO ===');
-
+            
         } catch (error) {
             console.error('❌ Erro ao sair do modo de edição:', error);
             alert('Erro ao salvar as alterações: ' + error.message);
@@ -887,7 +888,7 @@ const MapFramework = {
             mapTypeId: 'roadmap',
             zoomControl: true,
             scaleControl: true,
-
+            
             streetViewControl: true,
             fullscreenControl: false,
             mapTypeControl: false,
@@ -903,45 +904,43 @@ const MapFramework = {
             if (this.infoWindow) {
                 this.infoWindow.close();
             }
+            if (this.infoWindow_unidade) {
+                this.infoWindow_unidade.close();
+            }
         });
 
         const streetView = this.map.getStreetView();
         streetView.addListener("visible_changed", function () {
-
             if (streetView.getVisible()) {
                 $("#controleNavegacaoQuadriculas").hide();
-                if ($('#new_checkLotes').is(':checked')) {
-                    $("#controleDesenhosPrefeitura").hide();
-                }
+                $("#controleDesenhosPrefeitura").hide();
             } else {
                 $("#controleNavegacaoQuadriculas").show();
-                if ($('#new_checkLotes').is(':checked')) {
-                    $("#controleDesenhosPrefeitura").show();
-                }
+                $("#controleDesenhosPrefeitura").show();
             }
         });
     },
 
     // Função para mostrar marcadores apenas do quarteirão selecionado
-    mostrarMarcadoresDoQuarteirao: function (nomeQuarteirao) {
+    mostrarMarcadoresDoQuarteirao: function(nomeQuarteirao) {
         if (!arrayCamadas.marcador_quadra) return;
-
+        
         //console.log('🔍 Buscando marcadores para quarteirão:', nomeQuarteirao, '(tipo:', typeof nomeQuarteirao, ')');
-
+        
         // Primeiro, oculta TODOS os marcadores
         arrayCamadas.marcador_quadra.forEach(marker => {
             marker.setMap(null);
         });
-
+        
         // Se nomeQuarteirao for null/undefined, apenas oculta todos e retorna
         if (!nomeQuarteirao) return;
-
+        
         let encontrados = 0;
-
+        
         // Mostra apenas os marcadores do quarteirão especificado
         arrayCamadas.marcador_quadra.forEach(marker => {
             //console.log('🔍 Marcador:', marker.numeroMarcador, 'quarteirao:', marker.quarteirao, '(tipo:', typeof marker.quarteirao, ')');
-
+            
             // Tenta comparação com string e número
             if (marker.quarteirao == nomeQuarteirao || marker.quarteirao === nomeQuarteirao) {
                 marker.setMap(MapFramework.map);
@@ -949,7 +948,7 @@ const MapFramework = {
                 //console.log('✅ Marcador encontrado:', marker.numeroMarcador);
             }
         });
-
+        
         //console.log('📊 Total encontrado:', encontrados);
     },
 
@@ -1138,6 +1137,9 @@ const MapFramework = {
                 if (this.infoWindow) {
                     this.infoWindow.close();
                 }
+                if (this.infoWindow_unidade) {
+                    this.infoWindow_unidade.close();
+                }
             });
         }
     },
@@ -1186,19 +1188,6 @@ const MapFramework = {
         }
     },
 
-    // Função para mostrar/ocultar todos os marcadores (usado pelo checkbox)
-    alternarVisibilidadeTodosMarcadores: function (mostrar) {
-        if (!arrayCamadas.marcador_quadra) return;
-
-        arrayCamadas.marcador_quadra.forEach(marker => {
-            if (mostrar) {
-                marker.setMap(MapFramework.map);
-            } else {
-                marker.setMap(null);
-            }
-        });
-    },
-
     atualizarInteratividadeObjetos: function (interativo) {
         const camadasInterativas = ['quadra', 'unidade', 'lote', 'quarteirao', 'semCamadas']; // adicione outras se necessário
         Object.keys(arrayCamadas).forEach(nomeCamada => {
@@ -1229,10 +1218,10 @@ const MapFramework = {
                         const camadaNome = (desenho.camada || 'semCamadas').toLowerCase();
                         const tipo = desenho.tipo;
                         const coords = JSON.parse(desenho.coordenadas);
-
+                        
                         var cores = "black";
 
-                        if (desenho.cor_usuario) {
+                        if(desenho.cor_usuario) {
                             cores = desenho.cor_usuario;
                         } else {
                             cores = desenho.cor;
@@ -1251,7 +1240,7 @@ const MapFramework = {
                             if (camadaNome === 'unidade') {
                                 zIndexValue = 6; // Unidades acima das quadras
                             }
-
+                            
                             objeto = new google.maps.Polygon({
                                 paths: coords,
                                 strokeColor: cores,
@@ -1290,6 +1279,11 @@ const MapFramework = {
 
 
                         if (objeto) {
+                            // Se for unidade, busca informações do bloco para aplicar cor revisado
+                            if (camadaNome === 'unidade') {
+                                MapFramework.carregarCorUnidade(objeto, desenho.id);
+                            }
+                            
                             objeto.corOriginal = cores;
                             // Armazena o z-index original para uso posterior na seleção
                             objeto.zIndexOriginal = objeto.zIndex;
@@ -1302,25 +1296,22 @@ const MapFramework = {
                                 MapFramework.selecionarDesenho(objeto);
                                 console.log(objeto.identificador)
 
-                                if (paginaAtual == 'index_2') {
-                                    // Se for polígono E for unidade, abre InfoWindow com dados da tabela informacoes_blocos
+                                if(paginaAtual == 'index_2'){
+                                    // Se for unidade, abre InfoWindow de unidades
                                     if (tipo === 'poligono' && camadaNome === 'unidade' && event.latLng) {
-                                        MapFramework.abrirInfoWindowUnidade(objeto, event.latLng, objeto.identificador);
+                                        const idDesenho = objeto.identificador || desenho.id;
+                                        MapFramework.abrirInfoWindowUnidade(objeto, event.latLng, idDesenho);
                                     }
                                     // Se for polígono E não for unidade, abre InfoWindow com botões de cores
                                     else if (tipo === 'poligono' && camadaNome !== 'unidade' && event.latLng) {
                                         console.log(paginaAtual)
                                         MapFramework.abrirInfoWindowCores(objeto, event.latLng, desenho.id);
-                                    } else {
-                                        if (MapFramework.infoWindow) {
+                                    }else{
+                                        if(MapFramework.infoWindow){
                                             MapFramework.infoWindow.close();
                                         }
-                                    }
-                                } else {
-                                    if (tipo === 'poligono' && camadaNome === 'unidade' && event.latLng) {
-                                        // Se estiver na index_2, usa versão editável; na index_3, usa versão somente leitura
-                                        if (paginaAtual == 'index_3') {
-                                            MapFramework.abrirInfoWindowUnidade2(objeto, event.latLng, objeto.identificador);
+                                        if(MapFramework.infoWindow_unidade){
+                                            MapFramework.infoWindow_unidade.close();
                                         }
                                     }
                                 }
@@ -1332,7 +1323,7 @@ const MapFramework = {
                 } else {
                     console.warn('Erro ao carregar desenhos:', response.mensagem);
                 }
-
+                
                 // Garante que todos os objetos tenham o z-index correto após carregamento
                 MapFramework.aplicarZIndexCorreto();
             },
@@ -1342,7 +1333,7 @@ const MapFramework = {
         });
     },
 
-    aplicarZIndexCorreto: function () {
+    aplicarZIndexCorreto: function() {
         // Aplica z-index correto para quadras
         if (arrayCamadas['quadra']) {
             arrayCamadas['quadra'].forEach(quadra => {
@@ -1350,7 +1341,7 @@ const MapFramework = {
                 quadra.zIndexOriginal = 5;
             });
         }
-
+        
         // Aplica z-index correto para unidades
         if (arrayCamadas['unidade']) {
             arrayCamadas['unidade'].forEach(unidade => {
@@ -1358,7 +1349,7 @@ const MapFramework = {
                 unidade.zIndexOriginal = 6;
             });
         }
-
+        
         // Aplica z-index correto para lotes
         if (arrayCamadas['lote']) {
             arrayCamadas['lote'].forEach(lote => {
@@ -1940,13 +1931,13 @@ const MapFramework = {
 
             // Verifica se o polígono está dentro da quadra usando intersect
             const intersecao = turf.intersect(poligonoGeoJSON, buffer);
-
+            
             if (intersecao) {
                 // Calcula a área da interseção vs área do polígono original
                 const areaIntersecao = turf.area(intersecao);
                 const areaOriginal = turf.area(poligonoGeoJSON);
                 const percentualIntersecao = (areaIntersecao / areaOriginal) * 100;
-
+                
                 // Se mais de 80% do polígono está dentro da quadra, considera válido
                 if (percentualIntersecao > 80) {
                     poligonosDentro.push(quadra);
@@ -2047,9 +2038,9 @@ const MapFramework = {
         const identificador = objeto.identificador || null;
 
         // Verifica se é uma unidade (polígono com camada unidade)
-        const ehUnidade = objeto instanceof google.maps.Polygon &&
-            arrayCamadas['unidade'] &&
-            arrayCamadas['unidade'].includes(objeto);
+        const ehUnidade = objeto instanceof google.maps.Polygon && 
+                         arrayCamadas['unidade'] && 
+                         arrayCamadas['unidade'].includes(objeto);
 
         if (tipo === 'polilinha' || ehUnidade) {
             // Remove do mapa e da camada
@@ -2641,7 +2632,7 @@ const MapFramework = {
     controlarEspessuraLotes: function (value) {
         // Converte o valor do range (0-1) para uma espessura de linha apropriada (1-10 pixels)
         const espessura = 1 + (value * 9); // Range de 1 a 10 pixels
-
+        
         if (arrayCamadas['lote'] && arrayCamadas['lote'].length > 0) {
             arrayCamadas['lote'].forEach(lote => {
                 lote.setOptions({
@@ -2678,98 +2669,98 @@ const MapFramework = {
         return new Promise((resolve, reject) => {
             // Faz a requisição AJAX para carregar o JSON dos quarteirões
             $.ajax({
-                url: `correspondencias_quarteiroes/correspondencia_${quadricula}_quarteiroes.json`,
-                method: 'GET',
-                dataType: 'json',
-                success: function (response) {
-                    // Carregando quarteirões da quadrícula
+            url: `correspondencias_quarteiroes/correspondencia_${quadricula}_quarteiroes.json`,
+            method: 'GET',
+            dataType: 'json',
+            success: function (response) {
+                // Carregando quarteirões da quadrícula
 
-                    if (response.features && response.features.length > 0) {
-                        response.features.forEach((feature, index) => {
-                            try {
-                                const geometry = feature.geometry;
-                                const properties = feature.properties;
+                if (response.features && response.features.length > 0) {
+                    response.features.forEach((feature, index) => {
+                        try {
+                            const geometry = feature.geometry;
+                            const properties = feature.properties;
 
-                                if (geometry.type === 'Polygon' && geometry.coordinates) {
-                                    // Converte as coordenadas para o formato do Google Maps
-                                    const path = geometry.coordinates[0].map(coord => {
-                                        return {
-                                            lat: coord[1],
-                                            lng: coord[0]
-                                        };
-                                    });
-
-                                    // Cria o polígono do quarteirão
-                                    const polygon = new google.maps.Polygon({
-                                        paths: path,
-                                        strokeColor: 'white',
-                                        strokeOpacity: 1,
-                                        strokeWeight: 3,
-                                        fillColor: 'white',
-                                        fillOpacity: 0,
-                                        clickable: false,
-                                        zIndex: 10
-                                    });
-
-                                    // Calcula o centro do polígono para o marcador
-                                    const bounds = new google.maps.LatLngBounds();
-                                    path.forEach(point => bounds.extend(point));
-                                    const center = bounds.getCenter();
-
-                                    MapFramework.quarteiroesNumeros.push(properties.impreciso_name);
-
-                                    // Cria o marcador personalizado com o rótulo
-                                    const markerElement = document.createElement('div');
-                                    markerElement.className = 'map-label-text';
-                                    markerElement.textContent = properties.impreciso_name || 'N/A';
-                                    markerElement.style.fontSize = '12px';
-                                    markerElement.style.fontWeight = 'bold';
-                                    markerElement.style.color = '#000';
-                                    markerElement.style.textShadow = 'none';
-                                    markerElement.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
-                                    markerElement.style.padding = '2px 6px';
-                                    markerElement.style.borderRadius = '3px';
-                                    markerElement.style.border = '1px solid #000';
-
-                                    // Cria o marcador avançado com o rótulo
-                                    const marker = new google.maps.marker.AdvancedMarkerElement({
-                                        position: center,
-                                        content: markerElement,
-                                        gmpClickable: false,
-                                        zIndex: 11
-                                    });
-
-                                    // Armazena tanto o polígono quanto o marcador no array
-                                    const quarteiraoObj = {
-                                        polygon: polygon,
-                                        marker: marker,
-                                        properties: properties,
-                                        id: properties.id,
-                                        quadricula: properties.quadricula
+                            if (geometry.type === 'Polygon' && geometry.coordinates) {
+                                // Converte as coordenadas para o formato do Google Maps
+                                const path = geometry.coordinates[0].map(coord => {
+                                    return {
+                                        lat: coord[1],
+                                        lng: coord[0]
                                     };
+                                });
 
-                                    arrayCamadas['quarteirao'].push(quarteiraoObj);
+                                // Cria o polígono do quarteirão
+                                const polygon = new google.maps.Polygon({
+                                    paths: path,
+                                    strokeColor: 'white',
+                                    strokeOpacity: 1,
+                                    strokeWeight: 3,
+                                    fillColor: 'white',
+                                    fillOpacity: 0,
+                                    clickable: false,
+                                    zIndex: 10
+                                });
 
-                                }
+                                // Calcula o centro do polígono para o marcador
+                                const bounds = new google.maps.LatLngBounds();
+                                path.forEach(point => bounds.extend(point));
+                                const center = bounds.getCenter();
 
-                            } catch (error) {
-                                // Erro ao processar feature
+                                MapFramework.quarteiroesNumeros.push(properties.impreciso_name);
+
+                                // Cria o marcador personalizado com o rótulo
+                                const markerElement = document.createElement('div');
+                                markerElement.className = 'map-label-text';
+                                markerElement.textContent = properties.impreciso_name || 'N/A';
+                                markerElement.style.fontSize = '12px';
+                                markerElement.style.fontWeight = 'bold';
+                                markerElement.style.color = '#000';
+                                markerElement.style.textShadow = 'none';
+                                markerElement.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+                                markerElement.style.padding = '2px 6px';
+                                markerElement.style.borderRadius = '3px';
+                                markerElement.style.border = '1px solid #000';
+
+                                // Cria o marcador avançado com o rótulo
+                                const marker = new google.maps.marker.AdvancedMarkerElement({
+                                    position: center,
+                                    content: markerElement,
+                                    gmpClickable: false,
+                                    zIndex: 11
+                                });
+
+                                // Armazena tanto o polígono quanto o marcador no array
+                                const quarteiraoObj = {
+                                    polygon: polygon,
+                                    marker: marker,
+                                    properties: properties,
+                                    id: properties.id,
+                                    quadricula: properties.quadricula
+                                };
+
+                                arrayCamadas['quarteirao'].push(quarteiraoObj);
+
                             }
-                        });
 
-                        // Quarteirões carregados com sucesso
-                        resolve();
-                    } else {
-                        // Nenhum quarteirão encontrado para a quadrícula
-                        resolve();
-                    }
-                },
-                error: function (xhr, status, error) {
-                    // Erro ao carregar quarteirões
-                    console.error('Erro ao carregar quarteirões:', error);
-                    reject(error);
+                        } catch (error) {
+                            // Erro ao processar feature
+                        }
+                    });
+
+                    // Quarteirões carregados com sucesso
+                    resolve();
+                } else {
+                    // Nenhum quarteirão encontrado para a quadrícula
+                    resolve();
                 }
-            });
+            },
+            error: function (xhr, status, error) {
+                // Erro ao carregar quarteirões
+                console.error('Erro ao carregar quarteirões:', error);
+                reject(error);
+            }
+        });
         });
     },
 
@@ -2786,7 +2777,7 @@ const MapFramework = {
             success: function (response) {
                 //console.log('Dados carregados da planilha:', response);
                 self.dadosMoradores = response;
-
+                
             },
             error: function (xhr, status, error) {
                 console.error('Erro ao carregar dados da planilha:', error);
@@ -2794,25 +2785,6 @@ const MapFramework = {
                 console.error('Response:', xhr.responseText);
             }
         });
-    },
-
-    carregarIptus: function (parametro_imod_id) {
-        const self = this; // Salva referência ao MapFramework
-        $.ajax({
-            url: 'carregarIptus.php',
-            method: 'POST',
-            data: {
-                imob_id: parametro_imod_id
-            },
-            dataType: 'json',
-            success: function (response) {
-                self.dadosIptus = response;
-            },
-            error: function (xhr, status, error) {
-                console.error(error);
-            }
-        });
-
     },
 
     // Função simples para obter elementos do quarteirão pelo ID
@@ -2836,7 +2808,7 @@ const MapFramework = {
                 break;
             }
         }
-
+        
         if (!quadraEncontrada) {
             alert("Clique dentro de uma quadra para inserir o marcador.");
             return;
@@ -2847,34 +2819,34 @@ const MapFramework = {
             alert("Quadra sem identificador válido.");
             return;
         }
-
+        
         // Pega o número do lote do input em vez de usar sequência automática
         let numeroLote = $('#inputLoteAtual').val().trim();
         if (!numeroLote) {
             alert("Por favor, informe o número do lote no campo correspondente.");
             return;
         }
-
+        
         // Verifica se o marcador corresponde ao lote selecionado da divCadastro3
         loteElementoSelecionado = $('.opcao-lote.selected');
         let correspondeAoLoteSelecionado = false;
-
+        
         console.log('=== VERIFICAÇÃO DE CORRESPONDÊNCIA INICIAL ===');
         console.log('numeroLote do input:', numeroLote);
         console.log('loteElementoSelecionado encontrado:', loteElementoSelecionado.length > 0);
-
+        
         if (loteElementoSelecionado.length > 0) {
             const loteTexto = loteElementoSelecionado.find('.lote-texto').text();
             console.log('loteTexto:', loteTexto);
-
+            
             const match = loteTexto.match(/Lote: ([^|]+)/);
             console.log('match encontrado:', match);
-
+            
             if (match) {
                 const numeroLoteSelecionado = match[1].trim();
                 console.log('numeroLoteSelecionado:', numeroLoteSelecionado);
                 console.log('Comparação:', numeroLote, '===', numeroLoteSelecionado);
-
+                
                 correspondeAoLoteSelecionado = (numeroLote === numeroLoteSelecionado);
                 console.log('correspondeAoLoteSelecionado:', correspondeAoLoteSelecionado);
             } else {
@@ -2905,7 +2877,7 @@ const MapFramework = {
         el.style.cursor = 'pointer';
         el.className = 'marcador-personalizado';
         el.textContent = numeroLote;
-
+        
         // Cria marcador avançado
         let marker = new google.maps.marker.AdvancedMarkerElement({
             position: latLng,
@@ -2916,27 +2888,27 @@ const MapFramework = {
 
         marker.idQuadra = idQuadra;
         marker.numeroMarcador = numeroLote;
-
+        
         // Obtém a quadra do lote selecionado para que verificarLoteJaInserido funcione
         loteElementoSelecionado = $('.opcao-lote.selected');
         const quadraSelecionada = loteElementoSelecionado.data('quadra') || idQuadra;
         marker.quadra = quadraSelecionada;
-
+        
         // Adiciona a propriedade quarteirao ao marcador
         marker.quarteirao = quarteiraoAtualSelecionado;
-
+        
         console.log('=== PROPRIEDADES DO MARCADOR ===');
         console.log('marker.quadra:', marker.quadra);
         console.log('marker.numeroMarcador:', marker.numeroMarcador);
         console.log('marker.quarteirao:', marker.quarteirao);
         console.log('quarteiraoAtualSelecionado:', quarteiraoAtualSelecionado);
-
+        
         // Adiciona evento de clique para mostrar tooltip
-        el.addEventListener('click', function (event) {
+        el.addEventListener('click', function(event) {
             event.stopPropagation();
             mostrarTooltipMarcador(marker, event);
         });
-
+        
         if (!arrayCamadas["marcador_quadra"]) arrayCamadas["marcador_quadra"] = [];
         arrayCamadas["marcador_quadra"].push(marker);
         adicionarObjetoNaCamada("marcador_quadra", marker);
@@ -2944,16 +2916,16 @@ const MapFramework = {
         this.salvarMarcadorNoBanco(latLng, idQuadra, numeroLote, marker, correspondeAoLoteSelecionado, corMarcador);
     },
 
-    salvarMarcadorNoBanco: function (latLng, idQuadra, numeroMarcador, marcadorElement, correspondeAoLoteSelecionado, corMarcador) {
+    salvarMarcadorNoBanco: function(latLng, idQuadra, numeroMarcador, marcadorElement, correspondeAoLoteSelecionado, corMarcador) {
         // Obtém informações do lote selecionado
         loteElementoSelecionado = $('.opcao-lote.selected');
         const quadraSelecionada = loteElementoSelecionado.data('quadra') || idQuadra;
-
+        
         //console.log('Dados para salvar marcador:');
         //console.log('- Quarteirão:', quarteiraoAtualSelecionado);
         //console.log('- Quadra:', quadraSelecionada);
         //console.log('- Lote:', numeroMarcador);
-
+        
         $.ajax({
             url: 'salvarMarcador.php',
             method: 'POST',
@@ -2968,25 +2940,25 @@ const MapFramework = {
                 quadra: quadraSelecionada || idQuadra,
                 cor: corMarcador
             },
-            success: function (response) {
+            success: function(response) {
                 try {
                     let resultado = response;
                     if (typeof response === 'string') {
                         resultado = JSON.parse(response);
                     }
-
+                    
                     if (resultado.status === 'sucesso' && resultado.id) {
                         // Guarda o ID do banco no marcador para poder deletar depois
                         marcadorElement.identificadorBanco = resultado.id;
                         //console.log('Marcador salvo com sucesso, ID:', resultado.id);
-
+                        
                         // Se o input corresponde ao lote selecionado da divCadastro3:
                         // - Marca como inserido (verde/travado)
                         // - Pula para o próximo
                         console.log('=== VERIFICAÇÃO DE CORRESPONDÊNCIA ===');
                         console.log('correspondeAoLoteSelecionado:', correspondeAoLoteSelecionado);
                         console.log('numeroMarcador:', numeroMarcador);
-
+                        
                         if (correspondeAoLoteSelecionado) {
                             console.log('CORRESPONDE! Chamando marcarLoteComoInserido...');
                             MapFramework.marcarLoteComoInserido(numeroMarcador);
@@ -2996,7 +2968,7 @@ const MapFramework = {
                             console.log('NÃO CORRESPONDE! Marcador salvo mas divCadastro3 não muda');
                         }
                         // Se não corresponde: marcador é salvo mas divCadastro3 não muda
-
+                        
                     } else {
                         console.error('Erro ao salvar marcador:', resultado.mensagem);
                         alert('Erro ao salvar marcador: ' + (resultado.mensagem || 'Erro desconhecido'));
@@ -3005,7 +2977,7 @@ const MapFramework = {
                     console.error('Erro ao processar resposta:', e);
                 }
             },
-            error: function () {
+            error: function() {
                 alert('Erro ao salvar marcador no banco.');
             }
         });
@@ -3040,7 +3012,7 @@ const MapFramework = {
     },
 
     // Função específica para sair do modo marcador e voltar ao estado anterior
-    sairModoMarcador: function () {
+    sairModoMarcador: function() {
         // Salva as variáveis globais atuais antes de sair
         const quarteiraoAtual = window.quarteiraoSelecionadoAtual;
         const quarteiraoIdAtual = window.quarteiraoIdAtualSelecionado;
@@ -3109,7 +3081,7 @@ const MapFramework = {
             },
             success: (response) => {
                 //console.log(response);
-
+                
                 if (response.status === 'sucesso') {
                     response.dados.forEach(desenho => {
                         //console.log(desenho.cor);
@@ -3137,7 +3109,7 @@ const MapFramework = {
                         el.style.cursor = 'pointer';
                         el.className = 'marcador-personalizado';
                         el.textContent = numeroMarcador.toString();
-
+                        
                         // Cria marcador avançado
                         let marker = new google.maps.marker.AdvancedMarkerElement({
                             position: { lat: parseFloat(lat), lng: parseFloat(lng) },
@@ -3151,13 +3123,13 @@ const MapFramework = {
                         marker.quarteirao = desenho.quarteirao;
                         marker.quadra = desenho.quadra;
                         marker.identificadorBanco = desenho.id; // ID do banco para poder deletar
-
+                        
                         // Adiciona evento de clique para mostrar infowindow com dados do morador
-                        el.addEventListener('click', function (event) {
+                        el.addEventListener('click', function(event) {
                             // Busca dados do morador baseado em lote, quadra e quarteirão
-                            const dadosMorador = MapFramework.dadosMoradores.find(morador =>
-                                morador.lote == desenho.lote &&
-                                morador.quadra == desenho.quadra &&
+                            const dadosMorador = MapFramework.dadosMoradores.find(morador => 
+                                morador.lote == desenho.lote && 
+                                morador.quadra == desenho.quadra && 
                                 morador.cara_quarteirao == desenho.quarteirao
                             );
 
@@ -3165,12 +3137,12 @@ const MapFramework = {
                             let conteudoInfoWindow = '';
 
                             let tituloInicialHtml = `
-                                <div style="display: flex; align-items: flex-start; margin-bottom: 15px; min-width: 450px;">
+                                <div style="display: flex; align-items: flex-start; margin-bottom: 15px;">
                                     <h5 style="margin: 0 0 8px 0; color: #333; font-weight: bold;">Dados Cadastrais</h5>
                                     <button type="button" class="btn btn-outline-secondary btn-sm ms-2 btn-docs-morador" style="font-size: 10px; padding: 2px 6px; border-radius: 3px;">Docs</button>
                                 </div>
                             `;
-
+                            
                             // Primeiro, sempre mostra os dados do desenho
                             let dadosDesenhoHTML = `
                                 <div style="margin-bottom: 15px;">
@@ -3182,12 +3154,11 @@ const MapFramework = {
                                     <div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">Lote:</strong> <span style="color: #666;">${desenho.lote}</span></div>
                                 </div>
                             `;
-
+                            
                             if (dadosMorador) {
                                 // Se encontrou dados do morador, exibe TODOS os campos dinamicamente
                                 let camposHTML = '';
-                                const imobId = dadosMorador.imob_id || null;
-
+                                
                                 // Itera sobre todos os campos do objeto dadosMorador
                                 Object.keys(dadosMorador).forEach(campo => {
                                     const valor = dadosMorador[campo];
@@ -3198,34 +3169,7 @@ const MapFramework = {
                                         camposHTML += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${nomeCampo}:</strong> <span style="color: #666;">${valor}</span></div>`;
                                     }
                                 });
-
-                                // Sistema de abas para Cadastro e IPTU
-                                const infoWindowId = 'iw_' + desenho.id;
-                                const abasHTML = `
-                                    <div style="display: flex; border-bottom: 2px solid #ddd; margin-bottom: 10px; margin-top: 10px;">
-                                        <button class="info-tab-cadastro" data-tab="cadastro" data-iwid="${infoWindowId}" style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid transparent; font-weight: 600; color: #007bff; transition: all 0.3s ease;">
-                                            Cadastro
-                                        </button>
-                                        <button class="info-tab-iptu" data-tab="iptu" data-iwid="${infoWindowId}" style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid transparent; font-weight: 500; color: #666; transition: all 0.3s ease;">
-                                            IPTU
-                                        </button>
-                                    </div>
-                                `;
-
-                                const conteudoCadastroHTML = `
-                                    <div id="tab-cadastro-${infoWindowId}" class="tab-cadastro-content" style="display: block; line-height: 1.4;">
-                                        ${camposHTML}
-                                    </div>
-                                `;
-
-                                const conteudoIptuHTML = `
-                                    <div id="tab-iptu-${infoWindowId}" class="tab-iptu-content" style="display: none; line-height: 1.4;">
-                                        <div style="text-align: center; padding: 20px; color: #666;">
-                                            <i class="fas fa-spinner fa-spin"></i> Clique na aba IPTU para carregar os dados
-                                        </div>
-                                    </div>
-                                `;
-
+                                
                                 conteudoInfoWindow = `
                                     <div style="padding: 0 10px 10px 10px; font-family: Arial, sans-serif; max-width: 350px;">
                                         ${tituloInicialHtml}
@@ -3233,9 +3177,9 @@ const MapFramework = {
                                         <div>
                                             <h4 style="margin: 0 0 8px 0; color: #333; font-size: 14px; font-weight: bold;">Cadastro</h4>
                                             <div style="border-bottom: 1px solid #ddd; margin-bottom: 8px;"></div>
-                                            ${abasHTML}
-                                            ${conteudoCadastroHTML}
-                                            ${conteudoIptuHTML}
+                                            <div style="line-height: 1.4;">
+                                                ${camposHTML}
+                                            </div>
                                         </div>
                                     </div>
                                 `;
@@ -3268,113 +3212,18 @@ const MapFramework = {
 
                             // Abre o infowindow
                             MapFramework.infoWindow.open(MapFramework.map);
-
-                            // Adiciona eventos quando o InfoWindow estiver pronto
-                            google.maps.event.addListener(MapFramework.infoWindow, 'domready', function () {
-                                // Event listeners para as abas (apenas se houver dados do morador)
-                                if (dadosMorador) {
-                                    const currentInfoWindowId = 'iw_' + desenho.id;
-                                    const imobId = dadosMorador.imob_id || null;
-
-                                    // Remove listeners anteriores deste InfoWindow (se houver)
-                                    const eventNamespace = '.infowindow-' + currentInfoWindowId;
-                                    document.removeEventListener('click', null);
-
-                                    // Event listeners para as abas usando querySelector no documento
-                                    // O InfoWindow injeta o conteúdo no DOM, então podemos buscar diretamente
-                                    setTimeout(function() {
-                                        const tabButtons = document.querySelectorAll(`[data-iwid="${currentInfoWindowId}"]`);
-                                        
-                                        tabButtons.forEach(btn => {
-                                            btn.addEventListener('click', function(e) {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                
-                                                const tabName = this.getAttribute('data-tab');
-                                                const iwid = this.getAttribute('data-iwid');
-                                                
-                                                // Remove classe active de todas as abas deste InfoWindow
-                                                const allTabs = document.querySelectorAll(`[data-iwid="${iwid}"]`);
-                                                allTabs.forEach(tab => {
-                                                    tab.style.fontWeight = '500';
-                                                    tab.style.color = '#666';
-                                                    tab.style.borderBottomColor = 'transparent';
-                                                });
-                                                
-                                                // Adiciona classe active na aba clicada
-                                                this.style.fontWeight = '600';
-                                                this.style.color = '#007bff';
-                                                this.style.borderBottomColor = '#007bff';
-                                                
-                                                // Mostra/oculta conteúdo das abas
-                                                const tabCadastro = document.querySelector(`#tab-cadastro-${iwid}`);
-                                                const tabIptu = document.querySelector(`#tab-iptu-${iwid}`);
-                                                
-                                                if (tabName === 'cadastro') {
-                                                    if (tabCadastro) tabCadastro.style.display = 'block';
-                                                    if (tabIptu) tabIptu.style.display = 'none';
-                                                } else if (tabName === 'iptu') {
-                                                    if (tabCadastro) tabCadastro.style.display = 'none';
-                                                    if (tabIptu) tabIptu.style.display = 'block';
-                                                    
-                                                    // Carrega dados do IPTU se ainda não foram carregados
-                                                    if (tabIptu && !tabIptu.dataset.loaded && imobId) {
-                                                        tabIptu.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Carregando dados do IPTU...</div>';
-                                                        
-                                                        $.ajax({
-                                                            url: 'carregarIptus.php',
-                                                            method: 'GET',
-                                                            data: { imob_id: imobId },
-                                                            dataType: 'json',
-                                                            success: function(response) {
-                                                                tabIptu.dataset.loaded = 'true';
-                                                                
-                                                                if (response && response.length > 0) {
-                                                                    let content = '<div style="margin-bottom: 15px;">';
-                                                                    
-                                                                    response.forEach(function(iptu, index) {
-                                                                        if (index > 0) {
-                                                                            content += '<hr style="margin: 15px 0; border: 0; border-top: 1px solid #ddd;">';
-                                                                        }
-                                                                        
-                                                                        Object.keys(iptu).forEach(function(key) {
-                                                                            const value = iptu[key];
-                                                                            if (value !== null && value !== '') {
-                                                                                const fieldName = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                                                                content += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${fieldName}:</strong> <span style="color: #666;">${value}</span></div>`;
-                                                                            }
-                                                                        });
-                                                                    });
-                                                                    
-                                                                    content += '</div>';
-                                                                    tabIptu.innerHTML = content;
-                                                                } else {
-                                                                    tabIptu.innerHTML = '<div style="color: #666; font-style: italic; padding: 10px;">Nenhum dado encontrado na tabela IPTU para este imóvel<br><strong>ID buscado: ' + imobId + '</strong></div>';
-                                                                }
-                                                            },
-                                                            error: function(xhr, status, error) {
-                                                                console.error('Erro ao carregar dados do IPTU:', error);
-                                                                tabIptu.innerHTML = '<div style="color: #dc3545; padding: 10px;">Erro ao carregar dados do IPTU. Tente novamente.<br><strong>ID buscado: ' + imobId + '</strong></div>';
-                                                            }
-                                                        });
-                                                    } else if (!imobId) {
-                                                        tabIptu.innerHTML = '<div style="color: #666; font-style: italic; padding: 10px;">ID Imobiliário não disponível para carregar dados do IPTU</div>';
-                                                    }
-                                                }
-                                            });
-                                        });
-                                    }, 100); // Pequeno delay para garantir que o DOM foi injetado
-                                }
-
+                            
+                            // Adiciona evento para o botão Docs quando o InfoWindow estiver pronto
+                            google.maps.event.addListener(MapFramework.infoWindow, 'domready', function() {
                                 const btnDocs = document.querySelector('.btn-docs-morador');
                                 if (btnDocs) {
-                                    btnDocs.addEventListener('click', function (e) {
+                                    btnDocs.addEventListener('click', function(e) {
                                         e.preventDefault();
                                         e.stopPropagation();
-
+                                        
                                         // Obtém o imob_id do cadastro se existir
                                         const imobId = dadosMorador ? dadosMorador.imob_id : null;
-
+                                        
                                         if (imobId) {
                                             // Se tem imob_id, usa ele como identificador
                                             if (typeof abrirModalGerenciarDocsImovel === 'function') {
@@ -3397,14 +3246,14 @@ const MapFramework = {
                                 }
                             });
                         });
-
+                        
                         arrayCamadas['marcador_quadra'].push(marker);
                         // Comentado: controle automático de sequência não funciona com lotes alfanuméricos (ex: 2A)
                         // const idQuadra = parseInt(desenho.id_desenho);
                         // if (!this.marcadoresPorQuadra[idQuadra] || this.marcadoresPorQuadra[idQuadra] < numeroMarcador) {
                         //     this.marcadoresPorQuadra[idQuadra] = numeroMarcador;
                         // }
-
+                        
                     });
                 } else {
                     console.warn('Erro ao carregar marcadores:', response.mensagem);
@@ -3417,35 +3266,35 @@ const MapFramework = {
     },
 
     // Marca o lote atual como inserido com sucesso (cor verde)
-    marcarLoteComoInserido: function (numeroLote) {
+    marcarLoteComoInserido: function(numeroLote) {
         console.log('=== INICIANDO marcarLoteComoInserido ===');
         console.log('Número do lote:', numeroLote);
-
+        
         // Encontra o lote SELECIONADO (com classe 'selected') e marca como inserido
         const loteElemento = $('.opcao-lote.selected');
         console.log('Lote elemento encontrado:', loteElemento.length > 0);
-
+        
         if (loteElemento.length > 0) {
             console.log('Lote selecionado:', loteElemento.find('.lote-texto').text());
-
+            
             // Adiciona classe e estilos de lote inserido
             loteElemento.addClass('lote-inserido').css({
                 'background-color': '#d4edda !important',
                 'border-color': '#c3e6cb !important',
                 'color': '#155724 !important'
             });
-
+            
             // Marca o texto também
             loteElemento.find('.lote-texto').css({
                 'color': '#155724 !important',
                 'font-weight': '600 !important'
             });
-
+            
             console.log('Lote marcado como inserido:', numeroLote);
         } else {
             console.log('ERRO: Nenhum lote selecionado encontrado!');
         }
-
+        
         // NÃO recarrega toda a lista - isso causa problemas de dupla verificação
         // Apenas chama a função de atualização se existir
         if (typeof atualizarListaLotes === 'function') {
@@ -3454,39 +3303,39 @@ const MapFramework = {
         } else {
             console.log('Função atualizarListaLotes não encontrada');
         }
-
+        
         console.log('=== FIM marcarLoteComoInserido ===');
     },
 
     // Passa para o próximo lote automaticamente
-    passarParaProximoLote: function () {
+    passarParaProximoLote: function() {
         // Obtém a quadra do lote atualmente selecionado
         const loteAtual = $('.opcao-lote.selected');
         if (loteAtual.length === 0) {
             console.log('Nenhum lote selecionado para passar para o próximo.');
             return;
         }
-
+        
         const quadraAtual = loteAtual.data('quadra');
         const numeroLoteAtual = loteAtual.data('lote');
-
+        
         // Converte o número do lote atual para número para comparação
         const numeroAtual = parseInt(numeroLoteAtual.toString().match(/^\d+/)[0]);
-
+        
         // Procura o próximo lote na MESMA QUADRA com número sequencial
         let proximoLoteElement = null;
         let menorDiferenca = Infinity;
-
-        $('.opcao-lote').each(function () {
+        
+        $('.opcao-lote').each(function() {
             const $lote = $(this);
             const quadraLote = $lote.data('quadra');
             const numeroLote = $lote.data('lote');
-
+            
             // Só considera lotes da mesma quadra que não foram inseridos
             if (quadraLote === quadraAtual && !$lote.hasClass('lote-inserido')) {
                 // Converte o número do lote para comparação
                 const numeroLoteInt = parseInt(numeroLote.toString().match(/^\d+/)[0]);
-
+                
                 // Procura o próximo número na sequência (maior que o atual)
                 if (numeroLoteInt > numeroAtual) {
                     const diferenca = numeroLoteInt - numeroAtual;
@@ -3497,13 +3346,13 @@ const MapFramework = {
                 }
             }
         });
-
+        
         // Se não encontrou próximo na mesma quadra, procura o primeiro disponível da quadra
         if (!proximoLoteElement) {
-            $('.opcao-lote').each(function () {
+            $('.opcao-lote').each(function() {
                 const $lote = $(this);
                 const quadraLote = $lote.data('quadra');
-
+                
                 if (quadraLote === quadraAtual && !$lote.hasClass('lote-inserido')) {
                     proximoLoteElement = $lote;
                     return false; // break do loop
@@ -3514,26 +3363,26 @@ const MapFramework = {
         // Se encontrou um próximo lote, seleciona ele
         if (proximoLoteElement) {
             const numeroLote = proximoLoteElement.data('lote');
-
+            
             // Remove a flecha de todos os lotes
             $('.lote-flecha').html('&nbsp;&nbsp;');
-
+            
             // Adiciona a flecha ao próximo lote
             proximoLoteElement.find('.lote-flecha').html('>');
-
+            
             // Atualiza o input text com o próximo lote
             $('#inputLoteAtual').val(numeroLote);
-
+            
             // Adiciona classe visual para destacar a opção selecionada
             $('.opcao-lote').removeClass('selected');
             proximoLoteElement.addClass('selected');
-
+            
             // Faz scroll para o lote se necessário
             const container = $('#opcoesLotes');
             const itemOffset = proximoLoteElement.offset().top - container.offset().top + container.scrollTop();
             const containerHeight = container.height();
             const itemHeight = proximoLoteElement.outerHeight();
-
+            
             if (itemOffset < container.scrollTop() || itemOffset + itemHeight > container.scrollTop() + containerHeight) {
                 container.animate({
                     scrollTop: itemOffset - containerHeight / 2 + itemHeight / 2
@@ -3551,64 +3400,64 @@ const MapFramework = {
     // Esta função carrega os lotes da prefeitura de um arquivo GeoJSON e os 
     // adiciona como polígonos no mapa. Segue o padrão das outras funções do framework.
     // ============================================================================
-    carregarLotesGeojson: function () {
+    carregarLotesGeojson: function() {
         // Define a camada de destino - seguindo o padrão das outras funções
         var camadaLotes = "lotesPref";
         let destinoLotes = arrayCamadas[camadaLotes] ? camadaLotes : 'semCamadas';
-
+        
         // Limpa a camada antes de carregar novos dados
         if (arrayCamadas[destinoLotes]) {
-            arrayCamadas[destinoLotes].forEach(function (objeto) {
+            arrayCamadas[destinoLotes].forEach(function(objeto) {
                 if (objeto.setMap) {
                     objeto.setMap(null); // Remove do mapa
                 }
             });
             arrayCamadas[destinoLotes] = []; // Limpa o array
         }
-
+        
         const quadricula = dadosOrto[0]['quadricula'];
         const urlOffset = `cartografia_prefeitura/${quadricula}_offset.json`;
-
+        
         // Primeiro tenta carregar o arquivo de offset
         $.ajax({
             url: urlOffset,
             type: 'GET',
             cache: false,
             dataType: 'json',
-            success: function (offsetData) {
+            success: function(offsetData) {
                 // Arquivo de offset encontrado!
                 console.log(`✓ Offset encontrado para ${quadricula}: Lat=${offsetData.offset_lat_metros}m, Lng=${offsetData.offset_lng_metros}m`);
                 // Carrega o GeoJSON e aplica o offset
                 MapFramework.carregarLotesComOffset(offsetData);
             },
-            error: function () {
+            error: function() {
                 // Sem offset salvo, carrega normalmente
                 console.log(`✗ Sem offset salvo para ${quadricula}. Carregando coordenadas originais.`);
                 MapFramework.carregarLotesSemOffset();
             }
         });
     },
-
+    
     // Função auxiliar para carregar lotes SEM offset (coordenadas originais)
-    carregarLotesSemOffset: function () {
+    carregarLotesSemOffset: function() {
         var camadaLotes = "lotesPref";
         let destinoLotes = arrayCamadas[camadaLotes] ? camadaLotes : 'semCamadas';
-
+        
         // Requisição AJAX para carregar o arquivo GeoJSON
         $.ajax({
             url: `loteamentos_quadriculas/geojson/lotes_prefeitura_quadricula_${dadosOrto[0]['quadricula']}.geojson`,
             type: 'GET',
             cache: false,
             dataType: 'json',
-            success: function (geojsonData) {
+            success: function(geojsonData) {
                 console.log('GeoJSON dos lotes da prefeitura carregado com sucesso');
                 console.log(`Número de features encontradas: ${geojsonData.features ? geojsonData.features.length : 0}`);
-
+                
                 // Processa cada feature do GeoJSON
                 if (geojsonData && geojsonData.features) {
                     let lotesCarregados = 0;
-
-                    geojsonData.features.forEach(function (feature, index) {
+                    
+                    geojsonData.features.forEach(function(feature, index) {
                         // Verifica se é um polígono válido
                         if (feature.geometry && feature.geometry.type === 'Polygon' && feature.geometry.coordinates) {
                             try {
@@ -3617,7 +3466,7 @@ const MapFramework = {
                                     lat: coord[1],  // latitude é o segundo elemento
                                     lng: coord[0]   // longitude é o primeiro elemento
                                 }));
-
+                                
                                 // Cria o polígono seguindo o padrão do framework
                                 const polygon = new google.maps.Polygon({
                                     paths: coordinates,
@@ -3630,25 +3479,25 @@ const MapFramework = {
                                     clickable: true,
                                     zIndex: 5                 // Z-index mais alto para ficar por cima
                                 });
-
+                                
                                 // Adiciona InfoWindow ao polígono com os dados do GeoJSON
-                                polygon.addListener('click', function (event) {
+                                polygon.addListener('click', function(event) {
                                     // Cria conteúdo da InfoWindow formatado
                                     let conteudo = '<div style="max-width: 300px; font-family: Arial, sans-serif; line-height: 1.4;">';
                                     conteudo += '<h4 style="margin: 0 0 10px 0; color: #333; border-bottom: 2px solid #FF6B35; padding-bottom: 5px; font-size: 16px;">📍 Lote da Prefeitura</h4>';
-
+                                    
                                     // Adiciona as propriedades do GeoJSON formatadas
                                     if (feature.properties && Object.keys(feature.properties).length > 0) {
                                         // Define a ordem desejada: Inscrição primeiro, depois Endereço
                                         const ordemPropriedades = ['name', 'ENDERECO'];
                                         const propriedadesExibidas = new Set();
-
+                                        
                                         // Primeiro, exibe as propriedades na ordem específica
-                                        ordemPropriedades.forEach(function (key) {
-                                            if (feature.properties[key] !== null &&
-                                                feature.properties[key] !== '' &&
+                                        ordemPropriedades.forEach(function(key) {
+                                            if (feature.properties[key] !== null && 
+                                                feature.properties[key] !== '' && 
                                                 feature.properties[key] !== undefined) {
-
+                                                
                                                 let labelFormatada;
                                                 // Personaliza as labels específicas
                                                 if (key === 'name') {
@@ -3658,34 +3507,34 @@ const MapFramework = {
                                                 } else {
                                                     // Para outras propriedades, usa formatação padrão
                                                     labelFormatada = key.replace(/_/g, ' ')
-                                                        .replace(/\b\w/g, l => l.toUpperCase());
+                                                                       .replace(/\b\w/g, l => l.toUpperCase());
                                                 }
-
+                                                
                                                 conteudo += `<p style="margin: 5px 0; font-size: 13px;"><strong>${labelFormatada}:</strong> ${feature.properties[key]}</p>`;
                                                 propriedadesExibidas.add(key);
                                             }
                                         });
-
+                                        
                                         // Depois, exibe outras propriedades que não foram exibidas ainda
-                                        Object.keys(feature.properties).forEach(function (key) {
+                                        Object.keys(feature.properties).forEach(function(key) {
                                             const value = feature.properties[key];
                                             // Só mostra propriedades que têm valor e que não foram exibidas ainda
-                                            if (value !== null && value !== '' && value !== undefined &&
-                                                !propriedadesExibidas.has(key) &&
+                                            if (value !== null && value !== '' && value !== undefined && 
+                                                !propriedadesExibidas.has(key) && 
                                                 key !== 'fill_color') { // Exclui fill_color
-
+                                                
                                                 // Formata o nome da propriedade (remove underscores e capitaliza)
                                                 const keyFormatted = key.replace(/_/g, ' ')
-                                                    .replace(/\b\w/g, l => l.toUpperCase());
+                                                                       .replace(/\b\w/g, l => l.toUpperCase());
                                                 conteudo += `<p style="margin: 5px 0; font-size: 13px;"><strong>${keyFormatted}:</strong> ${value}</p>`;
                                             }
                                         });
                                     } else {
                                         conteudo += '<p style="margin: 5px 0; color: #666; font-style: italic;">Sem dados adicionais disponíveis</p>';
                                     }
-
+                                    
                                     conteudo += '</div>';
-
+                                    
                                     // Usa o InfoWindow global do framework se existir, senão cria um novo
                                     if (MapFramework.infoWindow) {
                                         MapFramework.infoWindow.setContent(conteudo);
@@ -3700,76 +3549,76 @@ const MapFramework = {
                                         infoWindow.open(MapFramework.map);
                                     }
                                 });
-
+                                
                                 // Adiciona o polígono à camada diretamente
                                 if (!arrayCamadas[destinoLotes]) {
                                     arrayCamadas[destinoLotes] = [];
                                 }
                                 arrayCamadas[destinoLotes].push(polygon);
                                 lotesCarregados++;
-
+                                
                             } catch (error) {
                                 console.error('Erro ao processar feature:', error);
                             }
                         }
                     });
-
+                    
                     // Lotes carregados com sucesso
                 }
             },
-            error: function (xhr, status, error) {
+            error: function(xhr, status, error) {
                 console.error('Erro ao carregar lotes da prefeitura:', error);
             }
         });
     },
-
+    
     // Função auxiliar para carregar lotes COM offset (aplicando deslocamento)
-    carregarLotesComOffset: function (offsetData) {
+    carregarLotesComOffset: function(offsetData) {
         var camadaLotes = "lotesPref";
         let destinoLotes = arrayCamadas[camadaLotes] ? camadaLotes : 'semCamadas';
-
+        
         const offsetLatMetros = offsetData.offset_lat_metros;
         const offsetLngMetros = offsetData.offset_lng_metros;
-
+        
         console.log(`Aplicando offset: Lat=${offsetLatMetros}m, Lng=${offsetLngMetros}m`);
-
+        
         // Requisição AJAX para carregar o arquivo GeoJSON original
         $.ajax({
             url: `loteamentos_quadriculas/geojson/lotes_prefeitura_quadricula_${dadosOrto[0]['quadricula']}.geojson`,
             type: 'GET',
             cache: false,
             dataType: 'json',
-            success: function (geojsonData) {
+            success: function(geojsonData) {
                 console.log('GeoJSON original carregado. Aplicando offset...');
-
+                
                 // Função auxiliar para converter metros para graus
                 function metrosParaGraus(metros, latitude) {
                     const grausLat = metros / 111320;
                     const grausLng = metros / (111320 * Math.cos(latitude * Math.PI / 180));
                     return { lat: grausLat, lng: grausLng };
                 }
-
+                
                 // Processa cada feature do GeoJSON
                 if (geojsonData && geojsonData.features) {
                     let lotesCarregados = 0;
-
-                    geojsonData.features.forEach(function (feature, index) {
+                    
+                    geojsonData.features.forEach(function(feature, index) {
                         if (feature.geometry && feature.geometry.type === 'Polygon' && feature.geometry.coordinates) {
                             try {
                                 // Converte coordenadas e APLICA O OFFSET
                                 const coordinates = feature.geometry.coordinates[0].map(coord => {
                                     const lat = coord[1];
                                     const lng = coord[0];
-
+                                    
                                     // Calcula o offset em graus para esta coordenada
                                     const grausOffset = metrosParaGraus(1, lat);
-
+                                    
                                     return {
                                         lat: lat + (offsetLatMetros * grausOffset.lat),
                                         lng: lng + (offsetLngMetros * grausOffset.lng)
                                     };
                                 });
-
+                                
                                 // Cria o polígono com as coordenadas ajustadas
                                 const polygon = new google.maps.Polygon({
                                     paths: coordinates,
@@ -3782,21 +3631,21 @@ const MapFramework = {
                                     clickable: true,
                                     zIndex: 5
                                 });
-
+                                
                                 // Adiciona InfoWindow com indicação de ajuste
-                                polygon.addListener('click', function (event) {
+                                polygon.addListener('click', function(event) {
                                     let conteudo = '<div style="max-width: 300px; font-family: Arial, sans-serif; line-height: 1.4;">';
                                     conteudo += '<h4 style="margin: 0 0 10px 0; color: #333; border-bottom: 2px solid #FF6B35; padding-bottom: 5px; font-size: 16px;">📍 Lote da Prefeitura (Ajustado)</h4>';
-
+                                    
                                     if (feature.properties && Object.keys(feature.properties).length > 0) {
                                         const ordemPropriedades = ['name', 'ENDERECO'];
                                         const propriedadesExibidas = new Set();
-
-                                        ordemPropriedades.forEach(function (key) {
-                                            if (feature.properties[key] !== null &&
-                                                feature.properties[key] !== '' &&
+                                        
+                                        ordemPropriedades.forEach(function(key) {
+                                            if (feature.properties[key] !== null && 
+                                                feature.properties[key] !== '' && 
                                                 feature.properties[key] !== undefined) {
-
+                                                
                                                 let labelFormatada;
                                                 if (key === 'name') {
                                                     labelFormatada = 'Inscrição';
@@ -3805,41 +3654,41 @@ const MapFramework = {
                                                 } else {
                                                     labelFormatada = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                                                 }
-
+                                                
                                                 conteudo += `<p style="margin: 5px 0; font-size: 13px;"><strong>${labelFormatada}:</strong> ${feature.properties[key]}</p>`;
                                                 propriedadesExibidas.add(key);
                                             }
                                         });
                                     }
-
+                                    
                                     conteudo += '<hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">';
                                     conteudo += `<p style="margin: 5px 0; font-size: 11px; color: #28a745;"><strong>✓ Offset aplicado:</strong> ${offsetLatMetros}m (Lat), ${offsetLngMetros}m (Lng)</p>`;
                                     conteudo += '</div>';
-
+                                    
                                     if (MapFramework.infoWindow) {
                                         MapFramework.infoWindow.setContent(conteudo);
                                         MapFramework.infoWindow.setPosition(event.latLng);
                                         MapFramework.infoWindow.open(MapFramework.map);
                                     }
                                 });
-
+                                
                                 // Adiciona à camada
                                 if (!arrayCamadas[destinoLotes]) {
                                     arrayCamadas[destinoLotes] = [];
                                 }
                                 arrayCamadas[destinoLotes].push(polygon);
                                 lotesCarregados++;
-
+                                
                             } catch (error) {
                                 console.error('Erro ao processar feature:', error);
                             }
                         }
                     });
-
+                    
                     console.log(`✓ ${lotesCarregados} lotes carregados COM OFFSET aplicado!`);
                 }
             },
-            error: function (xhr, status, error) {
+            error: function(xhr, status, error) {
                 console.error('Erro ao carregar GeoJSON:', error);
             }
         });
@@ -3850,18 +3699,18 @@ const MapFramework = {
     // ============================================================================
     // Esta função controla a visibilidade dos lotes carregados do GeoJSON
     // ============================================================================
-    toggleLotesGeojson: function (mostrar) {
+    toggleLotesGeojson: function(mostrar) {
         var camadaLotes = "lotesPref";
         let destinoLotes = arrayCamadas[camadaLotes] ? camadaLotes : 'semCamadas';
-
+        
         // Se não há lotes carregados e o usuário quer mostrar, carrega primeiro
         if ((!arrayCamadas[destinoLotes] || arrayCamadas[destinoLotes].length === 0) && mostrar) {
             this.carregarLotesGeojson();
-
+            
             // Aguarda um pouco para os lotes serem carregados e depois mostra
             setTimeout(() => {
                 if (arrayCamadas[destinoLotes] && arrayCamadas[destinoLotes].length > 0) {
-                    arrayCamadas[destinoLotes].forEach(function (polygon) {
+                    arrayCamadas[destinoLotes].forEach(function(polygon) {
                         if (polygon.setMap) {
                             polygon.setMap(mostrar ? MapFramework.map : null);
                         }
@@ -3870,7 +3719,7 @@ const MapFramework = {
             }, 2000); // Aguarda 2 segundos para o carregamento
         } else if (arrayCamadas[destinoLotes]) {
             // Se já há lotes carregados, apenas mostra/oculta
-            arrayCamadas[destinoLotes].forEach(function (polygon) {
+            arrayCamadas[destinoLotes].forEach(function(polygon) {
                 if (polygon.setMap) {
                     polygon.setMap(mostrar ? MapFramework.map : null);
                 }
@@ -3878,21 +3727,21 @@ const MapFramework = {
         }
     },
 
-    carregarImagensAereas: function (quadricula) {
-
+    carregarImagensAereas: function(quadricula) {
+        
         let paramsTxt = "";
         let caminhoUndistorted = "";
-
+        
         $.ajax({
-            url: `buscaJsonImagens.php?quadricula=${quadricula}`,
+            url:`buscaJsonImagens.php?quadricula=${quadricula}`,
             //url: `imagens_aereas/${quadricula}_imagens.json`,
             method: 'GET',
             cache: false,
             dataType: 'json',
             success: (response) => {
                 console.log(response);
-
-                if (response?.pastas_especiais?.pasta_params?.caminho !== undefined) {
+                
+                if(response?.pastas_especiais?.pasta_params?.caminho !== undefined){
                     paramsTxt = response.pastas_especiais.pasta_params.caminho;
                 }
 
@@ -3900,7 +3749,7 @@ const MapFramework = {
                     caminhoUndistorted = response.pastas_especiais.pasta_undistorted.caminho;
                 }
 
-                if ((paramsTxt || paramsTxt != "") && (caminhoUndistorted || caminhoUndistorted != "")) {
+                if((paramsTxt || paramsTxt != "") && (caminhoUndistorted || caminhoUndistorted != "")){
                     this.carregarImagensAereas2(paramsTxt, quadricula, caminhoUndistorted);
                 }
 
@@ -3911,8 +3760,8 @@ const MapFramework = {
         });
     },
 
-    carregarImagensAereas2: function (paramsTxt, quadricula, caminhoUndistorted) {
-
+    carregarImagensAereas2: function(paramsTxt, quadricula, caminhoUndistorted) {
+        
         // Limpa a camada antes de carregar novos dados
         if (arrayCamadas['imagens_aereas'] && arrayCamadas['imagens_aereas'].length > 0) {
             arrayCamadas['imagens_aereas'].forEach(marker => {
@@ -3921,7 +3770,7 @@ const MapFramework = {
                 }
             });
         }
-
+        
         arrayCamadas['imagens_aereas'] = [];
 
         $.ajax({
@@ -3940,7 +3789,7 @@ const MapFramework = {
                         if (!imagem.latitude || !imagem.longitude) {
                             return;
                         }
-
+                        
                         // Cria o elemento HTML do marcador (ícone de câmera)
                         const markerElement = document.createElement('div');
                         markerElement.className = 'marker-imagem-aerea';
@@ -3949,7 +3798,7 @@ const MapFramework = {
                         markerElement.style.cursor = 'pointer';
                         markerElement.style.filter = 'drop-shadow(2px 2px 2px rgba(0,0,0,0.5))';
                         markerElement.title = imagem.imageName || 'Imagem Aérea';
-
+                        
                         // Cria o Advanced Marker
                         const marker = new google.maps.marker.AdvancedMarkerElement({
                             position: {
@@ -3958,26 +3807,26 @@ const MapFramework = {
                             },
                             content: markerElement,
                             gmpClickable: true,
-                            gmpDraggable: false,
+                            gmpDraggable: true,
                             title: imagem.imageName || 'Imagem Aérea',
                             zIndex: 100
                         });
-
+                        
                         // Armazena dados da imagem no marker
                         marker.dadosImagem = imagem;
                         // Usa barra invertida do Windows
                         marker.caminhoImagem = `${caminhoUndistorted}\\${imagem.imageName}`;
-
+                        
                         // Adiciona evento de clique para abrir InfoWindow
-                        markerElement.addEventListener('click', function (event) {
+                        markerElement.addEventListener('click', function(event) {
                             event.stopPropagation();
                             MapFramework.abrirInfoWindowImagemAerea(marker);
                         });
-
+                        
                         // Adiciona o marker à camada (inicialmente não visível)
                         marker.setMap(null);
                         arrayCamadas['imagens_aereas'].push(marker);
-
+                        
                     } catch (error) {
                         // Silenciosamente ignora erros
                     }
@@ -3990,15 +3839,15 @@ const MapFramework = {
 
     },
 
-    abrirInfoWindowImagemAerea: function (marker) {
+    abrirInfoWindowImagemAerea: function(marker) {
         // Fecha InfoWindow anterior se existir
         if (this.infoWindow) {
             this.infoWindow.close();
         }
-
+        
         const imagem = marker.dadosImagem;
         const caminhoImagem = marker.caminhoImagem;
-
+        
         // Cria conteúdo HTML inicial com loading
         let conteudoLoading = `
             <div style="padding: 10px; font-family: Arial, sans-serif; min-width: 500px; min-height: 100px; text-align: center;">
@@ -4010,16 +3859,16 @@ const MapFramework = {
                 </div>
             </div>
         `;
-
+        
         // Cria e abre o InfoWindow imediatamente com loading
         this.infoWindow = new google.maps.InfoWindow({
             content: conteudoLoading,
             position: marker.position,
             maxWidth: 520
         });
-
+        
         this.infoWindow.open(this.map);
-
+        
         // Busca a imagem via AJAX usando o script PHP
         $.ajax({
             url: 'buscarImagemAerea.php',
@@ -4030,10 +3879,10 @@ const MapFramework = {
             xhrFields: {
                 responseType: 'blob'
             },
-            success: function (blob) {
+            success: function(blob) {
                 // Converte blob para URL
                 const imageUrl = URL.createObjectURL(blob);
-
+                
                 // Atualiza o conteúdo do InfoWindow com a imagem
                 let conteudoImagem = `
                     <div style="padding: 5px; font-family: Arial, sans-serif;">
@@ -4045,15 +3894,15 @@ const MapFramework = {
                         />
                     </div>
                 `;
-
+                
                 // Atualiza o conteúdo diretamente
                 MapFramework.infoWindow.setContent(conteudoImagem);
-
+                
                 // Adiciona evento de clique na imagem após atualizar
-                setTimeout(function () {
+                setTimeout(function() {
                     const imgElement = document.getElementById('imagemAerea');
                     if (imgElement) {
-                        imgElement.addEventListener('click', function () {
+                        imgElement.addEventListener('click', function() {
                             // Abre a imagem em tamanho real em nova aba
                             const urlImagem = `buscarImagemAerea.php?caminho=${encodeURIComponent(caminhoImagem)}`;
                             window.open(urlImagem, '_blank');
@@ -4061,14 +3910,14 @@ const MapFramework = {
                     }
                 }, 100);
             },
-            error: function (xhr, status, error) {
+            error: function(xhr, status, error) {
                 // Em caso de erro, atualiza com mensagem de erro
                 let conteudoErro = `
                     <div style="padding: 20px; text-align: center; color: #dc3545; font-family: Arial, sans-serif;">
                         <p><strong>❌ Erro ao carregar a imagem</strong></p>
                     </div>
                 `;
-
+                
                 MapFramework.infoWindow.setContent(conteudoErro);
             }
         });

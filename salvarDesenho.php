@@ -35,16 +35,20 @@ try {
     // A coluna quadricula é varchar(4) — garante no máximo 4 caracteres
     $quadricula = mb_substr($quadricula, 0, 4);
 
-    if($tipo == "poligono"){
-        $camada = "quadra";
-    }
-
-    if($tipo == "polilinha"){
-        $camada = "lote";
-    }
-
-    if($tipo != "poligono" && $tipo != "polilinha" ){
-        $camada = NULL;
+    // Usa a camada enviada pelo JavaScript, com fallback para compatibilidade
+    $camada_enviada = isset($_POST['camada']) ? trim($_POST['camada']) : null;
+    
+    if ($camada_enviada) {
+        $camada = strtolower($camada_enviada);
+    } else {
+        // Fallback para compatibilidade com código antigo
+        if($tipo == "poligono"){
+            $camada = "quadra";
+        } else if($tipo == "polilinha"){
+            $camada = "lote";
+        } else {
+            $camada = NULL;
+        }
     }
 
     // INSERT

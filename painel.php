@@ -1,5 +1,6 @@
 <?php
 
+session_start();
 //include("verifica_login.php");
 include("connection.php");
 
@@ -184,6 +185,8 @@ include("connection.php");
 
                 <!-- Botão Sair -->
                 <div class="d-flex">
+                    <a href="suporte_redirect.php" class="btn btn-primary">Suporte</a>
+                    &nbsp;&nbsp;&nbsp;
                     <a href="logout.php" class="btn btn-danger">Sair</a>
                 </div>
             </div>
