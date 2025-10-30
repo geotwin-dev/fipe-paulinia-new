@@ -931,9 +931,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         .marker-imagem-aerea{
             width: 15px;
             height: 15px;
-            background-color: rgb(0, 204, 255);
-            border-radius: 50%;
-            border: 1px solid #000;
             cursor: pointer;
             transform: translate(0, 10px);
         }
@@ -1159,6 +1156,22 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                     <input class="form-check-input" type="checkbox" id="chkQuadras" checked>
                                     <label class="form-check-label" for="chkQuadras">
                                         Quadras
+                                    </label>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkUnidades" checked>
+                                    <label class="form-check-label" for="chkUnidades">
+                                        Edificações
+                                    </label>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkPiscinas" checked>
+                                    <label class="form-check-label" for="chkPiscinas">
+                                        Piscinas
                                     </label>
                                 </div>
                             </li>
@@ -1486,6 +1499,18 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#chkQuadras').on('change', function() {
             const visivel = $(this).is(':checked');
             MapFramework.alternarVisibilidadeCamada('quadra', visivel);
+        });
+
+        // Checkbox das Unidades
+        $('#chkUnidades').on('change', function() {
+            const visivel = $(this).is(':checked');
+            MapFramework.alternarVisibilidadeCamada('unidade', visivel);
+        });
+
+        // Checkbox das Piscinas
+        $('#chkPiscinas').on('change', function() {
+            const visivel = $(this).is(':checked');
+            MapFramework.alternarVisibilidadeCamada('piscina', visivel);
         });
 
         // Checkbox dos Lotes

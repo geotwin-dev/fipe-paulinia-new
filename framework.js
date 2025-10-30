@@ -1200,7 +1200,7 @@ const MapFramework = {
     },
 
     atualizarInteratividadeObjetos: function (interativo) {
-        const camadasInterativas = ['quadra', 'unidade', 'lote', 'quarteirao', 'semCamadas']; // adicione outras se necessário
+        const camadasInterativas = ['quadra', 'unidade', 'piscina', 'lote', 'quarteirao', 'semCamadas']; // adicione outras se necessário
         Object.keys(arrayCamadas).forEach(nomeCamada => {
             if (!camadasInterativas.includes(nomeCamada)) return;
             arrayCamadas[nomeCamada].forEach(obj => {
@@ -1248,15 +1248,22 @@ const MapFramework = {
 
                         if (tipo === 'poligono') {
                             let zIndexValue = 5; // Padrão para quadras
+                            let strokeLine = 4;
+                            let strokeColorLine = cores;
+                            
                             if (camadaNome === 'unidade') {
                                 zIndexValue = 6; // Unidades acima das quadras
+                            } else if (camadaNome === 'piscina') {
+                                zIndexValue = 6; // Piscinas no mesmo nível das unidades
+                                strokeLine = 1;
+                                strokeColorLine = "black";
                             }
 
                             objeto = new google.maps.Polygon({
                                 paths: coords,
-                                strokeColor: cores,
+                                strokeColor: strokeColorLine,
                                 strokeOpacity: 1,
-                                strokeWeight: 4,
+                                strokeWeight: strokeLine,
                                 fillColor: cores,
                                 fillOpacity: 0.30,
                                 editable: false,
@@ -1308,7 +1315,7 @@ const MapFramework = {
                                         MapFramework.abrirInfoWindowUnidade(objeto, event.latLng, objeto.identificador);
                                     }
                                     // Se for polígono E não for unidade, abre InfoWindow com botões de cores
-                                    else if (tipo === 'poligono' && camadaNome !== 'unidade' && event.latLng) {
+                                    else if (tipo === 'poligono' && camadaNome !== 'unidade' && camadaNome !== 'piscina' && event.latLng) {
                                         console.log(paginaAtual)
                                         MapFramework.abrirInfoWindowCores(objeto, event.latLng, desenho.id);
                                     } else {
@@ -1356,6 +1363,14 @@ const MapFramework = {
             arrayCamadas['unidade'].forEach(unidade => {
                 unidade.setOptions({ zIndex: 6 });
                 unidade.zIndexOriginal = 6;
+            });
+        }
+
+        // Aplica z-index correto para piscinas
+        if (arrayCamadas['piscina']) {
+            arrayCamadas['piscina'].forEach(piscina => {
+                piscina.setOptions({ zIndex: 6 });
+                piscina.zIndexOriginal = 6;
             });
         }
 
@@ -1641,14 +1656,13 @@ const MapFramework = {
             // Verifica se o polígono está sobre alguma quadra
             const resultado = this.verificarPoligonoDentroDeQuadra(this.desenho.temporario, 3);
 
-            // Aplica a cor baseada no resultado
+            // Aplica a cor de validação apenas visualmente (verde/vermelho),
+            // mas mantém a cor de salvamento como ciano
             this.desenho.temporario.setOptions({
                 strokeColor: resultado.cor,
                 fillColor: resultado.cor,
                 editable: false
             });
-
-            this.desenho.cor = resultado.cor;
             //seta o id_desenho
             this.desenho.temporario.id_desenho = resultado.identificador;
 
@@ -1657,6 +1671,94 @@ const MapFramework = {
             console.log("Salvando...");
             // Salva o desenho
             this.salvarDesenho('Unidade');
+        });
+    },
+
+    iniciarDesenhoPiscina: function () {
+        if (this.listenerGlobalClick) { this.listenerGlobalClick.remove(); this.listenerGlobalClick = null; }
+        // Limpa seleção antes de começar novo desenho
+        this.desselecionarDesenho();
+
+        this.atualizarInteratividadeObjetos(false);
+
+        this.desenho.modo = 'poligono';
+        this.desenho.tipoAtual = 'poligono';
+        this.map.setOptions({ draggableCursor: 'crosshair' });
+
+        // Mostra o botão de finalizar desenho
+        $('#btnFinalizarDesenho').removeClass('d-none');
+
+        if (this.desenho.listenerClick) this.desenho.listenerClick.remove();
+        if (this.desenho.listenerRightClick) this.desenho.listenerRightClick.remove();
+
+        this.desenho.listenerClick = this.map.addListener('click', (e) => {
+
+            const ponto = e.latLng;
+
+            if (!this.desenho.temporario) {
+                this.desenho.temporario = new google.maps.Polygon({
+                    paths: [ponto],
+                    strokeColor: "black",
+                    strokeOpacity: 0.8,
+                    strokeWeight: 1,
+                    fillColor: "#00ffff",
+                    fillOpacity: 0.35,
+                    editable: true,
+                    map: this.map,
+                    clickable: false,
+                    zIndex: 6 // similar às unidades
+                });
+
+                this.desenho.cor = "#00ffff";
+                google.maps.event.addListener(this.desenho.temporario, 'rightclick', (e) => {
+                    const path = this.desenho.temporario.getPath();
+                    if (typeof e.vertex === 'number') {
+                        if (path.getLength() > 3) {
+                            this.cliqueEmVertice = true;
+                            path.removeAt(e.vertex);
+                        } else {
+                            alert("Polígono precisa de pelo menos 3 pontos.");
+                        }
+                    }
+                });
+
+            } else {
+                this.desenho.temporario.getPath().push(ponto);
+            }
+        });
+
+        this.desenho.listenerRightClick = this.map.addListener('rightclick', (e) => {
+            if (this.cliqueEmVertice) {
+                this.cliqueEmVertice = false;
+                return;
+            }
+
+            if (!this.desenho.temporario) return;
+
+            const pathLength = this.desenho.temporario.getPath().getLength();
+            if (pathLength < 3) {
+                alert("Você precisa de pelo menos 3 pontos.");
+                return;
+            }
+
+            // Verifica se o polígono está sobre alguma quadra
+            const resultado = this.verificarPoligonoDentroDeQuadra(this.desenho.temporario, 3);
+
+            // Aplica a cor baseada no resultado
+            this.desenho.temporario.setOptions({
+                fillColor: resultado.cor,
+                editable: false
+            });
+
+            // Mantém a cor padrão da piscina (#00ffff) para salvar
+            //seta o id_desenho
+            this.desenho.temporario.id_desenho = resultado.identificador;
+
+            // Define o identificador se encontrou uma quadra
+            this.desenho.temporario.identificador = resultado.identificador;
+            console.log("Salvando...");
+            // Salva o desenho
+            this.salvarDesenho('Piscina');
         });
     },
 
@@ -1955,11 +2057,14 @@ const MapFramework = {
         }
 
         if (poligonosDentro.length === 1) {
+            var corDesenho = poligonosDentro[0].cor;
+
+            console.log(poligonosDentro[0])
             console.log(" Polígono está dentro da quadra:", poligonosDentro[0].identificador);
             return {
                 encontrado: true,
                 identificador: poligonosDentro[0].identificador,
-                cor: '#ff00ff'
+                cor: corDesenho
             };
         } else {
             console.warn(" Polígono está fora ou sobre múltiplas quadras.");
@@ -3119,6 +3224,7 @@ const MapFramework = {
                         if (!coords[0]) return;
                         let lat = coords[0].lat;
                         let lng = coords[0].lng;
+                        
                         // Cria HTML do marcador
                         let el = document.createElement('div');
                         el.style.padding = '0 10px';
@@ -3165,7 +3271,7 @@ const MapFramework = {
                             let conteudoInfoWindow = '';
 
                             let tituloInicialHtml = `
-                                <div style="display: flex; align-items: flex-start; margin-bottom: 15px; min-width: 450px;">
+                                <div style="display: flex; align-items: flex-start; margin-bottom: 15px; min-width: 550px;">
                                     <h5 style="margin: 0 0 8px 0; color: #333; font-weight: bold;">Dados Cadastrais</h5>
                                     <button type="button" class="btn btn-outline-secondary btn-sm ms-2 btn-docs-morador" style="font-size: 10px; padding: 2px 6px; border-radius: 3px;">Docs</button>
                                 </div>
@@ -3227,7 +3333,7 @@ const MapFramework = {
                                 `;
 
                                 conteudoInfoWindow = `
-                                    <div style="padding: 0 10px 10px 10px; font-family: Arial, sans-serif; max-width: 350px;">
+                                    <div style="padding: 0 10px 10px 10px; font-family: Arial, sans-serif;">
                                         ${tituloInicialHtml}
                                         ${dadosDesenhoHTML}
                                         <div>
@@ -3242,7 +3348,7 @@ const MapFramework = {
                             } else {
                                 // Se não encontrou dados do cadastro, mostra apenas os dados do desenho
                                 conteudoInfoWindow = `
-                                    <div style="padding: 10px; font-family: Arial, sans-serif; max-width: 350px;">
+                                    <div style="padding: 10px; font-family: Arial, sans-serif;">
                                         ${dadosDesenhoHTML}
                                         <div>
                                             <h4 style="margin: 0 0 8px 0; color: #333; font-size: 14px; font-weight: bold;">Cadastro</h4>
@@ -3329,27 +3435,116 @@ const MapFramework = {
                                                             success: function(response) {
                                                                 tabIptu.dataset.loaded = 'true';
                                                                 
-                                                                if (response && response.length > 0) {
+                                                                // Verifica se a resposta veio com o novo formato (objeto com dados e dicionario)
+                                                                // ou no formato antigo (array direto) para manter compatibilidade
+                                                                let dadosArray = [];
+                                                                let dadosArray2 = [];
+                                                                let dicionario = {};
+                                                                let dicionario2 = {};
+                                                                
+                                                                if (response && typeof response === 'object') {
+                                                                    if (response.dados && Array.isArray(response.dados)) {
+                                                                        // Novo formato: { dados: [...], dados2: [...], dicionario: {...}, dicionario2: {...} }
+                                                                        dadosArray = response.dados;
+                                                                        dadosArray2 = response.dados2 || [];
+                                                                        dicionario = response.dicionario || {};
+                                                                        dicionario2 = response.dicionario2 || {};
+                                                                    } else if (Array.isArray(response)) {
+                                                                        // Formato antigo: array direto (mantém compatibilidade)
+                                                                        dadosArray = response;
+                                                                        dadosArray2 = [];
+                                                                        dicionario = {};
+                                                                        dicionario2 = {};
+                                                                    }
+                                                                }
+                                                                
+                                                                if (dadosArray && dadosArray.length > 0) {
                                                                     let content = '<div style="margin-bottom: 15px;">';
                                                                     
-                                                                    response.forEach(function(iptu, index) {
+                                                                    dadosArray.forEach(function(iptu, index) {
                                                                         if (index > 0) {
                                                                             content += '<hr style="margin: 15px 0; border: 0; border-top: 1px solid #ddd;">';
                                                                         }
                                                                         
                                                                         Object.keys(iptu).forEach(function(key) {
                                                                             const value = iptu[key];
-                                                                            if (value !== null && value !== '') {
-                                                                                const fieldName = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                                                            if (value !== null && value !== '' && key !== 'erro') {
+                                                                                // Usa o dicionário se existir, senão usa a formatação automática como fallback
+                                                                                const fieldName = dicionario[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                                                                                 content += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${fieldName}:</strong> <span style="color: #666;">${value}</span></div>`;
                                                                             }
                                                                         });
                                                                     });
                                                                     
                                                                     content += '</div>';
+                                                                    
+                                                                    // Adiciona seção de Composição da área construída
+                                                                    if (dadosArray2 && dadosArray2.length > 0) {
+                                                                        content += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                                                                        content += '<h4 style="margin-bottom: 10px; font-size: 14px; font-weight: bold; color: #333;">Composição da área construída</h4>';
+                                                                        content += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;">';
+                                                                        
+                                                                        // Cabeçalho da tabela
+                                                                        content += '<thead><tr style="background-color: #f5f5f5; border-bottom: 2px solid #ddd;">';
+                                                                        const colunas = ['area', 'area_construida', 'utilizacao', 'construcao', 'classificacao'];
+                                                                        colunas.forEach(function(col) {
+                                                                            const label = dicionario2[col] || col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                                                            content += `<th style="padding: 8px; text-align: left; font-weight: bold; color: #333; border: 1px solid #ddd;">${label}</th>`;
+                                                                        });
+                                                                        content += '</tr></thead>';
+                                                                        
+                                                                        // Corpo da tabela
+                                                                        content += '<tbody>';
+                                                                        dadosArray2.forEach(function(area) {
+                                                                            content += '<tr>';
+                                                                            colunas.forEach(function(col) {
+                                                                                const value = area[col] !== null && area[col] !== '' ? area[col] : '';
+                                                                                content += `<td style="padding: 8px; border: 1px solid #ddd; color: #666;">${value}</td>`;
+                                                                            });
+                                                                            content += '</tr>';
+                                                                        });
+                                                                        content += '</tbody>';
+                                                                        
+                                                                        content += '</table>';
+                                                                        content += '</div>';
+                                                                    } else {
+                                                                        // Tabela vazia se não houver dados
+                                                                        content += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                                                                        content += '<h4 style="margin-bottom: 10px; font-size: 14px; font-weight: bold; color: #333;">Composição da área construída</h4>';
+                                                                        content += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;">';
+                                                                        
+                                                                        // Cabeçalho da tabela
+                                                                        content += '<thead><tr style="background-color: #f5f5f5; border-bottom: 2px solid #ddd;">';
+                                                                        const colunasVazias = ['area', 'area_construida', 'utilizacao', 'construcao', 'classificacao'];
+                                                                        colunasVazias.forEach(function(col) {
+                                                                            const label = dicionario2[col] || col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                                                            content += `<th style="padding: 8px; text-align: left; font-weight: bold; color: #333; border: 1px solid #ddd;">${label}</th>`;
+                                                                        });
+                                                                        content += '</tr></thead>';
+                                                                        
+                                                                        // Linhas vazias
+                                                                        content += '<tbody>';
+                                                                        for (let i = 0; i < 3; i++) {
+                                                                            content += '<tr>';
+                                                                            colunasVazias.forEach(function(col) {
+                                                                                content += `<td style="padding: 8px; border: 1px solid #ddd;"></td>`;
+                                                                            });
+                                                                            content += '</tr>';
+                                                                        }
+                                                                        content += '</tbody>';
+                                                                        
+                                                                        content += '</table>';
+                                                                        content += '</div>';
+                                                                    }
+                                                                    
                                                                     tabIptu.innerHTML = content;
                                                                 } else {
-                                                                    tabIptu.innerHTML = '<div style="color: #666; font-style: italic; padding: 10px;">Nenhum dado encontrado na tabela IPTU para este imóvel<br><strong>ID buscado: ' + imobId + '</strong></div>';
+                                                                    // Verifica se houve erro na resposta
+                                                                    if (response && response.erro) {
+                                                                        tabIptu.innerHTML = '<div style="color: #dc3545; padding: 10px;">Erro: ' + response.erro + '<br><strong>ID buscado: ' + imobId + '</strong></div>';
+                                                                    } else {
+                                                                        tabIptu.innerHTML = '<div style="color: #666; font-style: italic; padding: 10px;">Nenhum dado encontrado na tabela IPTU para este imóvel<br><strong>ID buscado: ' + imobId + '</strong></div>';
+                                                                    }
                                                                 }
                                                             },
                                                             error: function(xhr, status, error) {
@@ -3890,7 +4085,7 @@ const MapFramework = {
             cache: false,
             dataType: 'json',
             success: (response) => {
-                console.log(response);
+                //console.log(response);
 
                 if (response?.pastas_especiais?.pasta_params?.caminho !== undefined) {
                     paramsTxt = response.pastas_especiais.pasta_params.caminho;
@@ -3933,6 +4128,7 @@ const MapFramework = {
                 caminho: `${paramsTxt}\\${quadricula}_calibrated_external_camera_parameters_wgs84.txt`
             },
             success: (response) => {
+                console.log(response);
                 // Para cada objeto, cria um marker
                 response.forEach((imagem, index) => {
                     try {
@@ -3941,14 +4137,49 @@ const MapFramework = {
                             return;
                         }
 
-                        // Cria o elemento HTML do marcador (ícone de câmera)
+                        // Cria o elemento HTML do marcador (flecha rotacionável pelo Kappa)
                         const markerElement = document.createElement('div');
                         markerElement.className = 'marker-imagem-aerea';
-                        //markerElement.innerHTML = '📷';
-                        markerElement.style.fontSize = '24px';
+                        markerElement.style.width = '24px';
+                        markerElement.style.height = '24px';
+                        markerElement.style.display = 'flex';
+                        markerElement.style.alignItems = 'center';
+                        markerElement.style.justifyContent = 'center';
                         markerElement.style.cursor = 'pointer';
                         markerElement.style.filter = 'drop-shadow(2px 2px 2px rgba(0,0,0,0.5))';
                         markerElement.title = imagem.imageName || 'Imagem Aérea';
+
+                        // Calcula o ângulo em graus a partir do Kappa (auto detect radianos x graus)
+                        const kappaValor = parseFloat(imagem.Kappa);
+                        const kappaEhValido = Number.isFinite(kappaValor);
+                        const kappaEmGraus = kappaEhValido
+                            ? (Math.abs(kappaValor) <= (2 * Math.PI) ? (kappaValor * 180 / Math.PI) : kappaValor)
+                            : 0;
+                        // Define se Kappa já está em graus (padrão: true)
+                        const KAPPA_EH_GRAUS = true;
+                        // Converte para graus somente se optar por autodetecção
+                        const graus = kappaEhValido
+                            ? (KAPPA_EH_GRAUS ? kappaValor : (Math.abs(kappaValor) <= (2 * Math.PI) ? (kappaValor * 180 / Math.PI) : kappaValor))
+                            : 0;
+                        const heading = ((graus % 360) + 360) % 360; // 0..360
+                        // CSS rotate(+) é horário; para respeitar + anti-horário, usamos 360 - heading
+                        const baseOffsetDeg = 0; // ajuste fino se necessário (ex.: 90, -90, 180)
+                        let anguloFinalDeg = (360 - heading + baseOffsetDeg) % 360;
+
+                        // SVG da flecha apontando para cima (0deg = Norte), rotacionada pelo Kappa
+                        const svgNs = 'http://www.w3.org/2000/svg';
+                        const svg = document.createElementNS(svgNs, 'svg');
+                        svg.setAttribute('viewBox', '0 0 396.433 396.433');
+                        svg.setAttribute('width', '24');
+                        svg.setAttribute('height', '24');
+                        svg.style.transform = `rotate(${anguloFinalDeg}deg)`;
+                        svg.style.transformOrigin = '50% 50%';
+
+                        const path = document.createElementNS(svgNs, 'path');
+                        path.setAttribute('d', 'M 178.308 45.906 C 184.803 32.955 191.297 26.479 197.792 26.479 C 204.287 26.479 210.781 32.955 217.276 45.906 L 293.302 197.51 L 369.328 349.114 C 375.823 362.065 377.446 371.778 374.199 378.254 C 370.952 384.729 361.933 395.483 349.844 387.967 C 298.158 355.834 194.411 292.175 194.411 292.175 L 45.74 387.967 C 32.751 387.967 24.632 384.729 21.385 378.254 C 18.138 371.778 19.761 362.065 26.256 349.114 L 102.282 197.51 L 178.308 45.906 Z');
+                        path.setAttribute('style', 'stroke: rgb(0, 0, 0); fill: rgb(71, 153, 255); stroke-width: 10px;');
+                        svg.appendChild(path);
+                        markerElement.appendChild(svg);
 
                         // Cria o Advanced Marker
                         const marker = new google.maps.marker.AdvancedMarkerElement({
@@ -4034,15 +4265,25 @@ const MapFramework = {
                 // Converte blob para URL
                 const imageUrl = URL.createObjectURL(blob);
 
-                // Atualiza o conteúdo do InfoWindow com a imagem
+                // Atualiza o conteúdo do InfoWindow com a imagem e botões de rotação
                 let conteudoImagem = `
                     <div style="padding: 5px; font-family: Arial, sans-serif;">
-                        <img 
-                            id="imagemAerea" 
-                            src="${imageUrl}" 
-                            style="width: 400px; height: auto; cursor: pointer; border-radius: 5px; display: block;"
-                            title="Clique para abrir em tamanho real"
-                        />
+                        <div style="position: relative; display: inline-block;">
+                            <img 
+                                id="imagemAerea" 
+                                src="${imageUrl}" 
+                                style="width: 400px; height: auto; cursor: pointer; border-radius: 5px; display: block; transform-origin: 50% 50%; transition: transform 120ms ease;"
+                                title="Clique para abrir em tamanho real"
+                            />
+                            <button id="btnRotateLeft" type="button" title="Girar 90° à esquerda" 
+                                style="position:absolute; top:6px; left:6px; background:#ffffffdd; border:1px solid #999; border-radius:4px; padding:4px 6px; font-size:12px; cursor:pointer;">
+                                ⟲
+                            </button>
+                            <button id="btnRotateRight" type="button" title="Girar 90° à direita" 
+                                style="position:absolute; top:6px; right:6px; background:#ffffffdd; border:1px solid #999; border-radius:4px; padding:4px 6px; font-size:12px; cursor:pointer;">
+                                ⟳
+                            </button>
+                        </div>
                     </div>
                 `;
 
@@ -4052,12 +4293,35 @@ const MapFramework = {
                 // Adiciona evento de clique na imagem após atualizar
                 setTimeout(function () {
                     const imgElement = document.getElementById('imagemAerea');
+                    const btnLeft = document.getElementById('btnRotateLeft');
+                    const btnRight = document.getElementById('btnRotateRight');
                     if (imgElement) {
+                        let rotationDeg = 0; // estado local de rotação
+
                         imgElement.addEventListener('click', function () {
-                            // Abre a imagem em tamanho real em nova aba
-                            const urlImagem = `buscarImagemAerea.php?caminho=${encodeURIComponent(caminhoImagem)}`;
-                            window.open(urlImagem, '_blank');
+                            const urlVisualizar = `visualizarImagem.php?caminho=${encodeURIComponent(caminhoImagem)}&rot=${encodeURIComponent(rotationDeg)}`;
+                            window.open(urlVisualizar, '_blank');
                         });
+
+                        const applyRotation = function () {
+                            // rotação acumulativa sem normalizar (permite "infinito")
+                            imgElement.style.transform = `rotate(${rotationDeg}deg)`;
+                        };
+
+                        if (btnLeft) {
+                            btnLeft.addEventListener('click', function (e) {
+                                e.stopPropagation();
+                                rotationDeg -= 90;
+                                applyRotation();
+                            });
+                        }
+                        if (btnRight) {
+                            btnRight.addEventListener('click', function (e) {
+                                e.stopPropagation();
+                                rotationDeg += 90;
+                                applyRotation();
+                            });
+                        }
                     }
                 }, 100);
             },

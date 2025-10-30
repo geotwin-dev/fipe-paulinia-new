@@ -913,9 +913,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         .marker-imagem-aerea{
             width: 15px;
             height: 15px;
-            background-color: rgb(0, 204, 255);
-            border-radius: 50%;
-            border: 1px solid #000;
             cursor: pointer;
             transform: translate(0, 10px);
         }
@@ -1150,7 +1147,15 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="chkUnidades" checked>
                                     <label class="form-check-label" for="chkUnidades">
-                                        Blocos
+                                        Edificações
+                                    </label>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkPiscinas" checked>
+                                    <label class="form-check-label" for="chkPiscinas">
+                                        Piscinas
                                     </label>
                                 </div>
                             </li>
@@ -1257,7 +1262,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     </div>
 
                     <button id="btnIncluirPoligono" class="btn btn-primary">Quadra</button>
-                    <button id="btnIncluirUnidade" class="btn" style="background-color: #ff00ff; color: white;">Bloco</button>
+                    <button id="btnIncluirUnidade" class="btn" style="background-color: #ff00ff; color: white;">Edificação</button>
+                    <button id="btnIncluirPiscina" class="btn" style="background-color: #00ffff; color: black;">Piscina</button>
                     <button id="btnIncluirLinha" class="btn btn-success">Lote</button>
 
                     <!-- Botão para finalizar desenho (aparece quando está em modo de desenho) -->
@@ -1443,6 +1449,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             ortofoto: [],
             quadra: [],
             unidade: [],
+            piscina: [],
             lote: [],
             quarteirao: [],
             semCamadas: []
@@ -1492,6 +1499,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#btnIncluirUnidade').on('click', function() {
             MapFramework.iniciarDesenhoUnidade();
             controlarVisibilidadeBotoes('unidade');
+        });
+
+        $('#btnIncluirPiscina').on('click', function() {
+            MapFramework.iniciarDesenhoPiscina();
+            controlarVisibilidadeBotoes('piscina');
         });
 
         $('#btnIncluirLinha').on('click', function() {
@@ -1576,6 +1588,12 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#chkUnidades').on('change', function() {
             const visivel = $(this).is(':checked');
             MapFramework.alternarVisibilidadeCamada('unidade', visivel);
+        });
+
+        // Checkbox das Piscinas
+        $('#chkPiscinas').on('change', function() {
+            const visivel = $(this).is(':checked');
+            MapFramework.alternarVisibilidadeCamada('piscina', visivel);
         });
 
         // Checkbox dos Lotes
@@ -1714,6 +1732,13 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         clickable: false
                     });
                 });
+                if (arrayCamadas.piscina) {
+                    arrayCamadas.piscina.forEach(piscina => {
+                        piscina.setOptions({
+                            clickable: false
+                        });
+                    });
+                }
                 arrayCamadas.lote.forEach(lote => {
                     lote.setOptions({
                         clickable: false
@@ -2200,6 +2225,13 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     clickable: true
                 });
             });
+            if (arrayCamadas.piscina) {
+                arrayCamadas.piscina.forEach(piscina => {
+                    piscina.setOptions({
+                        clickable: true
+                    });
+                });
+            }
             arrayCamadas.lote.forEach(lote => {
                 lote.setOptions({
                     clickable: true
@@ -3480,6 +3512,10 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     $('#btnFinalizarDesenho').removeClass('d-none');
                     break;
 
+                case 'piscina':
+                    $('#btnFinalizarDesenho').removeClass('d-none');
+                    break;
+
                 case 'lote':
                     $('#btnFinalizarDesenho').removeClass('d-none');
                     break;
@@ -4412,6 +4448,18 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         // strokeWeight não é alterado - mantém o original
                     });
                     unidade.desativado = false;
+                });
+            }
+
+            // Restaura cores originais de todas as piscinas (mantendo grossuras originais)
+            if (arrayCamadas["piscina"]) {
+                arrayCamadas["piscina"].forEach(piscina => {
+                    piscina.setOptions({
+                        strokeColor: piscina.corOriginal || '#00ffff',
+                        fillColor: piscina.corOriginal || '#00ffff',
+                        fillOpacity: 0.30
+                    });
+                    piscina.desativado = false;
                 });
             }
 
