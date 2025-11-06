@@ -19,6 +19,7 @@ const MapFramework = {
     quarteiroesNumeros: [],
     dadosMoradores: [],
     infoWindow: null,
+    infoWindow_poligono_lote: null,
 
     desenho: {
         modo: null,
@@ -62,6 +63,9 @@ const MapFramework = {
             // Fecha o InfoWindow se estiver aberto
             if (this.infoWindow) {
                 this.infoWindow.close();
+            }
+            if (this.infoWindow_poligono_lote) {
+                this.infoWindow_poligono_lote.close();
             }
         }
 
@@ -128,6 +132,9 @@ const MapFramework = {
             if (this.infoWindow) {
                 this.infoWindow.close();
             }
+            if (this.infoWindow_poligono_lote) {
+                this.infoWindow_poligono_lote.close();
+            }
 
             // Aqui garantimos que o botão some
             $('#btnExcluir').addClass('d-none');
@@ -139,6 +146,9 @@ const MapFramework = {
         // Fecha InfoWindow anterior se existir
         if (this.infoWindow) {
             this.infoWindow.close();
+        }
+        if (this.infoWindow_poligono_lote) {
+            this.infoWindow_poligono_lote.close();
         }
 
         // Define as cores dos botões com seus respectivos valores hexadecimais
@@ -198,6 +208,9 @@ const MapFramework = {
                             console.log('Cor atualizada com sucesso!');
                             // Fecha o InfoWindow após atualizar
                             MapFramework.infoWindow.close();
+                            if (MapFramework.infoWindow_poligono_lote) {
+                                MapFramework.infoWindow_poligono_lote.close();
+                            }
                         } else {
                             console.error('Erro ao atualizar cor:', response.mensagem);
                             //alert('Erro ao atualizar a cor: ' + response.mensagem);
@@ -216,6 +229,9 @@ const MapFramework = {
         // Fecha InfoWindow anterior se existir
         if (this.infoWindow) {
             this.infoWindow.close();
+        }
+        if (this.infoWindow_poligono_lote) {
+            this.infoWindow_poligono_lote.close();
         }
 
         // Calcula a área do polígono em metros quadrados (float)
@@ -523,6 +539,9 @@ const MapFramework = {
         if (this.infoWindow) {
             this.infoWindow.close();
         }
+        if (this.infoWindow_poligono_lote) {
+            this.infoWindow_poligono_lote.close();
+        }
 
         // Calcula a área do polígono em metros quadrados (float)
         let areaPoligono = 0;
@@ -667,6 +686,485 @@ const MapFramework = {
             },
             error: () => {
                 this.infoWindow.setContent('<div style="padding: 10px; color: red;">Erro ao carregar dados da unidade</div>');
+            }
+        });
+    },
+
+    abrirInfoWindowPoligono_lote: function (poligono, posicao, idDesenho) {
+        console.log(idDesenho);
+        
+        // Fecha InfoWindow anterior se existir
+        if (this.infoWindow_poligono_lote) {
+            this.infoWindow_poligono_lote.close();
+        }
+        
+        // Fecha outros InfoWindows para não se misturar
+        if (this.infoWindow) {
+            this.infoWindow.close();
+        }
+
+        // Mostra loading no InfoWindow
+        this.infoWindow_poligono_lote = new google.maps.InfoWindow({
+            content: '<div style="padding: 10px; text-align: center;"><i class="fas fa-spinner fa-spin"></i> Carregando dados...</div>',
+            position: posicao
+        });
+
+        this.infoWindow_poligono_lote.open(this.map);
+
+        // Armazena referência ao polígono para uso nos event listeners
+        const self = this;
+        const poligonoRef = poligono;
+        const idDesenhoRef = idDesenho;
+
+        // Calcula a área do polígono em metros quadrados (float)
+        let areaPoligono = 0;
+        if (poligono.coordenadasGeoJSON && turf) {
+            try {
+                areaPoligono = turf.area(poligono.coordenadasGeoJSON);
+                // Mantém como float, não arredonda
+            } catch (e) {
+                console.error('Erro ao calcular área do polígono:', e);
+            }
+        }
+
+        // Variáveis fictícias (serão populadas futuramente)
+        var area_terr_pref = '0';
+        var area_const_pref = '0';
+        var valor_iptu_2025 = '0';
+        var area_terr_encontrada = areaPoligono; // Área calculada do polígono
+        var area_const_encontrada = '0';
+        var area_piscinas_encontrada = '0';  
+        var valor_iptu_2026 = '0';
+
+        // Função para criar o conteúdo HTML do InfoWindow
+        const criarConteudoHTML = (dadosCadastro) => {
+            let conteudoHTML = '<div style="padding: 15px; min-width: 400px; max-width: 500px; font-size: 13px;">';
+            conteudoHTML += '<h6 style="margin: 0px 0 15px 0; color: #333; border-bottom: 2px solid #0066cc; padding-bottom: 8px;">Informações do Imóvel</h6>';
+
+            // textos ditados
+            conteudoHTML += `<div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 15px;">
+                <span style="font-size: 14px;">Área total do terreno na prefeitura: <b><span id="soma-area-terreno-prefeitura">${area_terr_pref}</span> m²</b></span>
+                <span style="font-size: 14px;">Área total construída na prefeitura: <b><span id="soma-area-construida-prefeitura">${area_const_pref}</span> m²</b></span>
+                <span style="font-size: 14px;">Valor lançado do IPTU 2025: <b>R$ ${valor_iptu_2025}</b></span>
+                <span style="font-size: 14px;">Área total do terreno encontrada: <b>${area_terr_encontrada.toFixed(2)} m²</b> <span id="diferenca-area-terreno" style="color: red; font-weight: bold;"></span></span>
+                <span style="font-size: 14px;">Área total construída encontrada: <b><span id="soma-area-construida-encontrada">${area_const_encontrada}</span> m²</b> <span id="diferenca-area-construida" style="color: red; font-weight: bold;"></span></span>
+                <span style="font-size: 14px;">Área total de piscinas encontrada: <b><span id="soma-area-piscinas-encontrada">${area_piscinas_encontrada}</span> m²</b></span>
+                <span style="font-size: 14px;">Valor calculado do IPTU 2026: <b>R$ ${valor_iptu_2026}</b></span>
+            </div>`;
+
+            // Criação das abas
+            conteudoHTML += '<div style="margin-bottom: 15px;">';
+            conteudoHTML += '<div style="display: flex; border-bottom: 2px solid #ddd; margin-bottom: 15px;">';
+            
+            // Aba Cadastro
+            conteudoHTML += '<button class="aba-poligono-lote" data-aba="cadastro" style="flex: 1; padding: 10px; border: none; background-color: #0066cc; color: white; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0; margin-right: 2px;">Cadastro</button>';
+            
+            // Aba IPTU
+            conteudoHTML += '<button class="aba-poligono-lote" data-aba="iptu" style="flex: 1; padding: 10px; border: none; background-color: #ccc; color: #666; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0; margin-right: 2px;">IPTU</button>';
+            
+            // Aba Situação Atual
+            conteudoHTML += '<button class="aba-poligono-lote" data-aba="situacao" style="flex: 1; padding: 10px; border: none; background-color: #ccc; color: #666; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0;">Situação Atual</button>';
+            
+            conteudoHTML += '</div>'; // Fecha div das abas
+            
+            // Conteúdo da aba Cadastro (ativa por padrão)
+            conteudoHTML += '<div id="conteudo-aba-cadastro" class="conteudo-aba-poligono-lote" style="display: block; min-height: 200px; padding: 10px;">';
+            conteudoHTML += `
+                <table class="table table-bordered" style="font-size: 12px;">
+                    <thead>
+                        <tr>
+                            <th>Imob_id</th>
+                            <th>Quarteirão</th>
+                            <th>Quadra</th>
+                            <th>Lote</th>
+                            <th>Á.Terreno</th>
+                            <th>Á.Construída</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-cadastro1">
+                    </tbody>
+                </table>
+            `;
+            conteudoHTML += '</div>';
+            
+            // Conteúdo da aba IPTU
+            conteudoHTML += '<div id="conteudo-aba-iptu" class="conteudo-aba-poligono-lote" style="display: none; min-height: 200px; padding: 10px;">';
+            conteudoHTML += `
+                <table class="table table-bordered" style="font-size: 12px;">
+                    <thead>
+                        <tr>
+                            <th>Imob_id</th>
+                            <th>Ident.</th>
+                            <th>Á.Terr.</th>
+                            <th>Á.Constr.</th>
+                            <th>Utilização</th>
+                            <th>Tipo Construção</th>
+                            <th>Classif.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-cadastro2">
+                    </tbody>
+                </table>
+            `;
+            conteudoHTML += '</div>';
+            
+            // Conteúdo da aba Situação Atual
+            conteudoHTML += '<div id="conteudo-aba-situacao" class="conteudo-aba-poligono-lote" style="display: none; min-height: 200px; padding: 10px;">';
+            conteudoHTML += `
+                <table class="table table-bordered" style="font-size: 12px;">
+                    <thead>
+                        <tr>
+                            <th>Unidade</th>
+                            <th>Á.Constr.</th>
+                            <th>Utiliz.</th>
+                            <th>Tipo Constr.</th>
+                            <th>Classif.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-cadastro3">
+                    </tbody>
+                </table>
+            `;
+            conteudoHTML += '</div>';
+            
+            conteudoHTML += '</div>'; // Fecha div do container das abas
+            conteudoHTML += '</div>'; // Fecha div principal
+
+            return conteudoHTML;
+        };
+
+        // Função para popular a tabela de cadastro (recebe um array de linhas)
+        const popularTabelaCadastro = (dados) => {
+            const tbody = $('#tbody-cadastro1');
+            tbody.empty();
+            
+            // Variáveis para armazenar as somas
+            let somaAreaTerreno = 0;
+            let somaAreaConstruida = 0;
+            
+            // Verifica se dados é um array e tem itens
+            if (Array.isArray(dados) && dados.length > 0) {
+                // Cria uma linha na tabela para cada item do array
+                let linhasHTML = '';
+                
+                dados.forEach((linha) => {
+                    // Soma o valor de area_terreno (coluna 4 da tabela cadastro)
+                    const areaTerreno = parseFloat(linha.area_terreno) || 0;
+                    somaAreaTerreno += areaTerreno;
+                    
+                    // Soma o valor de area_construida (coluna 6 da tabela cadastro)
+                    const areaConstruida = parseFloat(linha.area_construida) || 0;
+                    somaAreaConstruida += areaConstruida;
+                    
+                    linhasHTML += `
+                        <tr>
+                            <td>${linha.imob_id || ''}</td>
+                            <td>${linha.quarteirao || ''}</td>
+                            <td>${linha.quadra || ''}</td>
+                            <td>${linha.lote || ''}</td>
+                            <td>${linha.area_terreno || ''}</td>
+                            <td>${linha.area_construida || ''}</td>
+                        </tr>
+                    `;
+                });
+                
+                tbody.html(linhasHTML);
+                
+                // Atualiza os spans com as somas calculadas
+                $('#soma-area-terreno-prefeitura').text(somaAreaTerreno.toFixed(2));
+                $('#soma-area-construida-prefeitura').text(somaAreaConstruida.toFixed(2));
+                
+                // Calcula e atualiza a diferença da área terreno encontrada
+                calcularDiferençaAreaTerreno(area_terr_encontrada, somaAreaTerreno);
+            } else {
+                // Se não houver dados ou não for array, mostra mensagem
+                tbody.html('<tr><td colspan="6" style="text-align: center; color: #666;">Nenhum registro encontrado</td></tr>');
+                // Atualiza os spans com 0 se não houver dados
+                $('#soma-area-terreno-prefeitura').text('0.00');
+                $('#soma-area-construida-prefeitura').text('0.00');
+                
+                // Atualiza diferença com 0
+                calcularDiferençaAreaTerreno(area_terr_encontrada, 0);
+            }
+        };
+
+        // Função para calcular e exibir diferença da área terreno encontrada
+        const calcularDiferençaAreaTerreno = (areaEncontrada, areaPrefeitura) => {
+            const diferenca = areaEncontrada - areaPrefeitura;
+            let textoDiferenca = '';
+            
+            if (areaPrefeitura > 0) {
+                // Calcula a porcentagem em relação à área da prefeitura
+                const porcentagem = (diferenca / areaPrefeitura) * 100;
+                
+                if (diferenca > 0) {
+                    // Área encontrada é maior (diferença positiva)
+                    textoDiferenca = `(+${diferenca.toFixed(2)} m², +${porcentagem.toFixed(2)}%)`;
+                } else if (diferenca < 0) {
+                    // Área encontrada é menor (diferença negativa)
+                    textoDiferenca = `(${diferenca.toFixed(2)} m², ${porcentagem.toFixed(2)}%)`;
+                } else {
+                    // Áreas são iguais
+                    textoDiferenca = `(0.00 m², 0.00%)`;
+                }
+            } else {
+                // Se área da prefeitura for 0, mostra apenas a diferença absoluta
+                if (diferenca > 0) {
+                    textoDiferenca = `(+${diferenca.toFixed(2)} m²)`;
+                } else if (diferenca < 0) {
+                    textoDiferenca = `(${diferenca.toFixed(2)} m²)`;
+                } else {
+                    textoDiferenca = `(0.00 m²)`;
+                }
+            }
+            
+            // Define a cor: vermelho se diferença for significativa
+            const cor = Math.abs(diferenca) > 0.01 ? 'red' : 'green';
+            $('#diferenca-area-terreno').css('color', cor).text(textoDiferenca);
+        };
+
+        // Função para popular a tabela de IPTU (recebe um array de linhas)
+        const popularTabelaIPTU = (dadosIPTU) => {
+            const tbody = $('#tbody-cadastro2');
+            tbody.empty();
+            
+            // Verifica se dados é um array e tem itens
+            if (Array.isArray(dadosIPTU) && dadosIPTU.length > 0) {
+                // Cria uma linha na tabela para cada item do array
+                let linhasHTML = '';
+                
+                dadosIPTU.forEach((linha) => {
+                    linhasHTML += `
+                        <tr>
+                            <td>${linha.imob_id || ''}</td>
+                            <td>${linha.ident || ''}</td>
+                            <td>${linha.area_terreno || ''}</td>
+                            <td>${linha.area_construida || ''}</td>
+                            <td>${linha.utilizacao || ''}</td>
+                            <td>${linha.tipo_construcao || ''}</td>
+                            <td>${linha.classificacao || ''}</td>
+                        </tr>
+                    `;
+                });
+                
+                tbody.html(linhasHTML);
+            } else {
+                // Se não houver dados ou não for array, mostra mensagem
+                tbody.html('<tr><td colspan="7" style="text-align: center; color: #666;">Nenhum registro encontrado</td></tr>');
+            }
+        };
+
+        // Função para popular a tabela de Situação Atual (recebe um array de linhas)
+        const popularTabelaSituacao = (dadosSituacao) => {
+            const tbody = $('#tbody-cadastro3');
+            tbody.empty();
+            
+            // Variável para armazenar a soma da área construída (coluna 1 da tabela situação)
+            let somaAreaConstruidaEncontrada = 0;
+            
+            // Verifica se dados é um array e tem itens
+            if (Array.isArray(dadosSituacao) && dadosSituacao.length > 0) {
+                // Cria uma linha na tabela para cada item do array
+                let linhasHTML = '';
+                
+                dadosSituacao.forEach((linha) => {
+                    // Soma o valor de area_construida (coluna 1 da tabela situação)
+                    const areaConstruida = parseFloat(linha.area_construida) || 0;
+                    somaAreaConstruidaEncontrada += areaConstruida;
+                    
+                    linhasHTML += `
+                        <tr>
+                            <td>${linha.id_unidades_lotes || ''}</td>
+                            <td>${linha.area_construida || ''}</td>
+                            <td>${linha.utilizacao || ''}</td>
+                            <td>${linha.tipo_construcao || ''}</td>
+                            <td>${linha.classificacao || ''}</td>
+                        </tr>
+                    `;
+                });
+                
+                tbody.html(linhasHTML);
+                
+                // Atualiza o span com a soma calculada
+                $('#soma-area-construida-encontrada').text(somaAreaConstruidaEncontrada.toFixed(2));
+                
+                // Calcula e atualiza a diferença da área construída encontrada
+                // Busca o valor da soma da prefeitura do span
+                const areaConstPrefeitura = parseFloat($('#soma-area-construida-prefeitura').text()) || 0;
+                calcularDiferençaAreaConstruida(somaAreaConstruidaEncontrada, areaConstPrefeitura);
+            } else {
+                // Se não houver dados ou não for array, mostra mensagem
+                tbody.html('<tr><td colspan="5" style="text-align: center; color: #666;">Nenhum registro encontrado</td></tr>');
+                // Atualiza o span com 0 se não houver dados
+                $('#soma-area-construida-encontrada').text('0.00');
+                
+                // Atualiza diferença com 0
+                const areaConstPrefeitura = parseFloat($('#soma-area-construida-prefeitura').text()) || 0;
+                calcularDiferençaAreaConstruida(0, areaConstPrefeitura);
+            }
+        };
+
+        // Função para calcular área total das piscinas encontradas
+        const calcularAreaTotalPiscinas = (idsPiscinas) => {
+            let areaTotalPiscinas = 0;
+            
+            // Verifica se há IDs de piscinas e se arrayCamadas['piscina'] existe
+            if (idsPiscinas && idsPiscinas.length > 0 && arrayCamadas['piscina'] && arrayCamadas['piscina'].length > 0) {
+                idsPiscinas.forEach((idPiscina) => {
+                    // Busca o polígono da piscina com o identificador correspondente
+                    const piscina = arrayCamadas['piscina'].find(p => p.identificador == idPiscina);
+                    
+                    if (piscina && piscina.coordenadasGeoJSON && turf) {
+                        try {
+                            // Calcula a área da piscina
+                            const areaPiscina = turf.area(piscina.coordenadasGeoJSON);
+                            areaTotalPiscinas += areaPiscina;
+                        } catch (e) {
+                            console.error('Erro ao calcular área da piscina ID ' + idPiscina + ':', e);
+                        }
+                    }
+                });
+            }
+            
+            // Atualiza o span com a soma calculada
+            $('#soma-area-piscinas-encontrada').text(areaTotalPiscinas.toFixed(2));
+        };
+
+        // Função para calcular e exibir diferença da área construída encontrada
+        const calcularDiferençaAreaConstruida = (areaEncontrada, areaPrefeitura) => {
+            const diferenca = areaEncontrada - areaPrefeitura;
+            let textoDiferenca = '';
+            
+            if (areaPrefeitura > 0) {
+                // Calcula a porcentagem em relação à área da prefeitura
+                const porcentagem = (diferenca / areaPrefeitura) * 100;
+                
+                if (diferenca > 0) {
+                    // Área encontrada é maior (diferença positiva)
+                    textoDiferenca = `(+${diferenca.toFixed(2)} m², +${porcentagem.toFixed(2)}%)`;
+                } else if (diferenca < 0) {
+                    // Área encontrada é menor (diferença negativa)
+                    textoDiferenca = `(${diferenca.toFixed(2)} m², ${porcentagem.toFixed(2)}%)`;
+                } else {
+                    // Áreas são iguais
+                    textoDiferenca = `(0.00 m², 0.00%)`;
+                }
+            } else {
+                // Se área da prefeitura for 0, mostra apenas a diferença absoluta
+                if (diferenca > 0) {
+                    textoDiferenca = `(+${diferenca.toFixed(2)} m²)`;
+                } else if (diferenca < 0) {
+                    textoDiferenca = `(${diferenca.toFixed(2)} m²)`;
+                } else {
+                    textoDiferenca = `(0.00 m²)`;
+                }
+            }
+            
+            // Define a cor: vermelho se diferença for significativa
+            const cor = Math.abs(diferenca) > 0.01 ? 'red' : 'green';
+            $('#diferenca-area-construida').css('color', cor).text(textoDiferenca);
+        };
+
+        // Busca dados do poligono_lote
+        $.ajax({
+            url: 'buscar_dados_poligono_lote.php',
+            method: 'GET',
+            data: {
+                id_desenho: idDesenho
+            },
+            dataType: 'json',
+            success: (response) => {
+                console.log('Resposta do servidor:', response);
+                
+                if (response.status === 'sucesso') {
+                    // response.dados agora é um ARRAY de linhas
+                    const dados = Array.isArray(response.dados) ? response.dados : [];
+                    // response.dados_iptu é um ARRAY de linhas de IPTU
+                    const dadosIPTU = Array.isArray(response.dados_iptu) ? response.dados_iptu : [];
+                    // response.dados_situacao é um ARRAY de linhas de Situação Atual
+                    const dadosSituacao = Array.isArray(response.dados_situacao) ? response.dados_situacao : [];
+                    // response.dados_piscinas é um ARRAY de IDs das piscinas
+                    const dadosPiscinas = Array.isArray(response.dados_piscinas) ? response.dados_piscinas : [];
+                    
+                    // Cria o conteúdo HTML
+                    const conteudoHTML = criarConteudoHTML([]);
+                    this.infoWindow_poligono_lote.setContent(conteudoHTML);
+                    
+                    // Adiciona event listeners após o InfoWindow ser aberto
+                    google.maps.event.addListenerOnce(this.infoWindow_poligono_lote, 'domready', () => {
+                        // Popula a tabela de cadastro com TODAS as linhas do array (a soma será calculada aqui)
+                        popularTabelaCadastro(dados);
+                        
+                        // Popula a tabela de IPTU com TODAS as linhas do array
+                        popularTabelaIPTU(dadosIPTU);
+                        
+                        // Popula a tabela de Situação Atual com TODAS as linhas do array
+                        popularTabelaSituacao(dadosSituacao);
+                        
+                        // Calcula e atualiza a área total das piscinas encontradas
+                        calcularAreaTotalPiscinas(dadosPiscinas);
+                        
+                        // Função para alternar entre abas
+                        $('.aba-poligono-lote').on('click', function() {
+                            const abaSelecionada = $(this).data('aba');
+                            
+                            // Remove estilo ativo de todas as abas
+                            $('.aba-poligono-lote').css({
+                                'background-color': '#ccc',
+                                'color': '#666'
+                            });
+                            
+                            // Aplica estilo ativo na aba clicada
+                            $(this).css({
+                                'background-color': '#0066cc',
+                                'color': 'white'
+                            });
+                            
+                            // Esconde todo conteúdo
+                            $('.conteudo-aba-poligono-lote').hide();
+                            
+                            // Mostra conteúdo da aba selecionada
+                            $('#conteudo-aba-' + abaSelecionada).show();
+                        });
+                    });
+                } else {
+                    // Erro na resposta
+                    const conteudoHTML = criarConteudoHTML([]);
+                    this.infoWindow_poligono_lote.setContent(conteudoHTML);
+                    
+                    google.maps.event.addListenerOnce(this.infoWindow_poligono_lote, 'domready', () => {
+                        $('#tbody-cadastro1').html('<tr><td colspan="6" style="text-align: center; color: red;">Erro: ' + (response.mensagem || 'Erro desconhecido') + '</td></tr>');
+                        
+                        // Função para alternar entre abas
+                        $('.aba-poligono-lote').on('click', function() {
+                            const abaSelecionada = $(this).data('aba');
+                            $('.aba-poligono-lote').css({ 'background-color': '#ccc', 'color': '#666' });
+                            $(this).css({ 'background-color': '#0066cc', 'color': 'white' });
+                            $('.conteudo-aba-poligono-lote').hide();
+                            $('#conteudo-aba-' + abaSelecionada).show();
+                        });
+                    });
+                }
+            },
+            error: (xhr, status, error) => {
+                console.error('Erro ao buscar dados:', xhr, status, error);
+                
+                // Mostra conteúdo mesmo com erro
+                const conteudoHTML = criarConteudoHTML([]);
+                this.infoWindow_poligono_lote.setContent(conteudoHTML);
+                
+                google.maps.event.addListenerOnce(this.infoWindow_poligono_lote, 'domready', () => {
+                    $('#tbody-cadastro1').html('<tr><td colspan="6" style="text-align: center; color: red;">Erro ao carregar dados do servidor</td></tr>');
+                    
+                    // Função para alternar entre abas
+                    $('.aba-poligono-lote').on('click', function() {
+                        const abaSelecionada = $(this).data('aba');
+                        $('.aba-poligono-lote').css({ 'background-color': '#ccc', 'color': '#666' });
+                        $(this).css({ 'background-color': '#0066cc', 'color': 'white' });
+                        $('.conteudo-aba-poligono-lote').hide();
+                        $('#conteudo-aba-' + abaSelecionada).show();
+                    });
+                });
             }
         });
     },
@@ -903,6 +1401,9 @@ const MapFramework = {
             if (this.infoWindow) {
                 this.infoWindow.close();
             }
+            if (this.infoWindow_poligono_lote) {
+                this.infoWindow_poligono_lote.close();
+            }
         });
 
         const streetView = this.map.getStreetView();
@@ -1138,6 +1639,9 @@ const MapFramework = {
                 if (this.infoWindow) {
                     this.infoWindow.close();
                 }
+                if (this.infoWindow_poligono_lote) {
+                    this.infoWindow_poligono_lote.close();
+                }
             });
         }
     },
@@ -1200,7 +1704,7 @@ const MapFramework = {
     },
 
     atualizarInteratividadeObjetos: function (interativo) {
-        const camadasInterativas = ['quadra', 'unidade', 'piscina', 'lote', 'quarteirao', 'semCamadas']; // adicione outras se necessário
+        const camadasInterativas = ['quadra', 'unidade', 'piscina', 'lote', 'poligono_lote', 'quarteirao', 'semCamadas']; // adicione outras se necessário
         Object.keys(arrayCamadas).forEach(nomeCamada => {
             if (!camadasInterativas.includes(nomeCamada)) return;
             arrayCamadas[nomeCamada].forEach(obj => {
@@ -1252,11 +1756,14 @@ const MapFramework = {
                             let strokeColorLine = cores;
                             
                             if (camadaNome === 'unidade') {
-                                zIndexValue = 6; // Unidades acima das quadras
+                                zIndexValue = 7; // Unidades acima das quadras
                             } else if (camadaNome === 'piscina') {
-                                zIndexValue = 6; // Piscinas no mesmo nível das unidades
+                                zIndexValue = 7; // Piscinas no mesmo nível das unidades
                                 strokeLine = 1;
                                 strokeColorLine = "black";
+                            }else if (camadaNome === 'poligono_lote') {
+                                zIndexValue = 6; 
+                                strokeLine = 2;
                             }
 
                             objeto = new google.maps.Polygon({
@@ -1287,7 +1794,7 @@ const MapFramework = {
                                 strokeWeight: 3,
                                 editable: false,
                                 map: MapFramework.map,
-                                zIndex: 7 // Lotes acima de tudo
+                                zIndex: 8 // Lotes acima de tudo
                             });
 
                             objeto.identificador = desenho.id;
@@ -1310,21 +1817,32 @@ const MapFramework = {
                                 console.log(objeto.identificador)
 
                                 if (paginaAtual == 'index_2') {
+                                    // Se for polígono E for poligono_lote, abre InfoWindow específico
+                                    if (tipo === 'poligono' && camadaNome === 'poligono_lote' && event.latLng) {
+                                        MapFramework.abrirInfoWindowPoligono_lote(objeto, event.latLng, objeto.identificador);
+                                    }
                                     // Se for polígono E for unidade, abre InfoWindow com dados da tabela informacoes_blocos
-                                    if (tipo === 'poligono' && camadaNome === 'unidade' && event.latLng) {
+                                    else if (tipo === 'poligono' && camadaNome === 'unidade' && event.latLng) {
                                         MapFramework.abrirInfoWindowUnidade(objeto, event.latLng, objeto.identificador);
                                     }
                                     // Se for polígono E não for unidade, abre InfoWindow com botões de cores
-                                    else if (tipo === 'poligono' && camadaNome !== 'unidade' && camadaNome !== 'piscina' && event.latLng) {
+                                    else if (tipo === 'poligono' && camadaNome !== 'unidade' && camadaNome !== 'piscina' && camadaNome !== 'poligono_lote' && event.latLng) {
                                         console.log(paginaAtual)
                                         MapFramework.abrirInfoWindowCores(objeto, event.latLng, desenho.id);
                                     } else {
                                         if (MapFramework.infoWindow) {
                                             MapFramework.infoWindow.close();
                                         }
+                                        if (MapFramework.infoWindow_poligono_lote) {
+                                            MapFramework.infoWindow_poligono_lote.close();
+                                        }
                                     }
                                 } else {
-                                    if (tipo === 'poligono' && camadaNome === 'unidade' && event.latLng) {
+                                    // Se for polígono E for poligono_lote, abre InfoWindow específico (mesmo em index_3)
+                                    if (tipo === 'poligono' && camadaNome === 'poligono_lote' && event.latLng) {
+                                        MapFramework.abrirInfoWindowPoligono_lote(objeto, event.latLng, objeto.identificador);
+                                    }
+                                    else if (tipo === 'poligono' && camadaNome === 'unidade' && event.latLng) {
                                         // Se estiver na index_2, usa versão editável; na index_3, usa versão somente leitura
                                         if (paginaAtual == 'index_3') {
                                             MapFramework.abrirInfoWindowUnidade2(objeto, event.latLng, objeto.identificador);
@@ -1350,7 +1868,7 @@ const MapFramework = {
     },
 
     aplicarZIndexCorreto: function () {
-        // Aplica z-index correto para quadras
+        // Aplica z-index correto para quadras/poligonos padrão
         if (arrayCamadas['quadra']) {
             arrayCamadas['quadra'].forEach(quadra => {
                 quadra.setOptions({ zIndex: 5 });
@@ -1358,27 +1876,35 @@ const MapFramework = {
             });
         }
 
-        // Aplica z-index correto para unidades
+        // Aplica z-index correto para poligono_lote (deve ficar abaixo das unidades)
+        if (arrayCamadas['poligono_lote']) {
+            arrayCamadas['poligono_lote'].forEach(poligonoLote => {
+                poligonoLote.setOptions({ zIndex: 6 });
+                poligonoLote.zIndexOriginal = 6;
+            });
+        }
+
+        // Aplica z-index correto para unidades (deve ficar acima dos poligono_lote)
         if (arrayCamadas['unidade']) {
             arrayCamadas['unidade'].forEach(unidade => {
-                unidade.setOptions({ zIndex: 6 });
-                unidade.zIndexOriginal = 6;
+                unidade.setOptions({ zIndex: 7 });
+                unidade.zIndexOriginal = 7;
             });
         }
 
-        // Aplica z-index correto para piscinas
+        // Aplica z-index correto para piscinas (mesmo nível das unidades)
         if (arrayCamadas['piscina']) {
             arrayCamadas['piscina'].forEach(piscina => {
-                piscina.setOptions({ zIndex: 6 });
-                piscina.zIndexOriginal = 6;
+                piscina.setOptions({ zIndex: 7 });
+                piscina.zIndexOriginal = 7;
             });
         }
 
-        // Aplica z-index correto para lotes
-        if (arrayCamadas['lote']) {
-            arrayCamadas['lote'].forEach(lote => {
-                lote.setOptions({ zIndex: 7 });
-                lote.zIndexOriginal = 7;
+        // Aplica z-index correto para polilinhas (acima de tudo)
+        if (arrayCamadas['polilinha']) {
+            arrayCamadas['polilinha'].forEach(polilinha => {
+                polilinha.setOptions({ zIndex: 8 });
+                polilinha.zIndexOriginal = 8;
             });
         }
     },
@@ -2689,7 +3215,9 @@ const MapFramework = {
                             btn.title = `Ir para ${quadriculaEncontrada.centro}`;
                             // Adiciona evento de clique para navegação
                             btn.addEventListener('click', () => {
-                                window.location.href = `index_2.php?quadricula=${quadriculaEncontrada.centro}`;
+                                // Detecta a página atual para manter o usuário na mesma página
+                                const paginaAtual = window.location.pathname.split('/').pop().split('?')[0];
+                                window.location.href = `${paginaAtual}?quadricula=${quadriculaEncontrada.centro}`;
                             });
                         }
 
@@ -2731,12 +3259,32 @@ const MapFramework = {
     navegarQuadricula: function (btn) {
         const quadricula = btn.getAttribute('data-quadricula');
         //console.log(quadricula);
-        window.location.href = `index_2.php?quadricula=${quadricula}`;
+        // Detecta a página atual para manter o usuário na mesma página
+        const paginaAtual = window.location.pathname.split('/').pop().split('?')[0];
+        window.location.href = `${paginaAtual}?quadricula=${quadricula}`;
     },
 
     controlarOpacidade: function (value) {
 
         arrayCamadas['quadra'].forEach(pol => {
+            pol.setOptions({
+                fillOpacity: value
+            });
+        });
+
+        arrayCamadas['unidade'].forEach(pol => {
+            pol.setOptions({
+                fillOpacity: value
+            });
+        });
+
+        arrayCamadas['piscina'].forEach(pol => {
+            pol.setOptions({
+                fillOpacity: value
+            });
+        });
+
+        arrayCamadas['poligono_lote'].forEach(pol => {
             pol.setOptions({
                 fillOpacity: value
             });
@@ -4128,7 +4676,7 @@ const MapFramework = {
                 caminho: `${paramsTxt}\\${quadricula}_calibrated_external_camera_parameters_wgs84.txt`
             },
             success: (response) => {
-                console.log(response);
+                //console.log(response);
                 // Para cada objeto, cria um marker
                 response.forEach((imagem, index) => {
                     try {
@@ -4311,14 +4859,14 @@ const MapFramework = {
                         if (btnLeft) {
                             btnLeft.addEventListener('click', function (e) {
                                 e.stopPropagation();
-                                rotationDeg -= 90;
+                                rotationDeg -= 10;
                                 applyRotation();
                             });
                         }
                         if (btnRight) {
                             btnRight.addEventListener('click', function (e) {
                                 e.stopPropagation();
-                                rotationDeg += 90;
+                                rotationDeg += 10;
                                 applyRotation();
                             });
                         }

@@ -1161,9 +1161,17 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkPoligono_lote" checked>
+                                    <label class="form-check-label" for="chkPoligono_lote">
+                                        Lotes Ortofoto
+                                    </label>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="chkLotes" checked>
                                     <label class="form-check-label" for="chkLotes">
-                                        Lotes Ortofoto
+                                        Cortes dos lotes
                                     </label>
                                 </div>
                             </li>
@@ -1451,6 +1459,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             unidade: [],
             piscina: [],
             lote: [],
+            poligono_lote: [],
             quarteirao: [],
             semCamadas: []
         };
@@ -1596,10 +1605,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             MapFramework.alternarVisibilidadeCamada('piscina', visivel);
         });
 
-        // Checkbox dos Lotes
+        // Checkbox dos Lotes feito por desenhinhas (linhas)
         $('#chkLotes').on('change', function() {
             const visivel = $(this).is(':checked');
             MapFramework.alternarVisibilidadeCamada('lote', visivel);
+        });
+
+        // Checkbox dos Lotes
+        $('#chkPoligono_lote').on('change', function() {
+            const visivel = $(this).is(':checked');
+            MapFramework.alternarVisibilidadeCamada('poligono_lote', visivel);
         });
 
         $('#chkPrefeitura').on('change', function() {
@@ -1741,6 +1756,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 }
                 arrayCamadas.lote.forEach(lote => {
                     lote.setOptions({
+                        clickable: false
+                    });
+                });
+                arrayCamadas.poligono_lote.forEach(pol_lote => {
+                    pol_lote.setOptions({
                         clickable: false
                     });
                 });
@@ -2234,6 +2254,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             }
             arrayCamadas.lote.forEach(lote => {
                 lote.setOptions({
+                    clickable: true
+                });
+            });
+            arrayCamadas.poligono_lote.forEach(pol_lote => {
+                pol_lote.setOptions({
                     clickable: true
                 });
             });
@@ -3487,6 +3512,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             const botoesModos = [
                 'btnIncluirPoligono', // Modo Quadra
                 'btnIncluirUnidade', // Modo Unidade
+                'btnIncluirPiscina', // Modo Piscina
                 'btnIncluirLinha', // Modo Lote
                 'btnIncluirMarcador', // Modo Marcador
                 'btnLerPDF', // Modo PDF
@@ -3539,6 +3565,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     // Modo normal - mostra botões principais
                     $('#btnIncluirPoligono').removeClass('d-none');
                     $('#btnIncluirUnidade').removeClass('d-none');
+                    $('#btnIncluirPiscina').removeClass('d-none');
                     $('#btnIncluirLinha').removeClass('d-none');
                     // btnCadastro foi removido - agora é checkbox
                     // Botões de editar/excluir só aparecem se há quadra selecionada
