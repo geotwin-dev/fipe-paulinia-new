@@ -916,6 +916,46 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             cursor: pointer;
             transform: translate(0, 10px);
         }
+
+        /* Estilos para as labels de medição */
+        .measurement-label {
+            background-color: white;
+            padding: 4px 8px;
+            border: 2px solid #333;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #333;
+            white-space: nowrap;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            pointer-events: none;
+        }
+
+        .measurement-area-label {
+            background-color: #4CAF50;
+            color: white;
+            padding: 6px 12px;
+            border: 2px solid #2E7D32;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            white-space: nowrap;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+            pointer-events: none;
+        }
+
+        .measurement-distance-label {
+            background-color: #2196F3;
+            color: white;
+            padding: 6px 12px;
+            border: 2px solid #1565C0;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            white-space: nowrap;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+            pointer-events: none;
+        }
     </style>
 </head>
 
@@ -1256,6 +1296,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                 </div>
                             </li>
                             <li>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkStreetview">
+                                    <label class="form-check-label" for="chkStreetview">
+                                        Streetview
+                                    </label>
+                                </div>
+                            </li>
+                            <li>
                                 <hr class="dropdown-divider">
                             </li>
                             <li>
@@ -1296,6 +1344,28 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             <label for="customRange2">Espessura Lotes</label>
                             <input min="0.1" max="1" step="0.1" type="range" class="form-range" id="customRange2" value="0.5" title="Espessura das linhas dos lotes">
                         </div>
+                    </div>
+
+                    <!-- Botão Régua -->
+                    <div class="btn-group">
+                        <button class="btn btn-light dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-ruler-combined"></i> Régua
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="iniciarMedicaoArea(); event.preventDefault();">
+                                <i class="fas fa-draw-polygon"></i> Medir Área
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="iniciarMedicaoDistancia(); event.preventDefault();">
+                                <i class="fas fa-ruler"></i> Medir Distância
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="iniciarMedicaoCirculo(); event.preventDefault();">
+                                <i class="fas fa-circle"></i> Medir Círculo
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger d-none" href="#" id="btnCancelarMedicao" onclick="cancelarMedicao(); event.preventDefault();">
+                                <i class="fas fa-times"></i> Cancelar Medição
+                            </a></li>
+                        </ul>
                     </div>
 
 
@@ -1461,11 +1531,656 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             lote: [],
             poligono_lote: [],
             quarteirao: [],
+            streetview: [],
             semCamadas: []
         };
 
         function voltarParaVisualizador(){
             window.location.href = `index_3.php?quadricula=${dadosOrto[0]['quadricula']}`;
+        }
+
+        // Sistema de medição de régua
+        const Medicao = {
+            ativa: false,
+            tipo: null, // 'area', 'distancia' ou 'circulo'
+            pontos: [],
+            poligono: null,
+            polilinha: null,
+            circulo: null,
+            centroCirculo: null,
+            labels: [],
+            listenerClick: null,
+            listenerRightClick: null,
+            listenerMouseMove: null,
+            linhaTemporaria: null,
+            labelTemporaria: null,
+
+            limpar: function() {
+                // Remove polígono/polilinha/círculo
+                if (this.poligono) {
+                    this.poligono.setMap(null);
+                    this.poligono = null;
+                }
+                if (this.polilinha) {
+                    this.polilinha.setMap(null);
+                    this.polilinha = null;
+                }
+                if (this.circulo) {
+                    this.circulo.setMap(null);
+                    this.circulo = null;
+                }
+                if (this.linhaTemporaria) {
+                    this.linhaTemporaria.setMap(null);
+                    this.linhaTemporaria = null;
+                }
+                if (this.labelTemporaria) {
+                    this.labelTemporaria.setMap(null);
+                    this.labelTemporaria = null;
+                }
+                this.centroCirculo = null;
+
+                // Remove labels
+                this.labels.forEach(l => l.setMap(null));
+                this.labels = [];
+
+                // Remove listeners
+                if (this.listenerClick) {
+                    google.maps.event.removeListener(this.listenerClick);
+                    this.listenerClick = null;
+                }
+                if (this.listenerRightClick) {
+                    google.maps.event.removeListener(this.listenerRightClick);
+                    this.listenerRightClick = null;
+                }
+                if (this.listenerMouseMove) {
+                    google.maps.event.removeListener(this.listenerMouseMove);
+                    this.listenerMouseMove = null;
+                }
+
+                this.pontos = [];
+                this.ativa = false;
+                this.tipo = null;
+                MapFramework.map.setOptions({ draggableCursor: 'default' });
+                
+                // Reabilita interatividade de todos os objetos do mapa
+                if (MapFramework && MapFramework.atualizarInteratividadeObjetos) {
+                    MapFramework.atualizarInteratividadeObjetos(true);
+                }
+            },
+
+            calcularDistancia: function(ponto1, ponto2) {
+                const from = turf.point([ponto1.lng(), ponto1.lat()]);
+                const to = turf.point([ponto2.lng(), ponto2.lat()]);
+                return turf.distance(from, to, { units: 'kilometers' }) * 1000;
+            },
+
+            formatarDistancia: function(metros) {
+                if (metros >= 1000) {
+                    return (metros / 1000).toFixed(1) + ' km';
+                }
+                return metros.toFixed(1) + ' m';
+            },
+
+            formatarArea: function(metrosQuadrados) {
+                if (metrosQuadrados >= 10000) {
+                    return (metrosQuadrados / 10000).toFixed(1) + ' ha';
+                }
+                return metrosQuadrados.toFixed(1) + ' m²';
+            },
+
+            adicionarLabelAresta: function(ponto1, ponto2, distancia) {
+                const lat = (ponto1.lat() + ponto2.lat()) / 2;
+                const lng = (ponto1.lng() + ponto2.lng()) / 2;
+                
+                const offsetVertical = 0.0000015;
+                const posicao = new google.maps.LatLng(lat + offsetVertical, lng);
+
+                const el = document.createElement('div');
+                el.className = 'measurement-label';
+                el.textContent = this.formatarDistancia(distancia);
+
+                const label = new google.maps.marker.AdvancedMarkerElement({
+                    position: posicao,
+                    content: el,
+                    map: MapFramework.map,
+                    zIndex: 1000,
+                    gmpClickable: false
+                });
+
+                this.labels.push(label);
+            },
+
+            adicionarLabelCentral: function(texto, posicao, classe) {
+                const el = document.createElement('div');
+                el.className = classe;
+                el.textContent = texto;
+
+                const label = new google.maps.marker.AdvancedMarkerElement({
+                    position: posicao,
+                    content: el,
+                    map: MapFramework.map,
+                    zIndex: 1001,
+                    gmpClickable: false
+                });
+
+                this.labels.push(label);
+            },
+
+            calcularCentroide: function(pontos) {
+                if (pontos.length === 0) return null;
+
+                const coords = pontos.map(p => [p.lng(), p.lat()]);
+                coords.push([pontos[0].lng(), pontos[0].lat()]);
+
+                const polygon = turf.polygon([coords]);
+                const centroid = turf.centroid(polygon);
+                
+                return new google.maps.LatLng(
+                    centroid.geometry.coordinates[1],
+                    centroid.geometry.coordinates[0]
+                );
+            },
+
+            atualizarDesenho: function() {
+                if (this.tipo === 'area') {
+                    this.atualizarPoligono();
+                } else if (this.tipo === 'distancia') {
+                    this.atualizarPolilinha();
+                } else if (this.tipo === 'circulo') {
+                    this.atualizarCirculo();
+                }
+            },
+
+            atualizarPoligono: function() {
+                this.labels.forEach(l => l.setMap(null));
+                this.labels = [];
+
+                if (this.pontos.length < 2) return;
+
+                if (!this.poligono) {
+                    this.poligono = new google.maps.Polygon({
+                        paths: this.pontos,
+                        strokeColor: '#FF0000',
+                        strokeOpacity: 0.8,
+                        strokeWeight: 2,
+                        fillColor: '#FF0000',
+                        fillOpacity: 0.2,
+                        map: MapFramework.map,
+                        zIndex: 999,
+                        editable: false,
+                        draggable: false,
+                        clickable: false
+                    });
+                } else {
+                    this.poligono.setPath(this.pontos);
+                }
+
+                for (let i = 0; i < this.pontos.length; i++) {
+                    const proximoIndice = (i + 1) % this.pontos.length;
+                    const distancia = this.calcularDistancia(this.pontos[i], this.pontos[proximoIndice]);
+                    this.adicionarLabelAresta(this.pontos[i], this.pontos[proximoIndice], distancia);
+                }
+
+                if (this.pontos.length >= 3) {
+                    const coords = this.pontos.map(p => [p.lng(), p.lat()]);
+                    coords.push([this.pontos[0].lng(), this.pontos[0].lat()]);
+
+                    const polygon = turf.polygon([coords]);
+                    const area = turf.area(polygon);
+                    
+                    const centroide = this.calcularCentroide(this.pontos);
+                    this.adicionarLabelCentral(this.formatarArea(area), centroide, 'measurement-area-label');
+                }
+            },
+
+            atualizarPolilinha: function() {
+                this.labels.forEach(l => l.setMap(null));
+                this.labels = [];
+
+                if (this.pontos.length < 1) return;
+
+                if (!this.polilinha) {
+                    this.polilinha = new google.maps.Polyline({
+                        path: this.pontos,
+                        strokeColor: '#0000FF',
+                        strokeOpacity: 0.8,
+                        strokeWeight: 3,
+                        map: MapFramework.map,
+                        zIndex: 999,
+                        editable: false,
+                        draggable: false,
+                        clickable: false
+                    });
+                } else {
+                    this.polilinha.setPath(this.pontos);
+                }
+
+                // Adiciona apenas as labels nas arestas (sem total)
+                for (let i = 0; i < this.pontos.length - 1; i++) {
+                    const distancia = this.calcularDistancia(this.pontos[i], this.pontos[i + 1]);
+                    this.adicionarLabelAresta(this.pontos[i], this.pontos[i + 1], distancia);
+                }
+            },
+
+            iniciar: function(tipo) {
+                this.limpar();
+                this.ativa = true;
+                this.tipo = tipo;
+                MapFramework.map.setOptions({ draggableCursor: 'crosshair' });
+
+                MapFramework.atualizarInteratividadeObjetos(false);
+
+                this.listenerClick = MapFramework.map.addListener('click', (e) => {
+                    if (this.tipo === 'circulo') {
+                        if (this.pontos.length === 0) {
+                            // Primeiro clique: define o centro
+                            this.centroCirculo = e.latLng;
+                            this.pontos.push(e.latLng);
+                        } else if (this.pontos.length === 1) {
+                            // Segundo clique: define o raio e finaliza
+                            this.pontos.push(e.latLng);
+                            this.atualizarDesenho();
+                            this.finalizar();
+                        }
+                    } else {
+                        this.pontos.push(e.latLng);
+                        this.atualizarDesenho();
+                    }
+                });
+
+                this.listenerRightClick = MapFramework.map.addListener('rightclick', (e) => {
+                    if (this.tipo === 'area' && this.pontos.length < 3) {
+                        alert('É necessário pelo menos 3 pontos para criar uma área.');
+                        return;
+                    }
+                    if (this.tipo === 'distancia' && this.pontos.length < 2) {
+                        alert('É necessário pelo menos 2 pontos para medir distância.');
+                        return;
+                    }
+                    
+                    this.finalizar();
+                });
+
+                this.listenerMouseMove = MapFramework.map.addListener('mousemove', (e) => {
+                    if (this.pontos.length === 0) return;
+
+                    if (this.linhaTemporaria) {
+                        this.linhaTemporaria.setMap(null);
+                    }
+                    if (this.labelTemporaria) {
+                        this.labelTemporaria.setMap(null);
+                    }
+
+                    const ultimoPonto = this.pontos[this.pontos.length - 1];
+
+                    // Preview para círculo
+                    if (this.tipo === 'circulo' && this.centroCirculo) {
+                        const raioAtual = this.calcularDistancia(this.centroCirculo, e.latLng);
+                        
+                        // Círculo temporário
+                        if (this.circulo) {
+                            this.circulo.setMap(null);
+                        }
+                        this.circulo = new google.maps.Circle({
+                            center: this.centroCirculo,
+                            radius: raioAtual,
+                            strokeColor: '#FF0000',
+                            strokeOpacity: 0.5,
+                            strokeWeight: 2,
+                            fillColor: '#FF0000',
+                            fillOpacity: 0.1,
+                            map: MapFramework.map,
+                            zIndex: 998,
+                            clickable: false
+                        });
+
+                        // Label temporária com raio e área
+                        const lat = (this.centroCirculo.lat() + e.latLng.lat()) / 2;
+                        const lng = (this.centroCirculo.lng() + e.latLng.lng()) / 2;
+                        const offsetVertical = 0.0000015;
+                        const posicao = new google.maps.LatLng(lat + offsetVertical, lng);
+
+                        const area = Math.PI * raioAtual * raioAtual;
+                        const el = document.createElement('div');
+                        el.className = 'measurement-label';
+                        el.style.opacity = '0.8';
+                        el.innerHTML = 'Raio: ' + this.formatarDistancia(raioAtual) + '<br>Área: ' + area.toFixed(1) + ' m²';
+
+                        this.labelTemporaria = new google.maps.marker.AdvancedMarkerElement({
+                            position: posicao,
+                            content: el,
+                            map: MapFramework.map,
+                            zIndex: 1000,
+                            gmpClickable: false
+                        });
+                    } else {
+                        // Preview para polígono/polilinha
+                        this.linhaTemporaria = new google.maps.Polyline({
+                            path: [ultimoPonto, e.latLng],
+                            strokeColor: this.tipo === 'area' ? '#FF0000' : '#0000FF',
+                            strokeOpacity: 0.5,
+                            strokeWeight: 2,
+                            map: MapFramework.map,
+                            zIndex: 998,
+                            clickable: false
+                        });
+
+                        // Para distância, mostra a medida em tempo real
+                        if (this.tipo === 'distancia') {
+                            const distanciaAtual = this.calcularDistancia(ultimoPonto, e.latLng);
+                            
+                            const lat = (ultimoPonto.lat() + e.latLng.lat()) / 2;
+                            const lng = (ultimoPonto.lng() + e.latLng.lng()) / 2;
+                            const offsetVertical = 0.0000015;
+                            const posicao = new google.maps.LatLng(lat + offsetVertical, lng);
+
+                            const el = document.createElement('div');
+                            el.className = 'measurement-label';
+                            el.style.opacity = '0.8';
+                            el.textContent = this.formatarDistancia(distanciaAtual);
+
+                            this.labelTemporaria = new google.maps.marker.AdvancedMarkerElement({
+                                position: posicao,
+                                content: el,
+                                map: MapFramework.map,
+                                zIndex: 1000,
+                                gmpClickable: false
+                            });
+                        }
+                    }
+                });
+            },
+
+            finalizar: function() {
+                if (this.linhaTemporaria) {
+                    this.linhaTemporaria.setMap(null);
+                    this.linhaTemporaria = null;
+                }
+                if (this.labelTemporaria) {
+                    this.labelTemporaria.setMap(null);
+                    this.labelTemporaria = null;
+                }
+
+                if (this.listenerClick) {
+                    google.maps.event.removeListener(this.listenerClick);
+                    this.listenerClick = null;
+                }
+                if (this.listenerRightClick) {
+                    google.maps.event.removeListener(this.listenerRightClick);
+                    this.listenerRightClick = null;
+                }
+                if (this.listenerMouseMove) {
+                    google.maps.event.removeListener(this.listenerMouseMove);
+                    this.listenerMouseMove = null;
+                }
+
+                // Limpa labels antigas antes de recriar
+                this.labels.forEach(l => l.setMap(null));
+                this.labels = [];
+
+                if (this.poligono) {
+                    this.poligono.setOptions({ 
+                        editable: true,
+                        draggable: false,
+                        clickable: false
+                    });
+                    
+                    // Recria as labels uma vez
+                    this.atualizarMedidasPoligono();
+                    
+                    const path = this.poligono.getPath();
+                    google.maps.event.addListener(path, 'set_at', () => {
+                        this.atualizarMedidasPoligono();
+                    });
+                    google.maps.event.addListener(path, 'insert_at', () => {
+                        this.atualizarMedidasPoligono();
+                    });
+                    google.maps.event.addListener(path, 'remove_at', () => {
+                        this.atualizarMedidasPoligono();
+                    });
+                }
+
+                if (this.polilinha) {
+                    this.polilinha.setOptions({ 
+                        editable: true,
+                        draggable: false,
+                        clickable: false
+                    });
+                    
+                    // Recria as labels uma vez
+                    this.atualizarMedidasPolilinha();
+                    
+                    const path = this.polilinha.getPath();
+                    google.maps.event.addListener(path, 'set_at', () => {
+                        this.atualizarMedidasPolilinha();
+                    });
+                    google.maps.event.addListener(path, 'insert_at', () => {
+                        this.atualizarMedidasPolilinha();
+                    });
+                    google.maps.event.addListener(path, 'remove_at', () => {
+                        this.atualizarMedidasPolilinha();
+                    });
+                }
+
+                if (this.circulo) {
+                    this.circulo.setOptions({ 
+                        editable: true,
+                        draggable: true,
+                        clickable: false
+                    });
+                    
+                    // Recria as labels uma vez
+                    this.atualizarMedidasCirculo();
+                    
+                    // Listeners para atualizar medidas quando editar o círculo
+                    google.maps.event.addListener(this.circulo, 'radius_changed', () => {
+                        this.atualizarMedidasCirculo();
+                    });
+                    google.maps.event.addListener(this.circulo, 'center_changed', () => {
+                        this.atualizarMedidasCirculo();
+                    });
+                }
+
+                MapFramework.map.setOptions({ draggableCursor: 'default' });
+                this.ativa = false;
+
+                MapFramework.atualizarInteratividadeObjetos(true);
+
+                $('#btnCancelarMedicao').removeClass('d-none');
+            },
+
+            atualizarMedidasPoligono: function() {
+                this.labels.forEach(l => l.setMap(null));
+                this.labels = [];
+
+                if (!this.poligono) return;
+                
+                const path = this.poligono.getPath();
+                const pontos = [];
+                
+                for (let i = 0; i < path.getLength(); i++) {
+                    pontos.push(path.getAt(i));
+                }
+
+                if (pontos.length < 2) return;
+
+                for (let i = 0; i < pontos.length; i++) {
+                    const proximoIndice = (i + 1) % pontos.length;
+                    const distancia = this.calcularDistancia(pontos[i], pontos[proximoIndice]);
+                    this.adicionarLabelAresta(pontos[i], pontos[proximoIndice], distancia);
+                }
+
+                if (pontos.length >= 3) {
+                    const coords = pontos.map(p => [p.lng(), p.lat()]);
+                    coords.push([pontos[0].lng(), pontos[0].lat()]);
+
+                    const polygon = turf.polygon([coords]);
+                    const area = turf.area(polygon);
+                    
+                    const centroide = this.calcularCentroide(pontos);
+                    this.adicionarLabelCentral(this.formatarArea(area), centroide, 'measurement-area-label');
+                }
+            },
+
+            atualizarMedidasPolilinha: function() {
+                this.labels.forEach(l => l.setMap(null));
+                this.labels = [];
+
+                if (!this.polilinha) return;
+                
+                const path = this.polilinha.getPath();
+                const pontos = [];
+                
+                for (let i = 0; i < path.getLength(); i++) {
+                    pontos.push(path.getAt(i));
+                }
+
+                if (pontos.length < 1) return;
+
+                // Adiciona apenas as labels nas arestas (sem total)
+                for (let i = 0; i < pontos.length - 1; i++) {
+                    const distancia = this.calcularDistancia(pontos[i], pontos[i + 1]);
+                    this.adicionarLabelAresta(pontos[i], pontos[i + 1], distancia);
+                }
+            },
+
+            atualizarCirculo: function() {
+                this.labels.forEach(l => l.setMap(null));
+                this.labels = [];
+
+                if (!this.centroCirculo || this.pontos.length < 2) return;
+
+                const raio = this.calcularDistancia(this.centroCirculo, this.pontos[1]);
+
+                if (!this.circulo) {
+                    this.circulo = new google.maps.Circle({
+                        center: this.centroCirculo,
+                        radius: raio,
+                        strokeColor: '#FF0000',
+                        strokeOpacity: 0.8,
+                        strokeWeight: 2,
+                        fillColor: '#FF0000',
+                        fillOpacity: 0.2,
+                        map: MapFramework.map,
+                        zIndex: 999,
+                        editable: false,
+                        draggable: false,
+                        clickable: false
+                    });
+                } else {
+                    this.circulo.setRadius(raio);
+                }
+
+                // Label com o raio
+                const pontoRaio = this.pontos[1];
+                const lat = (this.centroCirculo.lat() + pontoRaio.lat()) / 2;
+                const lng = (this.centroCirculo.lng() + pontoRaio.lng()) / 2;
+                const offsetVertical = 0.0000015;
+                const posicaoRaio = new google.maps.LatLng(lat + offsetVertical, lng);
+
+                const elRaio = document.createElement('div');
+                elRaio.className = 'measurement-label';
+                elRaio.textContent = 'Raio: ' + this.formatarDistancia(raio);
+
+                const labelRaio = new google.maps.marker.AdvancedMarkerElement({
+                    position: posicaoRaio,
+                    content: elRaio,
+                    map: MapFramework.map,
+                    zIndex: 1000,
+                    gmpClickable: false
+                });
+
+                this.labels.push(labelRaio);
+
+                // Label com a área no centro
+                const area = Math.PI * raio * raio;
+                const elArea = document.createElement('div');
+                elArea.className = 'measurement-area-label';
+                elArea.style.backgroundColor = '#FF0000';
+                elArea.style.borderColor = '#CC0000';
+                elArea.textContent = area.toFixed(1) + ' m²'; // Sempre em m² para círculos
+
+                const labelArea = new google.maps.marker.AdvancedMarkerElement({
+                    position: this.centroCirculo,
+                    content: elArea,
+                    map: MapFramework.map,
+                    zIndex: 1001,
+                    gmpClickable: false
+                });
+
+                this.labels.push(labelArea);
+            },
+
+            atualizarMedidasCirculo: function() {
+                this.labels.forEach(l => l.setMap(null));
+                this.labels = [];
+
+                if (!this.circulo) return;
+
+                const centro = this.circulo.getCenter();
+                const raio = this.circulo.getRadius();
+
+                // Calcula um ponto na borda do círculo para posicionar a label do raio
+                const pontoRaio = google.maps.geometry.spherical.computeOffset(centro, raio, 45);
+                
+                const lat = (centro.lat() + pontoRaio.lat()) / 2;
+                const lng = (centro.lng() + pontoRaio.lng()) / 2;
+                const offsetVertical = 0.0000015;
+                const posicaoRaio = new google.maps.LatLng(lat + offsetVertical, lng);
+
+                const elRaio = document.createElement('div');
+                elRaio.className = 'measurement-label';
+                elRaio.textContent = 'Raio: ' + this.formatarDistancia(raio);
+
+                const labelRaio = new google.maps.marker.AdvancedMarkerElement({
+                    position: posicaoRaio,
+                    content: elRaio,
+                    map: MapFramework.map,
+                    zIndex: 1000,
+                    gmpClickable: false
+                });
+
+                this.labels.push(labelRaio);
+
+                // Label com a área no centro
+                const area = Math.PI * raio * raio;
+                const elArea = document.createElement('div');
+                elArea.className = 'measurement-area-label';
+                elArea.style.backgroundColor = '#FF0000';
+                elArea.style.borderColor = '#CC0000';
+                elArea.textContent = area.toFixed(1) + ' m²'; // Sempre em m² para círculos
+
+                const labelArea = new google.maps.marker.AdvancedMarkerElement({
+                    position: centro,
+                    content: elArea,
+                    map: MapFramework.map,
+                    zIndex: 1001,
+                    gmpClickable: false
+                });
+
+                this.labels.push(labelArea);
+            }
+        };
+
+        // Funções para os botões de medição
+        function iniciarMedicaoArea() {
+            Medicao.iniciar('area');
+            $('#btnCancelarMedicao').removeClass('d-none');
+        }
+
+        function iniciarMedicaoDistancia() {
+            Medicao.iniciar('distancia');
+            $('#btnCancelarMedicao').removeClass('d-none');
+        }
+
+        function iniciarMedicaoCirculo() {
+            Medicao.iniciar('circulo');
+            $('#btnCancelarMedicao').removeClass('d-none');
+        }
+
+        function cancelarMedicao() {
+            Medicao.limpar();
+            $('#btnCancelarMedicao').addClass('d-none');
         }
 
         $('#btnCloseTooltip').on('click', function() {
@@ -1683,6 +2398,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#chkImagensAereas').on('change', function() {
             const visivel = $(this).is(':checked');
             MapFramework.alternarVisibilidadeCamada('imagens_aereas', visivel);
+        });
+
+        $('#chkStreetview').on('change', function() {
+            const visivel = $(this).is(':checked');
+            MapFramework.alternarVisibilidadeCamada('streetview', visivel);
         });
 
         $('#customRange1').on('input', function() {
@@ -2341,6 +3061,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             await MapFramework.carregarPlanilha();
 
             await MapFramework.carregarImagensAereas(dadosOrto[0]['quadricula']);
+
+            // Carrega os trajetos Streetview da quadrícula no mapa
+            MapFramework.carregarStreets(dadosOrto[0]['quadricula']);
 
 
             // Inicializa o modo normal (mostra botões principais)

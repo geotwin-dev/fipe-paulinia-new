@@ -1675,7 +1675,9 @@ const MapFramework = {
             // Para outras camadas, usa o comportamento padrão
             arrayCamadas[camada].forEach(obj => {
                 if (typeof obj.setMap === 'function') {
-                    obj.setMap(visivel ? this.map : null);
+                    // Usa mapaRef se existir (para polylines GPX), senão usa this.map
+                    const mapaParaUsar = obj.mapaRef || this.map;
+                    obj.setMap(visivel ? mapaParaUsar : null);
                 }
             });
         }
@@ -4882,6 +4884,169 @@ const MapFramework = {
                 `;
 
                 MapFramework.infoWindow.setContent(conteudoErro);
+            }
+        });
+    },
+
+    carregarStreets: function (quadricula) {
+        // Array para armazenar as polylines dos trajetos GPX
+        if (!this.polylinesGPX) {
+            this.polylinesGPX = [];
+        }
+
+        if (!quadricula) {
+            console.warn('⚠️ Quadrícula não informada para carregarStreets');
+            return;
+        }
+
+        // Primeiro, carrega o mapa de quadrículas
+        $.ajax({
+            url: 'streetview/mapa_gpx.json',
+            method: 'GET',
+            dataType: 'json',
+            success: function (mapaGPX) {
+                // Encontra os vídeos para esta quadrícula
+                const quadriculaData = mapaGPX.find(q => q.quadricula === quadricula);
+                
+                if (!quadriculaData || !quadriculaData.videos || quadriculaData.videos.length === 0) {
+                    console.log(`ℹ️ Nenhum vídeo Streetview encontrado para a quadrícula ${quadricula}`);
+                    return;
+                }
+
+                //console.log(`📍 Encontrados ${quadriculaData.videos.length} vídeo(s) para quadrícula ${quadricula}`);
+
+                // Cores diferentes para cada trajeto
+                const cores = ['#FF0000', '#0000FF', '#00FF00', '#FF00FF', '#FFFF00', '#00FFFF', '#FFA500', '#FF1493'];
+                const TIME_OFFSET_SEC = 0;
+                const CAMERA_INITIAL_PITCH = 0;
+                const CAMERA_INITIAL_YAW = 180;
+                const CAMERA_INITIAL_ROLL = 0;
+                
+                let videosCarregados = 0;
+                let totalVideos = quadriculaData.videos.length;
+
+                // Para cada vídeo da quadrícula
+                quadriculaData.videos.forEach((videoData, indice) => {
+                    const nomeVideo = videoData.video.replace('.mp4', '');
+                    const nomeGPX = videoData.gpx;
+                    
+                    // Carrega o gpx.json da pasta do vídeo
+                    $.ajax({
+                        url: `streetview/${nomeVideo}/gpx.json`,
+                        method: 'GET',
+                        dataType: 'json',
+                        success: function (gpxData) {
+                            if (!gpxData || !gpxData.trajetos) {
+                                console.warn(`⚠️ Dados GPX inválidos para ${nomeVideo}`);
+                                return;
+                            }
+
+                            // Pega o primeiro (e geralmente único) trajeto
+                            const trajetos = Object.keys(gpxData.trajetos);
+                            if (trajetos.length === 0) return;
+
+                            const pontos = gpxData.trajetos[trajetos[0]];
+                            
+                            // Converte os pontos para o formato do Google Maps
+                            const path = [];
+                            const track = [];
+                            
+                            pontos.forEach((ponto, idx) => {
+                                const lat = parseFloat(ponto.lat);
+                                const lng = parseFloat(ponto.lon);
+                                path.push({ lat, lng });
+                                
+                                // Calcula tempo em segundos desde o início
+                                let t = 0;
+                                if (idx > 0 && pontos[0].tempo && ponto.tempo) {
+                                    const t0 = new Date(pontos[0].tempo).getTime();
+                                    const ts = new Date(ponto.tempo).getTime();
+                                    t = (ts - t0) / 1000;
+                                }
+                                
+                                track.push({ lat, lng, t });
+                            });
+                            
+                            // Cria a polyline (inicialmente oculta)
+                            const polyline = new google.maps.Polyline({
+                                path: path,
+                                geodesic: true,
+                                strokeColor: cores[indice % cores.length],
+                                strokeOpacity: 0.8,
+                                strokeWeight: 5,
+                                map: null, // Inicialmente sem mapa (oculta)
+                                zIndex: 2,
+                                clickable: true
+                            });
+                            
+                            polyline.nomeVideo = nomeVideo;
+                            polyline.videoArquivo = videoData.video;
+                            polyline.gpxArquivo = nomeGPX;
+                            polyline.tipo = 'gpx';
+                            polyline.track = track;
+                            polyline.mapaRef = MapFramework.map;
+                            
+                            // Adiciona evento de clique para abrir o player
+                            polyline.addListener('click', function(e) {
+                                const clickLatLng = e.latLng;
+                                
+                                // Encontra o ponto mais próximo do clique
+                                let bestIdx = -1;
+                                let bestDist = Infinity;
+                                
+                                for (let i = 0; i < track.length; i++) {
+                                    const trackPoint = new google.maps.LatLng(track[i].lat, track[i].lng);
+                                    const dist = google.maps.geometry.spherical.computeDistanceBetween(clickLatLng, trackPoint);
+                                    
+                                    if (dist < bestDist) {
+                                        bestDist = dist;
+                                        bestIdx = i;
+                                    }
+                                }
+                                
+                                if (bestIdx === -1) return;
+                                
+                                const tTarget = track[bestIdx].t + TIME_OFFSET_SEC;
+                                
+                                // Abre player.html em nova aba com parâmetros
+                                const params = new URLSearchParams({
+                                    video: nomeVideo,
+                                    quadricula: quadricula,
+                                    time: tTarget.toString(),
+                                    idx: bestIdx.toString(),
+                                    gpx: nomeGPX,
+                                    offset: TIME_OFFSET_SEC.toString(),
+                                    pitch: CAMERA_INITIAL_PITCH.toString(),
+                                    yaw: CAMERA_INITIAL_YAW.toString(),
+                                    roll: CAMERA_INITIAL_ROLL.toString()
+                                });
+                                
+                                window.open(`streetview/player.html?${params.toString()}`, '_blank');
+                            });
+                            
+                            // Armazena a polyline
+                            MapFramework.polylinesGPX.push(polyline);
+                            
+                            // Adiciona na camada streetview
+                            if (typeof adicionarObjetoNaCamada === 'function') {
+                                adicionarObjetoNaCamada('streetview', polyline);
+                            }
+                            
+                            videosCarregados++;
+                            
+                            if (videosCarregados === totalVideos) {
+                               // console.log(`✅ ${videosCarregados} trajeto(s) Streetview carregados para ${quadricula} (inicialmente ocultos)`);
+                            }
+                        },
+                        error: function (xhr, status, error) {
+                            console.error(`❌ Erro ao carregar GPX de ${nomeVideo}:`, error);
+                            videosCarregados++;
+                        }
+                    });
+                });
+            },
+            error: function (xhr, status, error) {
+                console.error('❌ Erro ao carregar mapa_gpx.json:', error);
             }
         });
     }
