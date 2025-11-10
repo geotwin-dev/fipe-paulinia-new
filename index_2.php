@@ -1362,8 +1362,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                 <i class="fas fa-circle"></i> Medir Círculo
                             </a></li>
                             <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-warning d-none" href="#" id="btnLimparMedicoes" onclick="limparTodasMedicoes(); event.preventDefault();">
+                                <i class="fas fa-trash"></i> Limpar Todas as Medições
+                            </a></li>
                             <li><a class="dropdown-item text-danger d-none" href="#" id="btnCancelarMedicao" onclick="cancelarMedicao(); event.preventDefault();">
-                                <i class="fas fa-times"></i> Cancelar Medição
+                                <i class="fas fa-times"></i> Sair do Modo Régua
                             </a></li>
                         </ul>
                     </div>
@@ -1549,6 +1552,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             circulo: null,
             centroCirculo: null,
             labels: [],
+            medicoesSalvas: [], // Array para armazenar todas as medições
             listenerClick: null,
             listenerRightClick: null,
             listenerMouseMove: null,
@@ -1556,7 +1560,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             labelTemporaria: null,
 
             limpar: function() {
-                // Remove polígono/polilinha/círculo
+                // Remove polígono/polilinha/círculo temporários
                 if (this.poligono) {
                     this.poligono.setMap(null);
                     this.poligono = null;
@@ -1579,9 +1583,20 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 }
                 this.centroCirculo = null;
 
-                // Remove labels
+                // Remove labels temporárias
                 this.labels.forEach(l => l.setMap(null));
                 this.labels = [];
+
+                // Remove todas as medições salvas
+                this.medicoesSalvas.forEach(medicao => {
+                    if (medicao.objeto) {
+                        medicao.objeto.setMap(null);
+                    }
+                    if (medicao.labels) {
+                        medicao.labels.forEach(l => l.setMap(null));
+                    }
+                });
+                this.medicoesSalvas = [];
 
                 // Remove listeners
                 if (this.listenerClick) {
@@ -1606,6 +1621,37 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 if (MapFramework && MapFramework.atualizarInteratividadeObjetos) {
                     MapFramework.atualizarInteratividadeObjetos(true);
                 }
+            },
+
+            limparMedicaoAtual: function() {
+                // Remove apenas a medição atual (temporária)
+                if (this.poligono) {
+                    this.poligono.setMap(null);
+                    this.poligono = null;
+                }
+                if (this.polilinha) {
+                    this.polilinha.setMap(null);
+                    this.polilinha = null;
+                }
+                if (this.circulo) {
+                    this.circulo.setMap(null);
+                    this.circulo = null;
+                }
+                if (this.linhaTemporaria) {
+                    this.linhaTemporaria.setMap(null);
+                    this.linhaTemporaria = null;
+                }
+                if (this.labelTemporaria) {
+                    this.labelTemporaria.setMap(null);
+                    this.labelTemporaria = null;
+                }
+                
+                // Remove labels temporárias
+                this.labels.forEach(l => l.setMap(null));
+                this.labels = [];
+                
+                this.pontos = [];
+                this.centroCirculo = null;
             },
 
             calcularDistancia: function(ponto1, ponto2) {
@@ -1729,7 +1775,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     const area = turf.area(polygon);
                     
                     const centroide = this.calcularCentroide(this.pontos);
-                    this.adicionarLabelCentral(this.formatarArea(area), centroide, 'measurement-area-label');
+                    this.adicionarLabelCentral(area.toFixed(1) + ' m²', centroide, 'measurement-area-label');
                 }
             },
 
@@ -1763,7 +1809,28 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             },
 
             iniciar: function(tipo) {
-                this.limpar();
+                // Se já está ativo, limpa apenas a medição atual (não as salvas)
+                if (this.ativa) {
+                    this.limparMedicaoAtual();
+                } else {
+                    // Se está iniciando pela primeira vez, limpa tudo
+                    this.limpar();
+                }
+                
+                // Remove listeners antigos antes de criar novos
+                if (this.listenerClick) {
+                    google.maps.event.removeListener(this.listenerClick);
+                    this.listenerClick = null;
+                }
+                if (this.listenerRightClick) {
+                    google.maps.event.removeListener(this.listenerRightClick);
+                    this.listenerRightClick = null;
+                }
+                if (this.listenerMouseMove) {
+                    google.maps.event.removeListener(this.listenerMouseMove);
+                    this.listenerMouseMove = null;
+                }
+                
                 this.ativa = true;
                 this.tipo = tipo;
                 MapFramework.map.setOptions({ draggableCursor: 'crosshair' });
@@ -1901,23 +1968,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     this.labelTemporaria = null;
                 }
 
-                if (this.listenerClick) {
-                    google.maps.event.removeListener(this.listenerClick);
-                    this.listenerClick = null;
-                }
-                if (this.listenerRightClick) {
-                    google.maps.event.removeListener(this.listenerRightClick);
-                    this.listenerRightClick = null;
-                }
-                if (this.listenerMouseMove) {
-                    google.maps.event.removeListener(this.listenerMouseMove);
-                    this.listenerMouseMove = null;
-                }
+                // Salva a medição atual antes de limpar
+                const medicaoSalva = {
+                    tipo: this.tipo,
+                    objeto: null,
+                    labels: []
+                };
 
-                // Limpa labels antigas antes de recriar
-                this.labels.forEach(l => l.setMap(null));
-                this.labels = [];
-
+                // Torna o polígono/polilinha/círculo editável
                 if (this.poligono) {
                     this.poligono.setOptions({ 
                         editable: true,
@@ -1927,16 +1985,20 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     
                     // Recria as labels uma vez
                     this.atualizarMedidasPoligono();
+                    medicaoSalva.labels = [...this.labels];
+                    medicaoSalva.objeto = this.poligono;
                     
+                    const poligonoSalvo = this.poligono;
+                    const medicaoRef = medicaoSalva;
                     const path = this.poligono.getPath();
                     google.maps.event.addListener(path, 'set_at', () => {
-                        this.atualizarMedidasPoligono();
+                        this.atualizarMedidasObjetoSalvo(medicaoRef, poligonoSalvo, 'poligono');
                     });
                     google.maps.event.addListener(path, 'insert_at', () => {
-                        this.atualizarMedidasPoligono();
+                        this.atualizarMedidasObjetoSalvo(medicaoRef, poligonoSalvo, 'poligono');
                     });
                     google.maps.event.addListener(path, 'remove_at', () => {
-                        this.atualizarMedidasPoligono();
+                        this.atualizarMedidasObjetoSalvo(medicaoRef, poligonoSalvo, 'poligono');
                     });
                 }
 
@@ -1949,16 +2011,20 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     
                     // Recria as labels uma vez
                     this.atualizarMedidasPolilinha();
+                    medicaoSalva.labels = [...this.labels];
+                    medicaoSalva.objeto = this.polilinha;
                     
+                    const polilinhaSalva = this.polilinha;
+                    const medicaoRef = medicaoSalva;
                     const path = this.polilinha.getPath();
                     google.maps.event.addListener(path, 'set_at', () => {
-                        this.atualizarMedidasPolilinha();
+                        this.atualizarMedidasObjetoSalvo(medicaoRef, polilinhaSalva, 'polilinha');
                     });
                     google.maps.event.addListener(path, 'insert_at', () => {
-                        this.atualizarMedidasPolilinha();
+                        this.atualizarMedidasObjetoSalvo(medicaoRef, polilinhaSalva, 'polilinha');
                     });
                     google.maps.event.addListener(path, 'remove_at', () => {
-                        this.atualizarMedidasPolilinha();
+                        this.atualizarMedidasObjetoSalvo(medicaoRef, polilinhaSalva, 'polilinha');
                     });
                 }
 
@@ -1971,22 +2037,180 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     
                     // Recria as labels uma vez
                     this.atualizarMedidasCirculo();
+                    medicaoSalva.labels = [...this.labels];
+                    medicaoSalva.objeto = this.circulo;
                     
-                    // Listeners para atualizar medidas quando editar o círculo
+                    const circuloSalvo = this.circulo;
+                    const medicaoRef = medicaoSalva;
                     google.maps.event.addListener(this.circulo, 'radius_changed', () => {
-                        this.atualizarMedidasCirculo();
+                        this.atualizarMedidasObjetoSalvo(medicaoRef, circuloSalvo, 'circulo');
                     });
                     google.maps.event.addListener(this.circulo, 'center_changed', () => {
-                        this.atualizarMedidasCirculo();
+                        this.atualizarMedidasObjetoSalvo(medicaoRef, circuloSalvo, 'circulo');
                     });
                 }
 
-                MapFramework.map.setOptions({ draggableCursor: 'default' });
-                this.ativa = false;
+                // Adiciona a medição ao array de salvas
+                if (medicaoSalva.objeto) {
+                    this.medicoesSalvas.push(medicaoSalva);
+                }
 
-                MapFramework.atualizarInteratividadeObjetos(true);
+                // Reseta variáveis para nova medição
+                this.poligono = null;
+                this.polilinha = null;
+                this.circulo = null;
+                this.centroCirculo = null;
+                this.pontos = [];
+                this.labels = [];
 
+                // Mantém o modo ativo para permitir nova medição
+                // Reinicia os listeners mantendo this.ativa = true
+                const tipoAtual = this.tipo;
+                // NÃO zera this.ativa para que iniciar() saiba que está continuando
+                this.iniciar(tipoAtual);
+
+                // Atualiza UI
                 $('#btnCancelarMedicao').removeClass('d-none');
+                $('#btnLimparMedicoes').removeClass('d-none');
+            },
+
+            atualizarMedidasObjetoSalvo: function(medicao, objeto, tipo) {
+                // Remove labels antigas da medição
+                if (medicao.labels) {
+                    medicao.labels.forEach(l => l.setMap(null));
+                }
+
+                const labelsNovas = [];
+
+                // Recria labels baseado no tipo
+                if (tipo === 'poligono') {
+                    const path = objeto.getPath();
+                    const pontos = [];
+                    
+                    for (let i = 0; i < path.getLength(); i++) {
+                        pontos.push(path.getAt(i));
+                    }
+
+                    if (pontos.length >= 2) {
+                        for (let i = 0; i < pontos.length; i++) {
+                            const proximoIndice = (i + 1) % pontos.length;
+                            const distancia = this.calcularDistancia(pontos[i], pontos[proximoIndice]);
+                            
+                            const lat = (pontos[i].lat() + pontos[proximoIndice].lat()) / 2;
+                            const lng = (pontos[i].lng() + pontos[proximoIndice].lng()) / 2;
+                            const offsetVertical = 0.0000015;
+                            const posicao = new google.maps.LatLng(lat + offsetVertical, lng);
+
+                            const el = document.createElement('div');
+                            el.className = 'measurement-label';
+                            el.textContent = this.formatarDistancia(distancia);
+
+                            const label = new google.maps.marker.AdvancedMarkerElement({
+                                position: posicao,
+                                content: el,
+                                map: MapFramework.map,
+                                zIndex: 1000,
+                                gmpClickable: false
+                            });
+
+                            labelsNovas.push(label);
+                        }
+
+                        if (pontos.length >= 3) {
+                            const coords = pontos.map(p => [p.lng(), p.lat()]);
+                            coords.push([pontos[0].lng(), pontos[0].lat()]);
+                            const polygon = turf.polygon([coords]);
+                            const area = turf.area(polygon);
+                            
+                            const centroide = this.calcularCentroide(pontos);
+                            const elArea = document.createElement('div');
+                            elArea.className = 'measurement-area-label';
+                            elArea.textContent = area.toFixed(1) + ' m²';
+
+                            const labelArea = new google.maps.marker.AdvancedMarkerElement({
+                                position: centroide,
+                                content: elArea,
+                                map: MapFramework.map,
+                                zIndex: 1001,
+                                gmpClickable: false
+                            });
+
+                            labelsNovas.push(labelArea);
+                        }
+                    }
+                } else if (tipo === 'polilinha') {
+                    const path = objeto.getPath();
+                    const pontos = [];
+                    
+                    for (let i = 0; i < path.getLength(); i++) {
+                        pontos.push(path.getAt(i));
+                    }
+
+                    for (let i = 0; i < pontos.length - 1; i++) {
+                        const distancia = this.calcularDistancia(pontos[i], pontos[i + 1]);
+                        
+                        const lat = (pontos[i].lat() + pontos[i + 1].lat()) / 2;
+                        const lng = (pontos[i].lng() + pontos[i + 1].lng()) / 2;
+                        const offsetVertical = 0.0000015;
+                        const posicao = new google.maps.LatLng(lat + offsetVertical, lng);
+
+                        const el = document.createElement('div');
+                        el.className = 'measurement-label';
+                        el.textContent = this.formatarDistancia(distancia);
+
+                        const label = new google.maps.marker.AdvancedMarkerElement({
+                            position: posicao,
+                            content: el,
+                            map: MapFramework.map,
+                            zIndex: 1000,
+                            gmpClickable: false
+                        });
+
+                        labelsNovas.push(label);
+                    }
+                } else if (tipo === 'circulo') {
+                    const centro = objeto.getCenter();
+                    const raio = objeto.getRadius();
+
+                    const pontoRaio = google.maps.geometry.spherical.computeOffset(centro, raio, 45);
+                    const lat = (centro.lat() + pontoRaio.lat()) / 2;
+                    const lng = (centro.lng() + pontoRaio.lng()) / 2;
+                    const offsetVertical = 0.0000015;
+                    const posicaoRaio = new google.maps.LatLng(lat + offsetVertical, lng);
+
+                    const elRaio = document.createElement('div');
+                    elRaio.className = 'measurement-label';
+                    elRaio.textContent = 'Raio: ' + this.formatarDistancia(raio);
+
+                    const labelRaio = new google.maps.marker.AdvancedMarkerElement({
+                        position: posicaoRaio,
+                        content: elRaio,
+                        map: MapFramework.map,
+                        zIndex: 1000,
+                        gmpClickable: false
+                    });
+
+                    labelsNovas.push(labelRaio);
+
+                    const area = Math.PI * raio * raio;
+                    const elArea = document.createElement('div');
+                    elArea.className = 'measurement-area-label';
+                    elArea.style.backgroundColor = '#FF0000';
+                    elArea.style.borderColor = '#CC0000';
+                    elArea.textContent = area.toFixed(1) + ' m²';
+
+                    const labelArea = new google.maps.marker.AdvancedMarkerElement({
+                        position: centro,
+                        content: elArea,
+                        map: MapFramework.map,
+                        zIndex: 1001,
+                        gmpClickable: false
+                    });
+
+                    labelsNovas.push(labelArea);
+                }
+
+                medicao.labels = labelsNovas;
             },
 
             atualizarMedidasPoligono: function() {
@@ -2018,7 +2242,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     const area = turf.area(polygon);
                     
                     const centroide = this.calcularCentroide(pontos);
-                    this.adicionarLabelCentral(this.formatarArea(area), centroide, 'measurement-area-label');
+                    this.adicionarLabelCentral(area.toFixed(1) + ' m²', centroide, 'measurement-area-label');
                 }
             },
 
@@ -2164,23 +2388,56 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
         // Funções para os botões de medição
         function iniciarMedicaoArea() {
+            if (Medicao.ativa && Medicao.tipo !== 'area') {
+                Medicao.limparMedicaoAtual();
+            }
             Medicao.iniciar('area');
             $('#btnCancelarMedicao').removeClass('d-none');
+            if (Medicao.medicoesSalvas.length > 0) {
+                $('#btnLimparMedicoes').removeClass('d-none');
+            }
         }
 
         function iniciarMedicaoDistancia() {
+            if (Medicao.ativa && Medicao.tipo !== 'distancia') {
+                Medicao.limparMedicaoAtual();
+            }
             Medicao.iniciar('distancia');
             $('#btnCancelarMedicao').removeClass('d-none');
+            if (Medicao.medicoesSalvas.length > 0) {
+                $('#btnLimparMedicoes').removeClass('d-none');
+            }
         }
 
         function iniciarMedicaoCirculo() {
+            if (Medicao.ativa && Medicao.tipo !== 'circulo') {
+                Medicao.limparMedicaoAtual();
+            }
             Medicao.iniciar('circulo');
             $('#btnCancelarMedicao').removeClass('d-none');
+            if (Medicao.medicoesSalvas.length > 0) {
+                $('#btnLimparMedicoes').removeClass('d-none');
+            }
+        }
+
+        function limparTodasMedicoes() {
+            // Remove todas as medições salvas
+            Medicao.medicoesSalvas.forEach(medicao => {
+                if (medicao.objeto) {
+                    medicao.objeto.setMap(null);
+                }
+                if (medicao.labels) {
+                    medicao.labels.forEach(l => l.setMap(null));
+                }
+            });
+            Medicao.medicoesSalvas = [];
+            $('#btnLimparMedicoes').addClass('d-none');
         }
 
         function cancelarMedicao() {
             Medicao.limpar();
             $('#btnCancelarMedicao').addClass('d-none');
+            $('#btnLimparMedicoes').addClass('d-none');
         }
 
         $('#btnCloseTooltip').on('click', function() {
