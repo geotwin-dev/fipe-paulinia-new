@@ -1,0 +1,17 @@
+{
+  "camadas": [
+    {
+      "nome": "Exemplo de Camada 1",
+      "arquivo": "camadas/exemplo1.kml",
+      "descricao": "Descrição da camada exemplo 1",
+      "visivel": false
+    },
+    {
+      "nome": "Exemplo de Camada 2",
+      "arquivo": "camadas/exemplo2.kml",
+      "descricao": "Descrição da camada exemplo 2",
+      "visivel": false
+    }
+  ]
+}
+

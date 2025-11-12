@@ -95,7 +95,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         }
 
         #dropCamadas {
-            width: 230px;
+            width: 320px;
         }
 
         .map-label-text {
@@ -976,6 +976,46 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             box-shadow: 0 3px 8px rgba(0,0,0,0.4);
             pointer-events: none;
         }
+
+        #dropCamadas{
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        /* Estilos para accordion das camadas dinâmicas */
+        .btn-accordion-toggle {
+            transition: all 0.3s ease;
+        }
+
+        .btn-accordion-toggle:hover {
+            color: #333 !important;
+            transform: scale(1.1);
+        }
+
+        .btn-accordion-toggle i {
+            transition: transform 0.3s ease;
+        }
+
+        /* Estilos para separar visualmente as camadas dinâmicas */
+        #tituloCamadasDinamicas {
+            background-color: #f8f9fa;
+            margin-top: 5px;
+        }
+
+        /* Estilos para o slider de opacidade das camadas dinâmicas */
+        #sliderOpacidadeCamadasDinamicas {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        #rangeOpacidadeCamadas {
+            cursor: pointer;
+        }
+
+        #valorOpacidadeCamadas {
+            font-weight: 600;
+            color: #007bff;
+        }
     </style>
 </head>
 
@@ -1327,6 +1367,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkModoCadastro">
+                                    <label class="form-check-label" for="chkModoCadastro">
+                                        Loteamentos
+                                    </label>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="chkQuarteiroes">
                                     <label class="form-check-label" for="chkQuarteiroes">
                                         Quarteirões
@@ -1345,19 +1393,33 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="chkStreetview">
                                     <label class="form-check-label" for="chkStreetview">
-                                        Streetview
+                                        Streetview vídeos
+                                    </label>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkStreetviewFotos">
+                                    <label class="form-check-label" for="chkStreetviewFotos">
+                                        Streetview fotos
                                     </label>
                                 </div>
                             </li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
-                            <li>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkModoCadastro">
-                                    <label class="form-check-label" for="chkModoCadastro">
-                                        Loteamentos
+                            <li id="tituloCamadasDinamicas" style="display: none;">
+                                <div style="padding: 8px 16px; font-weight: 600; color: #6c757d; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    Camadas dos KML
+                                </div>
+                            </li>
+                            <li id="sliderOpacidadeCamadasDinamicas" style="display: none;">
+                                <div style="padding: 8px 16px;">
+                                    <label for="rangeOpacidadeCamadas" class="form-label" style="font-size: 12px; font-weight: 500; color: #495057; margin-bottom: 8px; display: block;">
+                                        Opacidade: <span id="valorOpacidadeCamadas">0.5</span>
                                     </label>
+                                    <input type="range" class="form-range" id="rangeOpacidadeCamadas" 
+                                           min="0" max="2" step="0.1" value="0.5">
                                 </div>
                             </li>
                         </ul>
@@ -3449,6 +3511,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             // Carrega os trajetos Streetview da quadrícula no mapa
             MapFramework.carregarStreets(dadosOrto[0]['quadricula']);
+
+            // Carrega camadas dinâmicas adicionais de KML
+            MapFramework.carregarMaisCamadas();
 
             // Inicializa o modo normal (mostra botões principais)
             controlarVisibilidadeBotoes('normal');

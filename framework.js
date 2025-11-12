@@ -5049,5 +5049,517 @@ const MapFramework = {
                 console.error('❌ Erro ao carregar mapa_gpx.json:', error);
             }
         });
+    },
+
+    carregarMaisCamadas: function () {
+        // Faz requisição para obter lista de KMLs disponíveis
+        $.ajax({
+            url: 'listar_kmls.php',
+            method: 'GET',
+            dataType: 'json',
+            success: (response) => {
+                if (response.success && response.arquivos.length > 0) {
+                    // Mostra o título "Camadas Dinâmicas" e o slider de opacidade
+                    $('#tituloCamadasDinamicas').show();
+                    $('#sliderOpacidadeCamadasDinamicas').show();
+                    
+                    // Configura o evento do slider de opacidade
+                    this.configurarSliderOpacidadeCamadas();
+                    
+                    // Para cada arquivo KML, carregar e processar
+                    response.arquivos.forEach((arquivo, index) => {
+                        this.carregarKMLDinamico(arquivo, index);
+                    });
+                }
+            },
+            error: (xhr, status, error) => {
+                console.error('❌ Erro ao listar arquivos KML:', error);
+            }
+        });
+    },
+
+    configurarSliderOpacidadeCamadas: function() {
+        const self = this;
+        
+        // Remove evento anterior se existir
+        $('#rangeOpacidadeCamadas').off('input');
+        
+        // Adiciona evento ao slider
+        $('#rangeOpacidadeCamadas').on('input', function() {
+            const opacidade = parseFloat($(this).val());
+            
+            // Atualiza o texto que mostra o valor
+            $('#valorOpacidadeCamadas').text(opacidade.toFixed(1));
+            
+            // Aplica a opacidade em todas as camadas dinâmicas
+            self.atualizarOpacidadeCamadasDinamicas(opacidade);
+        });
+    },
+
+    atualizarOpacidadeCamadasDinamicas: function(opacidade) {
+        if (!this.camadasDinamicas) return;
+
+        // Percorre todas as camadas dinâmicas
+        Object.keys(this.camadasDinamicas).forEach(idCamada => {
+            const camada = this.camadasDinamicas[idCamada];
+            
+            // Percorre todas as subcamadas
+            if (camada.subcamadas) {
+                Object.keys(camada.subcamadas).forEach(idSubcamada => {
+                    const subcamada = camada.subcamadas[idSubcamada];
+                    
+                    // Atualiza a opacidade de todos os objetos desta subcamada
+                    subcamada.objetos.forEach(objeto => {
+                        if (objeto.setOptions) {
+                            // Para Polyline
+                            // Para Polygon
+                            if (objeto.fillOpacity !== undefined) {
+                                objeto.setOptions({
+                                    fillOpacity: opacidade * 0.5 // Fill com metade da opacidade
+                                });
+                            }
+                        }
+                    });
+                });
+            }
+        });
+    },
+
+    carregarKMLDinamico: function(arquivo, index) {
+        const nomeArquivo = arquivo.nome;
+        const caminhoArquivo = arquivo.caminho;
+        const nomeCamada = nomeArquivo.replace('.kml', '').replace(/_/g, ' ');
+        const idCamada = `camada_kml_${index}`;
+
+        // Faz requisição para carregar o conteúdo do KML
+        $.ajax({
+            url: caminhoArquivo,
+            method: 'GET',
+            dataType: 'xml',
+            success: (kmlData) => {
+                // Parse do KML para GeoJSON usando toGeoJSON
+                const geoJson = toGeoJSON.kml(kmlData);
+
+                // Inicializa a estrutura de dados da camada ANTES de criar o dropdown
+                if (!this.camadasDinamicas) {
+                    this.camadasDinamicas = {};
+                }
+                
+                this.camadasDinamicas[idCamada] = {
+                    nome: nomeCamada,
+                    geoJson: geoJson,
+                    features: [],
+                    subcamadas: {},
+                    visivel: false
+                };
+
+                // Cria a estrutura de camadas no dropdown (e popula subcamadas)
+                this.criarEstruturaDropdown(idCamada, nomeCamada, geoJson, index);
+            },
+            error: (xhr, status, error) => {
+                console.error('❌ Erro ao carregar KML:', error);
+            }
+        });
+    },
+
+    criarEstruturaDropdown: function(idCamada, nomeCamada, geoJson, index) {
+        const dropCamadas = $('#dropCamadas');
+        
+        // Extrai as features e agrupa por tipo ou nome
+        const subcamadas = this.extrairSubcamadas(geoJson);
+        const temSubcamadas = subcamadas.length > 0;
+        
+        // Container principal da camada com accordion (setinha '>')
+        const containerCamada = $(`
+            <li style="border-bottom: 1px solid #e9ecef;">
+                <div style="padding: 6px 16px;">
+                    <!-- Cabeçalho da camada com setinha e checkbox -->
+                    <div class="d-flex align-items-center" style="gap: 8px;">
+                        ${temSubcamadas ? `
+                            <button class="btn btn-sm p-0 btn-accordion-toggle" 
+                                    type="button" 
+                                    data-bs-toggle="collapse" 
+                                    data-bs-target="#collapse_${idCamada}"
+                                    aria-expanded="false"
+                                    style="border: none; background: none; color: #666; font-size: 14px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        ` : '<span style="width: 20px;"></span>'}
+                        
+                        <div class="form-check m-0">
+                            <input class="form-check-input camada-principal" 
+                                   type="checkbox" 
+                                   id="${idCamada}" 
+                                   data-camada="${idCamada}">
+                            <label class="form-check-label" 
+                                   for="${idCamada}" 
+                                   style="cursor: pointer;">
+                                ${nomeCamada}
+                            </label>
+                        </div>
+                    </div>
+                    
+                    ${temSubcamadas ? `
+                        <!-- Subcamadas (collapse) -->
+                        <div class="collapse" id="collapse_${idCamada}">
+                            <div class="ms-4 mt-2" id="submenu_${idCamada}">
+                                <!-- Subcamadas serão inseridas aqui -->
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            </li>
+        `);
+        
+        if (temSubcamadas) {
+            const submenuContainer = containerCamada.find(`#submenu_${idCamada}`);
+            
+            subcamadas.forEach((subcamada, subIndex) => {
+                const idSubcamada = `${idCamada}_sub_${subIndex}`;
+                const itemSubcamada = $(`
+                    <div class="form-check mb-1">
+                        <input class="form-check-input subcamada-item" type="checkbox" 
+                               id="${idSubcamada}" 
+                               data-camada-pai="${idCamada}"
+                               data-subcamada="${idSubcamada}">
+                        <label class="form-check-label" for="${idSubcamada}" style="font-size: 13px; cursor: pointer;">
+                            ${subcamada.nome}
+                        </label>
+                    </div>
+                `);
+                
+                submenuContainer.append(itemSubcamada);
+                
+                // Armazena referência da subcamada (estrutura já existe)
+                this.camadasDinamicas[idCamada].subcamadas[idSubcamada] = {
+                    nome: subcamada.nome,
+                    features: subcamada.features,
+                    objetos: [],
+                    visivel: false
+                };
+            });
+            
+            // Adiciona evento para rotacionar a setinha quando o collapse abrir/fechar
+            containerCamada.find(`#collapse_${idCamada}`).on('show.bs.collapse', function() {
+                containerCamada.find('.btn-accordion-toggle i').removeClass('fa-chevron-right').addClass('fa-chevron-down');
+            }).on('hide.bs.collapse', function() {
+                containerCamada.find('.btn-accordion-toggle i').removeClass('fa-chevron-down').addClass('fa-chevron-right');
+            });
+        }
+
+        // Insere na posição alfabética correta
+        const tituloDiv = $('#tituloCamadasDinamicas');
+        let inserido = false;
+        
+        if (tituloDiv.length > 0) {
+            // Percorre todas as camadas já inseridas após o título
+            let elementoAtual = tituloDiv.next('li');
+            
+            while (elementoAtual.length > 0) {
+                const labelExistente = elementoAtual.find('.camada-principal').next('label').text().trim();
+                
+                // Compara alfabeticamente (case-insensitive)
+                if (nomeCamada.localeCompare(labelExistente, 'pt-BR', { sensitivity: 'base' }) < 0) {
+                    // Insere ANTES desta camada
+                    elementoAtual.before(containerCamada);
+                    inserido = true;
+                    break;
+                }
+                
+                elementoAtual = elementoAtual.next('li');
+            }
+            
+            // Se não inseriu antes de nenhuma, insere no final (após todas as camadas)
+            if (!inserido) {
+                tituloDiv.parent().append(containerCamada);
+            }
+        } else {
+            dropCamadas.append(containerCamada);
+        }
+
+        // Adiciona event listeners
+        this.adicionarEventListenersCamadas(idCamada);
+    },
+
+    extrairSubcamadas: function(geoJson) {
+        const subcamadas = [];
+        const featuresAgrupadas = {};
+
+        if (geoJson.features && geoJson.features.length > 0) {
+            geoJson.features.forEach((feature, index) => {
+                // Tenta obter nome da feature de várias propriedades possíveis
+                let nomeFeature = feature.properties?.name || 
+                                  feature.properties?.Name || 
+                                  feature.properties?.description ||
+                                  feature.properties?.Description ||
+                                  `Item ${index + 1}`;
+
+                // Agrupa features por nome
+                if (!featuresAgrupadas[nomeFeature]) {
+                    featuresAgrupadas[nomeFeature] = [];
+                }
+                featuresAgrupadas[nomeFeature].push(feature);
+            });
+
+            // Converte agrupamento em array de subcamadas
+            Object.keys(featuresAgrupadas).forEach(nome => {
+                subcamadas.push({
+                    nome: nome,
+                    features: featuresAgrupadas[nome]
+                });
+            });
+
+            // ORDENA AS SUBCAMADAS ALFABETICAMENTE
+            subcamadas.sort((a, b) => {
+                return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+            });
+        }
+
+        return subcamadas;
+    },
+
+    criarLinhaDinamica: function(coordinates, properties) {
+        // Valida se há coordenadas suficientes
+        if (!coordinates || coordinates.length < 2) {
+            return null;
+        }
+
+        const path = coordinates.map(coord => ({
+            lat: coord[1],
+            lng: coord[0]
+        }));
+
+        // Pega a opacidade atual do slider (se existir)
+        const opacidadeAtual = parseFloat($('#rangeOpacidadeCamadas').val()) || 0.5;
+
+        // Cores padrão mais visíveis
+        const strokeColor = properties.stroke || properties['stroke-color'] || '#0000FF';
+        const strokeWeight = parseFloat(properties['stroke-width']) || 3;
+
+        const polyline = new google.maps.Polyline({
+            path: path,
+            strokeColor: strokeColor,
+            strokeOpacity: opacidadeAtual,
+            strokeWeight: strokeWeight,
+            map: null,
+            clickable: true,
+            zIndex: 100
+        });
+
+        return polyline;
+    },
+
+    criarPoligonoDinamico: function(coordinates, properties) {
+        // Valida se há coordenadas suficientes
+        if (!coordinates || !coordinates[0] || coordinates[0].length < 3) {
+            return null;
+        }
+
+        // O primeiro array é o contorno externo
+        const path = coordinates[0].map(coord => ({
+            lat: coord[1],
+            lng: coord[0]
+        }));
+
+        // Pega a opacidade atual do slider (se existir)
+        const opacidadeAtual = parseFloat($('#rangeOpacidadeCamadas').val()) || 0.5;
+
+        // Cores padrão mais visíveis
+        const strokeColor = properties.stroke || properties['stroke-color'] || '#FF0000';
+        const strokeWeight = parseFloat(properties['stroke-width']) || 2;
+        const fillColor = properties.fill || properties['fill-color'] || '#FF0000';
+
+        const polygon = new google.maps.Polygon({
+            paths: path,
+            strokeColor: strokeColor,
+            strokeOpacity: opacidadeAtual,
+            strokeWeight: strokeWeight,
+            fillColor: fillColor,
+            fillOpacity: opacidadeAtual * 0.5, // Fill com metade da opacidade
+            map: null,
+            clickable: true,
+            zIndex: 100
+        });
+
+        return polygon;
+    },
+
+    adicionarEventListenersCamadas: function(idCamada) {
+        const self = this;
+
+        // Evento para checkbox da camada principal
+        $(`#${idCamada}`).on('change', function() {
+            const isChecked = $(this).is(':checked');
+            const subcamadas = $(`#submenu_${idCamada} .subcamada-item`);
+
+            // Marca/desmarca todas as subcamadas
+            subcamadas.prop('checked', isChecked);
+
+            // Mostra/oculta todas as features
+            if (isChecked) {
+                self.mostrarCamada(idCamada);
+            } else {
+                self.ocultarCamada(idCamada);
+            }
+
+            // Dispara evento de change nas subcamadas
+            subcamadas.each(function() {
+                $(this).trigger('change.manual');
+            });
+        });
+
+        // Evento para checkboxes das subcamadas
+        $(`#submenu_${idCamada} .subcamada-item`).on('change change.manual', function(e) {
+            const idSubcamada = $(this).attr('id');
+            const isChecked = $(this).is(':checked');
+
+            // Mostra/oculta subcamada específica
+            if (isChecked) {
+                self.mostrarSubcamada(idCamada, idSubcamada);
+            } else {
+                self.ocultarSubcamada(idCamada, idSubcamada);
+            }
+
+            // Atualiza estado da camada principal
+            // Se é um evento manual (disparado pela camada pai), não atualiza o pai
+            if (e.type !== 'manual') {
+                self.atualizarEstadoCamadaPrincipal(idCamada);
+            }
+        });
+    },
+
+    mostrarCamada: function(idCamada) {
+        const camada = this.camadasDinamicas[idCamada];
+        if (!camada) return;
+
+        // A camada principal não tem features próprias
+        // Apenas mostra todas as subcamadas
+        if (camada.subcamadas) {
+            Object.keys(camada.subcamadas).forEach(idSubcamada => {
+                this.mostrarSubcamada(idCamada, idSubcamada);
+            });
+        }
+
+        camada.visivel = true;
+    },
+
+    ocultarCamada: function(idCamada) {
+        const camada = this.camadasDinamicas[idCamada];
+        if (!camada) return;
+
+        // A camada principal não tem features próprias
+        // Apenas oculta todas as subcamadas
+        if (camada.subcamadas) {
+            Object.keys(camada.subcamadas).forEach(idSub => {
+                this.ocultarSubcamada(idCamada, idSub);
+            });
+        }
+
+        camada.visivel = false;
+    },
+
+    mostrarSubcamada: function(idCamada, idSubcamada) {
+        const camada = this.camadasDinamicas[idCamada];
+        if (!camada || !camada.subcamadas || !camada.subcamadas[idSubcamada]) return;
+
+        const subcamada = camada.subcamadas[idSubcamada];
+
+        // Se ainda não renderizou os objetos desta subcamada, renderiza agora
+        if (subcamada.objetos.length === 0 && subcamada.features.length > 0) {
+            subcamada.features.forEach(feature => {
+                const geometry = feature.geometry;
+                const properties = feature.properties || {};
+
+                // Renderiza APENAS polígonos e linhas (não renderiza Points)
+                switch (geometry.type) {
+                    case 'LineString':
+                        const linha = this.criarLinhaDinamica(geometry.coordinates, properties);
+                        if (linha) {
+                            subcamada.objetos.push(linha);
+                        }
+                        break;
+                    
+                    case 'Polygon':
+                        const poly = this.criarPoligonoDinamico(geometry.coordinates, properties);
+                        if (poly) {
+                            subcamada.objetos.push(poly);
+                        }
+                        break;
+                    
+                    case 'MultiLineString':
+                        // Para MultiLineString, cria múltiplas linhas
+                        geometry.coordinates.forEach(lineCoords => {
+                            const linhaMulti = this.criarLinhaDinamica(lineCoords, properties);
+                            if (linhaMulti) {
+                                subcamada.objetos.push(linhaMulti);
+                            }
+                        });
+                        break;
+                    
+                    case 'MultiPolygon':
+                        // Para MultiPolygon, cria múltiplos polígonos
+                        geometry.coordinates.forEach(polyCoords => {
+                            const polyMulti = this.criarPoligonoDinamico(polyCoords, properties);
+                            if (polyMulti) {
+                                subcamada.objetos.push(polyMulti);
+                            }
+                        });
+                        break;
+                }
+            });
+        }
+
+        // Mostra os objetos no mapa
+        subcamada.objetos.forEach(objeto => {
+            if (objeto.setMap) {
+                objeto.setMap(this.map);
+            } else if (objeto.map) {
+                objeto.map = this.map;
+            }
+        });
+        
+        subcamada.visivel = true;
+    },
+
+    ocultarSubcamada: function(idCamada, idSubcamada) {
+        const camada = this.camadasDinamicas[idCamada];
+        if (!camada || !camada.subcamadas || !camada.subcamadas[idSubcamada]) return;
+
+        const subcamada = camada.subcamadas[idSubcamada];
+
+        // Oculta os objetos do mapa
+        subcamada.objetos.forEach(objeto => {
+            if (objeto.setMap) {
+                objeto.setMap(null);
+            } else if (objeto.map) {
+                objeto.map = null;
+            }
+        });
+
+        subcamada.visivel = false;
+    },
+
+    atualizarEstadoCamadaPrincipal: function(idCamada) {
+        const subcamadas = $(`#submenu_${idCamada} .subcamada-item`);
+        const totalSubcamadas = subcamadas.length;
+        
+        if (totalSubcamadas === 0) return;
+
+        const subcamadasMarcadas = subcamadas.filter(':checked').length;
+        const checkboxPrincipal = $(`#${idCamada}`);
+
+        if (subcamadasMarcadas === 0) {
+            // Nenhuma subcamada marcada - desmarcar principal
+            checkboxPrincipal.prop('checked', false);
+            checkboxPrincipal.prop('indeterminate', false);
+        } else if (subcamadasMarcadas === totalSubcamadas) {
+            // Todas marcadas - marcar principal
+            checkboxPrincipal.prop('checked', true);
+            checkboxPrincipal.prop('indeterminate', false);
+        } else {
+            // Algumas marcadas - estado indeterminado
+            checkboxPrincipal.prop('checked', false);
+            checkboxPrincipal.prop('indeterminate', true);
+        }
     }
 };
