@@ -1451,6 +1451,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         <i class="fas fa-external-link-alt"></i> Consultas
                     </button>
 
+                    <!-- Botão para editar trajetos de Streetview Fotos 
+                    <button class="btn btn-info d-none" id="btnEditarStreetviewFotos">
+                        <i class="fas fa-edit"></i> Corrigir Trajeto
+                    </button>-->
+
                     <!-- Botão Régua -->
                     <div class="btn-group">
                         <button class="btn btn-light dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
@@ -2486,6 +2491,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             quarteirao: [],
             imagens_aereas: [],
             streetview: [],
+            streetview_fotos: [],
             semCamadas: []
         };
 
@@ -2704,6 +2710,39 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#chkStreetview').on('change', function() {
             const visivel = $(this).is(':checked');
             MapFramework.alternarVisibilidadeCamada('streetview', visivel);
+        });
+
+        $('#chkStreetviewFotos').on('change', function() {
+            const visivel = $(this).is(':checked');
+            MapFramework.alternarVisibilidadeCamada('streetview_fotos', visivel);
+
+            // Mostra/oculta o botão de edição de trajeto
+            if (visivel) {
+                $('#btnEditarStreetviewFotos').removeClass('d-none');
+            } else {
+                $('#btnEditarStreetviewFotos').addClass('d-none');
+                // Se estava no modo de edição, sai dele
+                if (MapFramework.modoEdicaoStreetviewFotos) {
+                    MapFramework.desativarEdicaoStreetviewFotos();
+                    $('#btnEditarStreetviewFotos').removeClass('btn-danger').addClass('btn-info');
+                    $('#btnEditarStreetviewFotos').html('<i class="fas fa-edit"></i> Corrigir Trajeto');
+                }
+            }
+        });
+
+        // Evento do botão de edição de trajeto
+        $('#btnEditarStreetviewFotos').on('click', function() {
+            if (MapFramework.modoEdicaoStreetviewFotos) {
+                // Se já está no modo de edição, sai dele
+                MapFramework.desativarEdicaoStreetviewFotos();
+                $(this).removeClass('btn-danger').addClass('btn-info');
+                $(this).html('<i class="fas fa-edit"></i> Corrigir Trajeto');
+            } else {
+                // Se não está no modo de edição, entra nele
+                MapFramework.ativarEdicaoStreetviewFotos();
+                $(this).removeClass('btn-info').addClass('btn-danger');
+                $(this).html('<i class="fas fa-save"></i> Finalizar Edição');
+            }
         });
 
         // Eventos para os radio buttons de tipo de marcador
@@ -3511,6 +3550,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             // Carrega os trajetos Streetview da quadrícula no mapa
             MapFramework.carregarStreets(dadosOrto[0]['quadricula']);
+
+            // Carrega as fotos do Streetview da quadrícula no mapa
+            MapFramework.carregarStreetviewFotos(dadosOrto[0]['quadricula']);
 
             // Carrega camadas dinâmicas adicionais de KML
             MapFramework.carregarMaisCamadas();

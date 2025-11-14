@@ -276,7 +276,7 @@ const MapFramework = {
                     const corNaoRevisado = '#ff00ff'; // Magenta
 
                     let conteudoHTML = '<div style="padding: 15px; min-width: 400px; max-width: 500px; font-size: 13px;">';
-                    conteudoHTML += '<h6 style="margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #ff00ff; padding-bottom: 8px;">Informações do Bloco</h6>';
+                    conteudoHTML += '<h6 style="margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #ff00ff; padding-bottom: 8px;">Informações da Edificação</h6>';
 
                     // Qtde. Pavimentos
                     conteudoHTML += '<div style="margin-bottom: 12px;">';
@@ -534,7 +534,9 @@ const MapFramework = {
         });
     },
 
-    abrirInfoWindowUnidade2: function (poligono, posicao, idDesenho) {
+    abrirInfoWindowUnidade2: function (poligono, posicao, idDesenho, idDesenhoLotePai) {
+        console.log('abrirInfoWindowUnidade2 chamado com:', { idDesenho, idDesenhoLotePai });
+        
         // Fecha InfoWindow anterior se existir
         if (this.infoWindow) {
             this.infoWindow.close();
@@ -543,7 +545,7 @@ const MapFramework = {
             this.infoWindow_poligono_lote.close();
         }
 
-        // Calcula a área do polígono em metros quadrados (float)
+        // Calcula a área do polígono da unidade em metros quadrados
         let areaPoligono = 0;
         if (poligono.coordenadasGeoJSON && turf) {
             try {
@@ -561,7 +563,389 @@ const MapFramework = {
 
         this.infoWindow.open(this.map);
 
-        // Busca dados da unidade
+        // Armazena referência ao polígono para uso nos event listeners
+        const self = this;
+        const poligonoRef = poligono;
+
+        // Variáveis para armazenar os dados
+        let dadosUnidade = null;
+        let dadosLote = null;
+        let chamadas = 0;
+
+        // Função para montar o HTML quando ambas as requisições terminarem
+        const montarInfoWindow = () => {
+            if (chamadas < 2) return; // Aguarda ambas as chamadas
+
+            // Calcula área do lote (se houver polígono do lote)
+            let areaLote = 0;
+            if (dadosLote && dadosLote.area_lote) {
+                areaLote = dadosLote.area_lote;
+            }
+
+            // Variáveis para informações do lote
+            let area_terr_pref = '0';
+            let area_const_pref = '0';
+            let valor_iptu_2025 = '0';
+            let area_terr_encontrada = areaLote;
+            let area_const_encontrada = '0';
+            let area_piscinas_encontrada = '0';  
+            let valor_iptu_2026 = '0';
+
+            // HTML principal
+            let conteudoHTML = '<div style="padding: 15px; min-width: 400px; max-width: 500px; font-size: 13px;">';
+            
+            // ========== TÍTULO COM ABAS PRINCIPAIS (NÍVEL 1) ==========
+            conteudoHTML += '<div style="display: flex; margin-bottom: 0; gap: 0;">';
+            
+            // Aba-Título: Informações do Imóvel (Lote) - Ativa por padrão
+            conteudoHTML += '<div class="titulo-aba-unid" data-aba-principal="imovel" style="flex: 1; margin: 0; padding: 8px 8px; color: white; background-color: #0066cc; cursor: pointer; font-weight: bold; text-align: center; user-select: none; border-radius: 3px 0 0 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Informações do Imóvel</div>';
+            
+            // Aba-Título: Informações do Bloco (Unidade)
+            conteudoHTML += '<div class="titulo-aba-unid" data-aba-principal="bloco" style="flex: 1; margin: 0; padding: 8px 8px; color: #666; background-color: #e0e0e0; cursor: pointer; font-weight: bold; text-align: center; user-select: none; border-radius: 0 3px 0 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Informações da Edificação</div>';
+            
+            conteudoHTML += '</div>'; // Fecha div das abas-título
+            
+            // Linha colorida abaixo do título (muda de cor conforme a aba)
+            conteudoHTML += '<div id="linha-titulo-unid" style="height: 2px; background-color: #0066cc; margin-bottom: 15px;"></div>';
+
+            // ========== CONTEÚDO: INFORMAÇÕES DO IMÓVEL (LOTE) ==========
+            conteudoHTML += '<div id="conteudo-principal-imovel" class="conteudo-principal-unid" style="display: block;">';
+            
+            // Informações gerais do lote (apenas visíveis nesta aba)
+            conteudoHTML += `<div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 15px;">
+                <span style="font-size: 14px;">Área total do terreno na prefeitura: <b><span id="soma-area-terreno-prefeitura-unid">${area_terr_pref}</span> m²</b></span>
+                <span style="font-size: 14px;">Área total construída na prefeitura: <b><span id="soma-area-construida-prefeitura-unid">${area_const_pref}</span> m²</b></span>
+                <span style="font-size: 14px;">Valor lançado do IPTU 2025: <b>R$ ${valor_iptu_2025}</b></span>
+                <span style="font-size: 14px;">Área total do terreno encontrada: <b>${area_terr_encontrada.toFixed(2)} m²</b> <span id="diferenca-area-terreno-unid" style="color: red; font-weight: bold;"></span></span>
+                <span style="font-size: 14px;">Área total construída encontrada: <b><span id="soma-area-construida-encontrada-unid">${area_const_encontrada}</span> m²</b> <span id="diferenca-area-construida-unid" style="color: red; font-weight: bold;"></span></span>
+                <span style="font-size: 14px;">Área total de piscinas encontrada: <b><span id="soma-area-piscinas-encontrada-unid">${area_piscinas_encontrada}</span> m²</b></span>
+                <span style="font-size: 14px;">Valor calculado do IPTU 2026: <b>R$ ${valor_iptu_2026}</b></span>
+            </div>`;
+            
+            // Sub-abas do lote (Cadastro, IPTU, Situação Atual)
+            conteudoHTML += '<div style="display: flex; border-bottom: 2px solid #ddd; margin-bottom: 15px;">';
+            conteudoHTML += '<button class="aba-lote-unid" data-aba="cadastro" style="flex: 1; padding: 10px; border: none; background-color: #0066cc; color: white; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0; margin-right: 2px;">Cadastro</button>';
+            conteudoHTML += '<button class="aba-lote-unid" data-aba="iptu" style="flex: 1; padding: 10px; border: none; background-color: #ccc; color: #666; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0; margin-right: 2px;">IPTU</button>';
+            conteudoHTML += '<button class="aba-lote-unid" data-aba="situacao" style="flex: 1; padding: 10px; border: none; background-color: #ccc; color: #666; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0;">Situação Atual</button>';
+            conteudoHTML += '</div>';
+            
+            // Conteúdo da sub-aba Cadastro
+            conteudoHTML += '<div id="conteudo-lote-cadastro" class="conteudo-aba-lote-unid" style="display: block; min-height: 200px; padding: 10px;">';
+            conteudoHTML += `
+                <table class="table table-bordered" style="font-size: 12px;">
+                    <thead>
+                        <tr>
+                            <th>Imob_id</th>
+                            <th>Quarteirão</th>
+                            <th>Quadra</th>
+                            <th>Lote</th>
+                            <th>Á.Terreno</th>
+                            <th>Á.Construída</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-cadastro-lote-unid">
+                    </tbody>
+                </table>
+            `;
+            conteudoHTML += '</div>';
+            
+            // Conteúdo da sub-aba IPTU
+            conteudoHTML += '<div id="conteudo-lote-iptu" class="conteudo-aba-lote-unid" style="display: none; min-height: 200px; padding: 10px;">';
+            conteudoHTML += `
+                <table class="table table-bordered" style="font-size: 12px;">
+                    <thead>
+                        <tr>
+                            <th>Imob_id</th>
+                            <th>Ident.</th>
+                            <th>Á.Terr.</th>
+                            <th>Á.Constr.</th>
+                            <th>Utilização</th>
+                            <th>Tipo Construção</th>
+                            <th>Classif.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-iptu-lote-unid">
+                    </tbody>
+                </table>
+            `;
+            conteudoHTML += '</div>';
+            
+            // Conteúdo da sub-aba Situação Atual
+            conteudoHTML += '<div id="conteudo-lote-situacao" class="conteudo-aba-lote-unid" style="display: none; min-height: 200px; padding: 10px;">';
+            conteudoHTML += `
+                <table class="table table-bordered" style="font-size: 12px;">
+                    <thead>
+                        <tr>
+                            <th>Unidade</th>
+                            <th>Á.Constr.</th>
+                            <th>Utiliz.</th>
+                            <th>Tipo Constr.</th>
+                            <th>Classif.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-situacao-lote-unid">
+                    </tbody>
+                </table>
+            `;
+            conteudoHTML += '</div>';
+            
+            conteudoHTML += '</div>'; // Fecha conteúdo Informações do Imóvel
+
+            // ========== CONTEÚDO: INFORMAÇÕES DO BLOCO (UNIDADE) ==========
+            conteudoHTML += '<div id="conteudo-principal-bloco" class="conteudo-principal-unid" style="display: none; min-height: 200px; padding: 10px;">';
+            
+            if (dadosUnidade) {
+                const dados = dadosUnidade;
+                const revisadoAtual = dados.revisado || 0;
+                const corRevisado = '#90EE90'; // Verde limão
+                const corNaoRevisado = '#ff00ff'; // Magenta
+
+                // Qtde. Pavimentos
+                conteudoHTML += '<div style="margin-bottom: 12px;">';
+                conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Qtde. Pavimentos:</label>';
+                conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.pavimentos || 'Não informado') + '</div>';
+                conteudoHTML += '</div>';
+
+                // Utilização
+                conteudoHTML += '<div style="margin-bottom: 12px;">';
+                conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Utilização:</label>';
+                conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.utilizacao || 'Não informado') + '</div>';
+                conteudoHTML += '</div>';
+
+                // Pavimento Térreo
+                conteudoHTML += '<div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd;">';
+                conteudoHTML += '<h6 style="margin: 0 0 12px 0; color: #666; font-weight: bold;">Pavimento Térreo</h6>';
+
+                // Térreo - Tipo da Construção
+                conteudoHTML += '<div style="margin-bottom: 12px;">';
+                conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Tipo da Construção:</label>';
+                conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.terreo_tipo || 'Não informado') + '</div>';
+                conteudoHTML += '</div>';
+
+                // Térreo - Classificação
+                conteudoHTML += '<div style="margin-bottom: 12px;">';
+                conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Classificação:</label>';
+                conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.terreo_classificacao || 'Não informado') + '</div>';
+                conteudoHTML += '</div>';
+
+                // Térreo - Área construída
+                conteudoHTML += '<div style="margin-bottom: 15px;">';
+                conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Área construída:</label>';
+                conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + areaPoligono.toFixed(2) + ' m²</div>';
+                conteudoHTML += '</div>';
+                conteudoHTML += '</div>';
+
+                // Demais Pavimentos (só aparece se pavimentos > 1)
+                const pavimentosAtual = parseInt(dados.pavimentos) || 1;
+                const mostrarDemaisPavimentos = pavimentosAtual > 1;
+                if (mostrarDemaisPavimentos) {
+                    conteudoHTML += '<div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd;">';
+                    conteudoHTML += '<h6 style="margin: 0 0 12px 0; color: #666; font-weight: bold;">Demais Pavimentos</h6>';
+
+                    // Demais - Tipo da Construção
+                    conteudoHTML += '<div style="margin-bottom: 12px;">';
+                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Tipo da Construção:</label>';
+                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.demais_tipo || 'Não informado') + '</div>';
+                    conteudoHTML += '</div>';
+
+                    // Demais - Classificação
+                    conteudoHTML += '<div style="margin-bottom: 12px;">';
+                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Classificação:</label>';
+                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.demais_classificacao || 'Não informado') + '</div>';
+                    conteudoHTML += '</div>';
+
+                    // Demais - Área construída (calculada: área × (pavimentos - 1))
+                    const areaDemaisPavimentos = areaPoligono * (pavimentosAtual - 1);
+                    conteudoHTML += '<div style="margin-bottom: 15px;">';
+                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Área construída:</label>';
+                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + areaDemaisPavimentos.toFixed(2) + ' m²</div>';
+                    conteudoHTML += '</div>';
+                    conteudoHTML += '</div>';
+                }
+
+                // Status de Revisão (somente visualização)
+                conteudoHTML += '<div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd; display: flex; gap: 10px; pointer-events: none;">';
+                conteudoHTML += '<div style="flex: 1; padding: 8px; border: 2px solid ' + (revisadoAtual == 1 ? corRevisado : '#ddd') + '; border-radius: 3px; font-weight: bold; text-align: center; background-color: ' + (revisadoAtual == 1 ? corRevisado : '#fff') + '; color: ' + (revisadoAtual == 1 ? '#000' : '#999') + ';">REVISADO</div>';
+                conteudoHTML += '<div style="flex: 1; padding: 8px; border: 2px solid ' + (revisadoAtual == 0 ? corNaoRevisado : '#ddd') + '; border-radius: 3px; font-weight: bold; text-align: center; background-color: ' + (revisadoAtual == 0 ? corNaoRevisado : '#fff') + '; color: ' + (revisadoAtual == 0 ? '#fff' : '#999') + ';">NÃO REVISADO</div>';
+                conteudoHTML += '</div>';
+
+                // Define a cor do polígono baseado no estado de revisado
+                if (revisadoAtual == 1) {
+                    poligonoRef.setOptions({
+                        strokeColor: corRevisado,
+                        fillColor: corRevisado
+                    });
+                    poligonoRef.corOriginal = corRevisado;
+                } else {
+                    poligonoRef.setOptions({
+                        strokeColor: corNaoRevisado,
+                        fillColor: corNaoRevisado
+                    });
+                    poligonoRef.corOriginal = corNaoRevisado;
+                }
+            } else {
+                conteudoHTML += '<p style="text-align: center; color: #666;">Nenhum dado cadastrado para esta unidade</p>';
+            }
+            
+            conteudoHTML += '</div>'; // Fecha conteúdo Informações do Bloco
+
+            conteudoHTML += '</div>'; // Fecha container das abas
+            conteudoHTML += '</div>'; // Fecha div principal
+
+            // Atualiza o conteúdo do InfoWindow
+            self.infoWindow.setContent(conteudoHTML);
+
+            // Adiciona event listeners após o DOM estar pronto
+            google.maps.event.addListenerOnce(self.infoWindow, 'domready', () => {
+                // Popula as tabelas do lote
+                if (dadosLote) {
+                    // Tabela Cadastro
+                    const dados = Array.isArray(dadosLote.dados) ? dadosLote.dados : [];
+                    const tbody1 = $('#tbody-cadastro-lote-unid');
+                    tbody1.empty();
+                    
+                    let somaAreaTerreno = 0;
+                    let somaAreaConstruida = 0;
+                    
+                    if (dados.length > 0) {
+                        let linhasHTML = '';
+                        dados.forEach((linha) => {
+                            const areaTerreno = parseFloat(linha.area_terreno) || 0;
+                            somaAreaTerreno += areaTerreno;
+                            const areaConstruida = parseFloat(linha.area_construida) || 0;
+                            somaAreaConstruida += areaConstruida;
+                            
+                            linhasHTML += `
+                                <tr>
+                                    <td>${linha.imob_id || ''}</td>
+                                    <td>${linha.quarteirao || ''}</td>
+                                    <td>${linha.quadra || ''}</td>
+                                    <td>${linha.lote || ''}</td>
+                                    <td>${linha.area_terreno || ''}</td>
+                                    <td>${linha.area_construida || ''}</td>
+                                </tr>
+                            `;
+                        });
+                        tbody1.html(linhasHTML);
+                        $('#soma-area-terreno-prefeitura-unid').text(somaAreaTerreno.toFixed(2));
+                        $('#soma-area-construida-prefeitura-unid').text(somaAreaConstruida.toFixed(2));
+                    } else {
+                        tbody1.html('<tr><td colspan="6" style="text-align: center; color: #666;">Nenhum registro encontrado</td></tr>');
+                    }
+                    
+                    // Tabela IPTU
+                    const dadosIPTU = Array.isArray(dadosLote.dados_iptu) ? dadosLote.dados_iptu : [];
+                    const tbody2 = $('#tbody-iptu-lote-unid');
+                    tbody2.empty();
+                    
+                    if (dadosIPTU.length > 0) {
+                        let linhasHTML = '';
+                        dadosIPTU.forEach((linha) => {
+                            linhasHTML += `
+                                <tr>
+                                    <td>${linha.imob_id || ''}</td>
+                                    <td>${linha.ident || ''}</td>
+                                    <td>${linha.area_terreno || ''}</td>
+                                    <td>${linha.area_construida || ''}</td>
+                                    <td>${linha.utilizacao || ''}</td>
+                                    <td>${linha.tipo_construcao || ''}</td>
+                                    <td>${linha.classificacao || ''}</td>
+                                </tr>
+                            `;
+                        });
+                        tbody2.html(linhasHTML);
+                    } else {
+                        tbody2.html('<tr><td colspan="7" style="text-align: center; color: #666;">Nenhum registro encontrado</td></tr>');
+                    }
+                    
+                    // Tabela Situação Atual
+                    const dadosSituacao = Array.isArray(dadosLote.dados_situacao) ? dadosLote.dados_situacao : [];
+                    const tbody3 = $('#tbody-situacao-lote-unid');
+                    tbody3.empty();
+                    
+                    let somaAreaConstruidaEncontrada = 0;
+                    
+                    if (dadosSituacao.length > 0) {
+                        let linhasHTML = '';
+                        dadosSituacao.forEach((linha) => {
+                            const areaConstruida = parseFloat(linha.area_construida) || 0;
+                            somaAreaConstruidaEncontrada += areaConstruida;
+                            
+                            linhasHTML += `
+                                <tr>
+                                    <td>${linha.id_unidades_lotes || ''}</td>
+                                    <td>${linha.area_construida || ''}</td>
+                                    <td>${linha.utilizacao || ''}</td>
+                                    <td>${linha.tipo_construcao || ''}</td>
+                                    <td>${linha.classificacao || ''}</td>
+                                </tr>
+                            `;
+                        });
+                        tbody3.html(linhasHTML);
+                        $('#soma-area-construida-encontrada-unid').text(somaAreaConstruidaEncontrada.toFixed(2));
+                    } else {
+                        tbody3.html('<tr><td colspan="5" style="text-align: center; color: #666;">Nenhum registro encontrado</td></tr>');
+                    }
+                }
+                
+                // Event listener para abas PRINCIPAIS (nível 1) - Títulos clicáveis
+                $('.titulo-aba-unid').on('click', function() {
+                    const abaSelecionada = $(this).data('aba-principal');
+                    
+                    // Define cores baseadas na aba selecionada
+                    const corAtiva = abaSelecionada === 'imovel' ? '#0066cc' : '#ff00ff'; // azul ou magenta
+                    const corInativa = '#e0e0e0';
+                    
+                    // Remove estilo ativo de todos os títulos
+                    $('.titulo-aba-unid').each(function() {
+                        $(this).css({
+                            'background-color': corInativa,
+                            'color': '#666'
+                        });
+                    });
+                    
+                    // Aplica estilo ativo no título clicado
+                    $(this).css({
+                        'background-color': corAtiva,
+                        'color': 'white'
+                    });
+                    
+                    // Muda a cor da linha abaixo do título
+                    $('#linha-titulo-unid').css('background-color', corAtiva);
+                    
+                    // Esconde todo conteúdo principal
+                    $('.conteudo-principal-unid').hide();
+                    
+                    // Mostra conteúdo da aba principal selecionada
+                    $('#conteudo-principal-' + abaSelecionada).show();
+                });
+                
+                // Event listener para sub-abas do LOTE (nível 2)
+                $('.aba-lote-unid').on('click', function() {
+                    const abaSelecionada = $(this).data('aba');
+                    
+                    // Remove estilo ativo de todas as sub-abas
+                    $('.aba-lote-unid').css({
+                        'background-color': '#ccc',
+                        'color': '#666'
+                    });
+                    
+                    // Aplica estilo ativo na sub-aba clicada
+                    $(this).css({
+                        'background-color': '#0066cc',
+                        'color': 'white'
+                    });
+                    
+                    // Esconde todo conteúdo das sub-abas
+                    $('.conteudo-aba-lote-unid').hide();
+                    
+                    // Mostra conteúdo da sub-aba selecionada
+                    $('#conteudo-lote-' + abaSelecionada).show();
+                });
+            });
+        };
+
+        // Requisição 1: Busca dados da UNIDADE
         $.ajax({
             url: 'buscar_dados_unidade.php',
             method: 'GET',
@@ -571,121 +955,53 @@ const MapFramework = {
             dataType: 'json',
             success: (response) => {
                 if (response.status === 'sucesso') {
-                    const dados = response.dados || {};
-                    const revisadoAtual = dados.revisado || 0;
-
-                    // Cores para revisado/não revisado
-                    const corRevisado = '#90EE90'; // Verde limão
-                    const corNaoRevisado = '#ff00ff'; // Magenta
-
-                    let conteudoHTML = '<div style="padding: 15px; min-width: 400px; max-width: 500px; font-size: 13px;">';
-                    conteudoHTML += '<h6 style="margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #ff00ff; padding-bottom: 8px;">Informações do Bloco (Somente Leitura)</h6>';
-
-                    // Qtde. Pavimentos
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Qtde. Pavimentos:</label>';
-                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.pavimentos || 'Não informado') + '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Utilização
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Utilização:</label>';
-                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.utilizacao || 'Não informado') + '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Pavimento Térreo
-                    conteudoHTML += '<div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd;">';
-                    conteudoHTML += '<h6 style="margin: 0 0 12px 0; color: #666; font-weight: bold;">Pavimento Térreo</h6>';
-
-                    // Térreo - Usos
-                    //conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    //conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Usos:</label>';
-                    //conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.terreo_uso || 'Não informado') + '</div>';
-                    //conteudoHTML += '</div>';
-
-                    // Térreo - Tipo da Construção
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Tipo da Construção:</label>';
-                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.terreo_tipo || 'Não informado') + '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Térreo - Classificação
-                    conteudoHTML += '<div style="margin-bottom: 12px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Classificação:</label>';
-                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.terreo_classificacao || 'Não informado') + '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Térreo - Área construída
-                    conteudoHTML += '<div style="margin-bottom: 15px;">';
-                    conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Área construída:</label>';
-                    conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + areaPoligono.toFixed(2) + ' m²</div>';
-                    conteudoHTML += '</div>';
-                    conteudoHTML += '</div>';
-
-                    // Demais Pavimentos (só aparece se pavimentos > 1)
-                    const pavimentosAtual = parseInt(dados.pavimentos) || 1;
-                    const mostrarDemaisPavimentos = pavimentosAtual > 1;
-                    if (mostrarDemaisPavimentos) {
-                        conteudoHTML += '<div id="divDemaisPavimentosUnidade" style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd;">';
-                        conteudoHTML += '<h6 style="margin: 0 0 12px 0; color: #666; font-weight: bold;">Demais Pavimentos</h6>';
-
-                        // Demais - Usos
-                        //conteudoHTML += '<div style="margin-bottom: 12px;">';
-                        //conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Usos:</label>';
-                        //conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.demais_uso || 'Não informado') + '</div>';
-                        //conteudoHTML += '</div>';
-
-                        // Demais - Tipo da Construção
-                        conteudoHTML += '<div style="margin-bottom: 12px;">';
-                        conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Tipo da Construção:</label>';
-                        conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.demais_tipo || 'Não informado') + '</div>';
-                        conteudoHTML += '</div>';
-
-                        // Demais - Classificação
-                        conteudoHTML += '<div style="margin-bottom: 12px;">';
-                        conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Classificação:</label>';
-                        conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + (dados.demais_classificacao || 'Não informado') + '</div>';
-                        conteudoHTML += '</div>';
-
-                        // Demais - Área construída (calculada: área × (pavimentos - 1))
-                        const areaDemaisPavimentos = areaPoligono * (pavimentosAtual - 1);
-                        conteudoHTML += '<div style="margin-bottom: 15px;">';
-                        conteudoHTML += '<label style="display: block; margin-bottom: 5px; font-weight: bold;">Área construída:</label>';
-                        conteudoHTML += '<div style="padding: 8px; border: 1px solid #ccc; border-radius: 3px; background-color: #f5f5f5; color: #333;">' + areaDemaisPavimentos.toFixed(2) + ' m²</div>';
-                        conteudoHTML += '</div>';
-                        conteudoHTML += '</div>';
-                    }
-
-                    // Status de Revisão (somente visualização)
-                    conteudoHTML += '<div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd; display: flex; gap: 10px; pointer-events: none;">';
-                    conteudoHTML += '<div style="flex: 1; padding: 8px; border: 2px solid ' + (revisadoAtual == 1 ? corRevisado : '#ddd') + '; border-radius: 3px; font-weight: bold; text-align: center; background-color: ' + (revisadoAtual == 1 ? corRevisado : '#fff') + '; color: ' + (revisadoAtual == 1 ? '#000' : '#999') + ';">REVISADO</div>';
-                    conteudoHTML += '<div style="flex: 1; padding: 8px; border: 2px solid ' + (revisadoAtual == 0 ? corNaoRevisado : '#ddd') + '; border-radius: 3px; font-weight: bold; text-align: center; background-color: ' + (revisadoAtual == 0 ? corNaoRevisado : '#fff') + '; color: ' + (revisadoAtual == 0 ? '#fff' : '#999') + ';">NÃO REVISADO</div>';
-                    conteudoHTML += '</div>';
-
-                    conteudoHTML += '</div>';
-
-                    this.infoWindow.setContent(conteudoHTML);
-
-                    // Define a cor do polígono baseado no estado de revisado
-                    if (revisadoAtual == 1) {
-                        poligono.setOptions({
-                            strokeColor: corRevisado,
-                            fillColor: corRevisado
-                        });
-                        poligono.corOriginal = corRevisado;
-                    } else {
-                        poligono.setOptions({
-                            strokeColor: corNaoRevisado,
-                            fillColor: corNaoRevisado
-                        });
-                        poligono.corOriginal = corNaoRevisado;
-                    }
+                    dadosUnidade = response.dados || {};
                 } else {
-                    this.infoWindow.setContent('<div style="padding: 10px; color: red;">Nenhum dado cadastrado para esta unidade</div>');
+                    dadosUnidade = null;
                 }
+                chamadas++;
+                montarInfoWindow();
             },
             error: () => {
-                this.infoWindow.setContent('<div style="padding: 10px; color: red;">Erro ao carregar dados da unidade</div>');
+                dadosUnidade = null;
+                chamadas++;
+                montarInfoWindow();
+            }
+        });
+
+        // Requisição 2: Busca dados do LOTE PAI
+        $.ajax({
+            url: 'buscar_dados_poligono_lote.php',
+            method: 'GET',
+            data: {
+                id_desenho: idDesenhoLotePai
+            },
+            dataType: 'json',
+            success: (response) => {
+                if (response.status === 'sucesso') {
+                    dadosLote = response;
+                    
+                    // Calcula a área do lote a partir do polígono se disponível
+                    if (arrayCamadas['poligono_lote']) {
+                        const lotePoligono = arrayCamadas['poligono_lote'].find(p => p.identificador == idDesenhoLotePai);
+                        if (lotePoligono && lotePoligono.coordenadasGeoJSON && turf) {
+                            try {
+                                dadosLote.area_lote = turf.area(lotePoligono.coordenadasGeoJSON);
+                            } catch (e) {
+                                console.error('Erro ao calcular área do lote:', e);
+                            }
+                        }
+                    }
+                } else {
+                    dadosLote = null;
+                }
+                chamadas++;
+                montarInfoWindow();
+            },
+            error: () => {
+                dadosLote = null;
+                chamadas++;
+                montarInfoWindow();
             }
         });
     },
@@ -1844,12 +2160,12 @@ const MapFramework = {
                                     if (tipo === 'poligono' && camadaNome === 'poligono_lote' && event.latLng) {
                                         MapFramework.abrirInfoWindowPoligono_lote(objeto, event.latLng, objeto.identificador);
                                     }
-                                    else if (tipo === 'poligono' && camadaNome === 'unidade' && event.latLng) {
-                                        // Se estiver na index_2, usa versão editável; na index_3, usa versão somente leitura
-                                        if (paginaAtual == 'index_3') {
-                                            MapFramework.abrirInfoWindowUnidade2(objeto, event.latLng, objeto.identificador);
-                                        }
-                                    }
+                    else if (tipo === 'poligono' && camadaNome === 'unidade' && event.latLng) {
+                        // Se estiver na index_2, usa versão editável; na index_3, usa versão somente leitura
+                        if (paginaAtual == 'index_3') {
+                            MapFramework.abrirInfoWindowUnidade2(objeto, event.latLng, objeto.identificador, objeto.id_desenho);
+                        }
+                    }
                                 }
                             });
                         }
@@ -4886,6 +5202,287 @@ const MapFramework = {
                 MapFramework.infoWindow.setContent(conteudoErro);
             }
         });
+    },
+
+    carregarStreetviewFotos: function (quadricula) {
+        if (!quadricula) {
+            console.warn('⚠️ Quadrícula não informada para carregarStreetviewFotos');
+            return;
+        }
+
+        // Carrega o JSON com os dados das fotos
+        $.ajax({
+            url: `streetview2/quadriculas_json/${quadricula}.json`,
+            method: 'GET',
+            dataType: 'json',
+            success: function (dados) {
+                if (!dados.grupos || dados.grupos.length === 0) {
+                    console.log(`ℹ️ Nenhum grupo de fotos encontrado para quadrícula ${quadricula}`);
+                    return;
+                }
+
+                // Array de cores para diferenciar os grupos
+                const cores = [
+                    '#FF0000', // Vermelho
+                    '#00FF00', // Verde
+                    '#0000FF', // Azul
+                    '#FFFF00', // Amarelo
+                    '#FF00FF', // Magenta
+                    '#00FFFF', // Ciano
+                    '#FFA500', // Laranja
+                    '#800080', // Roxo
+                    '#008000', // Verde escuro
+                    '#000080', // Azul escuro
+                    '#FF1493', // Rosa forte
+                    '#4B0082', // Índigo
+                    '#FF4500', // Laranja avermelhado
+                    '#2E8B57', // Verde mar
+                    '#DC143C'  // Carmesim
+                ];
+
+                console.log(`📸 Carregando ${dados.grupos.length} grupos de fotos para quadrícula ${quadricula}`);
+
+                // Processa cada grupo
+                dados.grupos.forEach((grupo, indiceGrupo) => {
+                    if (!grupo.frames || grupo.frames.length === 0) {
+                        return; // Pula grupos vazios
+                    }
+
+                    // Cria array de coordenadas para a polyline
+                    const coordenadas = grupo.frames.map(frame => ({
+                        lat: frame.lat,
+                        lng: frame.lon
+                    }));
+
+                    // Escolhe uma cor baseada no índice do grupo (rotaciona se passar de 15)
+                    const cor = cores[indiceGrupo % cores.length];
+
+                    // Cria a polyline
+                    const polyline = new google.maps.Polyline({
+                        path: coordenadas,
+                        strokeColor: cor,
+                        strokeOpacity: 0.8,
+                        strokeWeight: 4,
+                        map: null, // Inicialmente oculta
+                        zIndex: 100,
+                        clickable: true,
+                        editable: false,
+                        draggable: false
+                    });
+
+                    // Armazena dados do grupo na polyline
+                    polyline.grupo = grupo;
+                    polyline.quadricula = quadricula;
+                    polyline.tipo = 'streetview_fotos';
+                    polyline.mapaRef = MapFramework.map;
+                    polyline.frames = grupo.frames; // Armazena frames para acesso rápido
+
+                    // Adiciona evento de clique na polyline (só funciona quando não editável)
+                    polyline.addListener('click', function(event) {
+                        // Se estiver editável, não abre foto
+                        if (polyline.editable) return;
+
+                        // Encontra o frame mais próximo do ponto clicado
+                        const pontoClicado = event.latLng;
+                        let frameMaisProximo = grupo.frames[0];
+                        let menorDistancia = Number.MAX_VALUE;
+
+                        grupo.frames.forEach(frame => {
+                            const distancia = google.maps.geometry.spherical.computeDistanceBetween(
+                                pontoClicado,
+                                new google.maps.LatLng(frame.lat, frame.lon)
+                            );
+
+                            if (distancia < menorDistancia) {
+                                menorDistancia = distancia;
+                                frameMaisProximo = frame;
+                            }
+                        });
+
+                        // Redireciona para a página do streetview2 com os parâmetros
+                        const url = `streetview2.php?lat=${frameMaisProximo.lat}&lon=${frameMaisProximo.lon}&caminho=${encodeURIComponent(frameMaisProximo.caminho)}&quadricula=${quadricula}`;
+                        window.open(url, '_blank');
+                    });
+
+                    // Adiciona efeito hover (opcional)
+                    polyline.addListener('mouseover', function() {
+                        // Só aplica hover se não estiver editável
+                        if (!polyline.editable) {
+                            polyline.setOptions({
+                                strokeWeight: 6,
+                                strokeOpacity: 1.0
+                            });
+                        }
+                    });
+
+                    polyline.addListener('mouseout', function() {
+                        // Só aplica hover se não estiver editável
+                        if (!polyline.editable) {
+                            polyline.setOptions({
+                                strokeWeight: 4,
+                                strokeOpacity: 0.8
+                            });
+                        }
+                    });
+
+                    // Armazena a polyline na camada usando a função global
+                    if (typeof adicionarObjetoNaCamada === 'function') {
+                        adicionarObjetoNaCamada('streetview_fotos', polyline);
+                    }
+                });
+
+                console.log(`✅ ${dados.grupos.length} polylines de fotos carregadas para quadrícula ${quadricula}`);
+            },
+            error: function (xhr, status, error) {
+                console.log(`ℹ️ Arquivo de fotos não encontrado para quadrícula ${quadricula}`);
+            }
+        });
+    },
+
+    // Modo de edição de trajetos Streetview Fotos
+    modoEdicaoStreetviewFotos: false,
+    tooltipVerticeStreetview: null,
+
+    ativarEdicaoStreetviewFotos: function() {
+        if (!arrayCamadas['streetview_fotos'] || arrayCamadas['streetview_fotos'].length === 0) {
+            alert('Nenhuma polyline de fotos carregada para editar.');
+            return;
+        }
+
+        this.modoEdicaoStreetviewFotos = true;
+
+        // Torna todas as polylines editáveis e draggable
+        arrayCamadas['streetview_fotos'].forEach(polyline => {
+            polyline.setOptions({
+                editable: true,
+                draggable: true,
+                strokeWeight: 5,
+                strokeOpacity: 1.0
+            });
+
+            // Adiciona listener para mostrar tooltip nos vértices
+            this.adicionarTooltipVertices(polyline);
+        });
+
+        console.log('✏️ Modo de edição de Streetview Fotos ativado');
+    },
+
+    desativarEdicaoStreetviewFotos: function() {
+        if (!arrayCamadas['streetview_fotos'] || arrayCamadas['streetview_fotos'].length === 0) {
+            return;
+        }
+
+        this.modoEdicaoStreetviewFotos = false;
+
+        // Remove tooltip se existir
+        if (this.tooltipVerticeStreetview) {
+            this.tooltipVerticeStreetview.setMap(null);
+            this.tooltipVerticeStreetview = null;
+        }
+
+        // Torna todas as polylines não editáveis
+        arrayCamadas['streetview_fotos'].forEach(polyline => {
+            polyline.setOptions({
+                editable: false,
+                draggable: false,
+                strokeWeight: 4,
+                strokeOpacity: 0.8
+            });
+
+            // Remove listeners de mouseover dos vértices
+            if (polyline.verticeListeners) {
+                polyline.verticeListeners.forEach(listener => {
+                    google.maps.event.removeListener(listener);
+                });
+                polyline.verticeListeners = [];
+            }
+        });
+
+        console.log('✅ Modo de edição de Streetview Fotos desativado');
+    },
+
+    adicionarTooltipVertices: function(polyline) {
+        const self = this;
+
+        // Array para armazenar os listeners dos vértices
+        if (!polyline.verticeListeners) {
+            polyline.verticeListeners = [];
+        }
+
+        // Adiciona listener de mouseover na polyline para detectar vértices
+        const listenerMouseover = polyline.addListener('mouseover', function(event) {
+            // Verifica se o mouse está sobre um vértice
+            if (typeof event.vertex === 'number') {
+                const indiceVertice = event.vertex;
+                const frame = polyline.frames[indiceVertice];
+
+                if (frame) {
+                    // Pega a posição do vértice
+                    const path = polyline.getPath();
+                    const posicaoVertice = path.getAt(indiceVertice);
+
+                    // Cria o elemento HTML do tooltip
+                    const tooltipElement = document.createElement('div');
+                    tooltipElement.style.backgroundColor = 'white';
+                    tooltipElement.style.border = '2px solid #333';
+                    tooltipElement.style.borderRadius = '6px';
+                    tooltipElement.style.padding = '8px 12px';
+                    tooltipElement.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+                    tooltipElement.style.fontSize = '12px';
+                    tooltipElement.style.fontWeight = 'bold';
+                    tooltipElement.style.color = '#333';
+                    tooltipElement.style.whiteSpace = 'nowrap';
+                    tooltipElement.innerHTML = `
+                        📸 ${frame.foto}<br>
+                        <small style="color: #666; font-weight: normal;">Índice: ${frame.indice_frame}</small>
+                    `;
+
+                    // Remove tooltip anterior se existir
+                    if (self.tooltipVerticeStreetview) {
+                        self.tooltipVerticeStreetview.setMap(null);
+                    }
+
+                    // Cria o marcador avançado para o tooltip
+                    self.tooltipVerticeStreetview = new google.maps.marker.AdvancedMarkerElement({
+                        position: posicaoVertice,
+                        content: tooltipElement,
+                        map: self.map,
+                        zIndex: 2000,
+                        gmpClickable: false
+                    });
+                }
+            }
+        });
+
+        const listenerMouseout = polyline.addListener('mouseout', function(event) {
+            // Remove tooltip quando sair do vértice
+            if (typeof event.vertex === 'number') {
+                if (self.tooltipVerticeStreetview) {
+                    self.tooltipVerticeStreetview.setMap(null);
+                    self.tooltipVerticeStreetview = null;
+                }
+            }
+        });
+
+        // Adiciona listener de mousemove no mapa para detectar quando sai da polyline completamente
+        const listenerMapMousemove = self.map.addListener('mousemove', function(event) {
+            // Verifica se ainda está sobre a polyline
+            const isOverPolyline = google.maps.geometry.poly.isLocationOnEdge(
+                event.latLng,
+                polyline,
+                0.0001 // Tolerância
+            );
+
+            if (!isOverPolyline && self.tooltipVerticeStreetview) {
+                self.tooltipVerticeStreetview.setMap(null);
+                self.tooltipVerticeStreetview = null;
+            }
+        });
+
+        // Armazena os listeners para poder removê-los depois
+        polyline.verticeListeners.push(listenerMouseover);
+        polyline.verticeListeners.push(listenerMouseout);
+        polyline.verticeListeners.push(listenerMapMousemove);
     },
 
     carregarStreets: function (quadricula) {
