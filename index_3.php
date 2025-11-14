@@ -3178,7 +3178,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
                 // Adiciona classe visual para destacar a opção selecionada
                 $('.opcao-loteamento').removeClass('selected');
-                $(this).closest('.opcao-loteamento').addClass('selected');
+            const opcaoSelecionada = $(this).closest('.opcao-loteamento').addClass('selected');
+            scrollParaElemento('#divCadastro .div-cadastro-body', opcaoSelecionada);
 
                 // Habilitar apenas os PDFs do loteamento selecionado (apenas nos controles originais)
                 $('input[name^="pdf_loteamento_"]:not([name*="integrado"])').prop('disabled', true); // Desabilita todos exceto integrados
@@ -3899,6 +3900,28 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         // Variável global para armazenar os dados dos PDFs dos quarteirões
         let dadosPDFsQuarteiroes = null;
 
+        function scrollParaElemento(containerSelector, elemento) {
+            const container = $(containerSelector);
+            if (!container.length || !elemento || !elemento.length) {
+                return;
+            }
+
+            const containerHeight = container.outerHeight();
+            const itemHeight = elemento.outerHeight();
+
+            const containerOffsetTop = container.offset().top;
+            const itemOffsetTop = elemento.offset().top;
+
+            const itemScrollTop = container.scrollTop() + (itemOffsetTop - containerOffsetTop);
+
+            if (itemScrollTop < container.scrollTop()) {
+                container.stop().animate({ scrollTop: Math.max(itemScrollTop - 20, 0) }, 200);
+            } else if ((itemScrollTop + itemHeight) > (container.scrollTop() + containerHeight)) {
+                const target = itemScrollTop - containerHeight + itemHeight + 20;
+                container.stop().animate({ scrollTop: Math.max(target, 0) }, 200);
+            }
+        }
+
         // Função para carregar os dados complementares dos quarteirões
         function carregarDadosQuarteiroes() {
             if (dadosQuarteiroesLoteamentos) {
@@ -3917,6 +3940,105 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 return null;
             });
         }
+
+        // Função para sincronizar seleção de loteamento/quarteirão ao clicar em marcadores
+        window.sincronizarSelecaoPorMarcador = async function (dadosMarcador = {}) {
+            const camadaMarcadoresAtiva = $('#chkMarcadores').is(':checked');
+            const camadaLoteamentosAtiva = $('#chkModoCadastro').is(':checked');
+
+            // Só sincroniza se ambas as camadas estiverem visíveis
+            if (!camadaMarcadoresAtiva || !camadaLoteamentosAtiva) {
+                return;
+            }
+
+            const nomeQuarteiraoDestino = (dadosMarcador.quarteirao || '').toString();
+            if (!nomeQuarteiraoDestino) {
+                return;
+            }
+
+            // Garante que os dados complementares estejam carregados
+            try {
+                await carregarDadosQuarteiroes();
+            } catch (error) {
+                console.error('Erro ao carregar dados dos quarteirões para sincronização:', error);
+            }
+
+            const selecionarQuarteirao = () => {
+                const radioQuarteirao = $(`#opcoesQuarteiroes input[name="quarteirao"][data-nome="${nomeQuarteiraoDestino}"]`);
+                if (radioQuarteirao.length === 0) {
+                    return false;
+                }
+
+                const jaSelecionado = radioQuarteirao.prop('checked');
+                if (!jaSelecionado) {
+                    radioQuarteirao.prop('checked', true).trigger('change');
+                } else {
+                    destacarQuarteiraoSelecionado(nomeQuarteiraoDestino, radioQuarteirao.val());
+                }
+                return true;
+            };
+
+            const tentarSelecionarQuarteirao = (tentativa = 0) => {
+                if (selecionarQuarteirao()) {
+                    return;
+                }
+
+                if (tentativa >= 10) {
+                    console.warn('Não foi possível sincronizar o quarteirão para o marcador clicado:', nomeQuarteiraoDestino);
+                    return;
+                }
+
+                setTimeout(() => tentarSelecionarQuarteirao(tentativa + 1), 120);
+            };
+
+            // Descobre loteamento correspondente ao quarteirão
+            let nomeLoteamentoDestino = null;
+            if (dadosQuarteiroesLoteamentos) {
+                Object.keys(dadosQuarteiroesLoteamentos).some(nomeLoteamento => {
+                    const info = dadosQuarteiroesLoteamentos[nomeLoteamento];
+                    if (!info || !Array.isArray(info.quarteiroes)) {
+                        return false;
+                    }
+
+                    const encontrado = info.quarteiroes.some(quarteiraoObj => {
+                        const nomeComparacao = (quarteiraoObj.nome || '').toString();
+                        return nomeComparacao === nomeQuarteiraoDestino;
+                    });
+
+                    if (encontrado) {
+                        nomeLoteamentoDestino = nomeLoteamento;
+                        return true;
+                    }
+                    return false;
+                });
+            }
+
+            // Tenta selecionar o loteamento correspondente
+            if (nomeLoteamentoDestino) {
+                const radiosLoteamentos = $('#opcoesLoteamentos input[name="loteamento"]');
+                const radioLoteamento = radiosLoteamentos.filter(function () {
+                    const valor = ($(this).data('loteamento') || '').toString();
+                    return valor === nomeLoteamentoDestino;
+                });
+
+                if (radioLoteamento.length > 0) {
+                    const indiceLoteamento = parseInt(radioLoteamento.val(), 10);
+
+                    if (!radioLoteamento.prop('checked')) {
+                        radioLoteamento.prop('checked', true).trigger('change');
+                    } else if (!Number.isNaN(indiceLoteamento)) {
+                        abrirDivCadastro2(indiceLoteamento);
+                    }
+
+                    tentarSelecionarQuarteirao();
+                    return;
+                }
+            }
+
+            // Se não encontrou loteamento correspondente, tenta apenas marcar o quarteirão atual
+            tentarSelecionarQuarteirao();
+        };
+
         // Função para carregar os dados dos PDFs dos quarteirões
         function carregarDadosPDFsQuarteiroes(numeroQuarteirao = null) {
             console.log('carregarDadosPDFsQuarteiroes', numeroQuarteirao);
@@ -4320,11 +4442,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             // Adiciona classe visual para destacar a opção selecionada
             $('.opcao-quarteirao').removeClass('selected');
-            $(`#quarteirao_${idQuarteirao}`).closest('.opcao-quarteirao').addClass('selected');
+            const opcaoQuarteirao = $(`#quarteirao_${idQuarteirao}`).closest('.opcao-quarteirao').addClass('selected');
+            scrollParaElemento('#divCadastro2 .div-cadastro-body', opcaoQuarteirao);
 
             // Automaticamente mostra os marcadores do quarteirão selecionado
             // MAS NÃO marca o checkbox - deixa o usuário decidir se quer ver todos
-            MapFramework.mostrarMarcadoresDoQuarteirao(nomeQuarteirao);
+            if (!$('#chkMarcadores').is(':checked')) {
+                MapFramework.mostrarMarcadoresDoQuarteirao(nomeQuarteirao);
+            } else if (typeof aplicarFiltroCores === 'function') {
+                aplicarFiltroCores();
+            }
 
             // Faz a requisição AJAX para buscar os lotes do quarteirão
             $.ajax({

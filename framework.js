@@ -4126,6 +4126,16 @@ const MapFramework = {
 
                         // Adiciona evento de clique para mostrar infowindow com dados do morador
                         el.addEventListener('click', function (event) {
+                            if (typeof window.sincronizarSelecaoPorMarcador === 'function') {
+                                window.sincronizarSelecaoPorMarcador({
+                                    quarteirao: desenho.quarteirao,
+                                    quadra: desenho.quadra,
+                                    lote: desenho.lote,
+                                    idQuadra: desenho.id_desenho,
+                                    identificador: desenho.id
+                                });
+                            }
+
                             // Busca dados do morador baseado em lote, quadra e quarteirão
                             const dadosMorador = MapFramework.dadosMoradores.find(morador =>
                                 morador.lote == desenho.lote &&
