@@ -1259,6 +1259,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="new_checkLotes">
+                                    <label class="form-check-label" for="new_checkLotes">
+                                        Lotes Prefeitura
+                                    </label>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="chkPoligono_lote" checked>
                                     <label class="form-check-label" for="chkPoligono_lote">
                                         Lotes Ortofoto
@@ -1284,14 +1292,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                     <input class="form-check-input" type="checkbox" id="chkLotes" checked>
                                     <label class="form-check-label" for="chkLotes">
                                         Cortes dos Lotes
-                                    </label>
-                                </div>
-                            </li>
-                            <li>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="new_checkLotes">
-                                    <label class="form-check-label" for="new_checkLotes">
-                                        Lotes Prefeitura
                                     </label>
                                 </div>
                             </li>
@@ -1481,6 +1481,21 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         </ul>
                     </div>
 
+                    <!-- Botão Mapa Externo -->
+                    <div class="btn-group ms-2">
+                        <button class="btn btn-light dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-globe-americas"></i> Externo
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="abrirLocalExterno('earth_web'); event.preventDefault();">
+                                <i class="fas fa-globe"></i> Google Earth Web
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="abrirLocalExterno('maps'); event.preventDefault();">
+                                <i class="fas fa-map-marked-alt"></i> Google Maps
+                            </a></li>
+                        </ul>
+                    </div>
+
                     <!--<button data-loteamento="" data-arquivos="" data-quadricula="" onclick="desenharNoPDF(this)" id="btnLerPDF" class="btn btn-warning d-none">Desenhar no PDF</button>-->
 
                     <!-- Botões Cadastro removidos - agora é uma camada no dropdown -->
@@ -1531,6 +1546,89 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
         function irConsulta() {
             window.location.href = `consultas`;
+        }
+
+        function abrirLocalExterno(tipo) {
+            if (typeof MapFramework === 'undefined' || !MapFramework.map) {
+                console.warn('MapFramework.map não está disponível.');
+                return;
+            }
+
+            const centro = MapFramework.map.getCenter();
+            const zoomMap = MapFramework.map.getZoom();
+
+            if (!centro || zoomMap === null || zoomMap === undefined) {
+                console.warn('Centro ou zoom do mapa indisponíveis.');
+                return;
+            }
+
+            const latValor = centro.lat();
+            const lngValor = centro.lng();
+            const lat = latValor.toFixed(8);
+            const lng = lngValor.toFixed(8);
+            const altitudeBase = converterZoomParaAltitude(zoomMap, latValor);
+            const { altitude: altitudeEarthWeb, range: rangeEarthWeb } = calcularParametrosEarthWeb(zoomMap, latValor);
+            const altitudePro = Math.max(50, Math.round(altitudeBase));
+
+            let url = '';
+
+            switch (tipo) {
+                case 'earth_web':
+                    url = `https://earth.google.com/web/@${lat},${lng},${altitudeEarthWeb}a,${rangeEarthWeb}d,1y,0h,0t,0r`;
+                    break;
+                case 'earth_pro':
+                    url = `googleearth://?ll=${lat},${lng}&z=${altitudePro}`;
+                    break;
+                case 'maps':
+                    url = `https://www.google.com/maps/@${lat},${lng},${zoomMap}z`;
+                    break;
+                default:
+                    console.warn(`Tipo de destino desconhecido: ${tipo}`);
+                    return;
+            }
+
+            window.open(url, '_blank', 'noopener');
+        }
+
+        function converterZoomParaAltitude(zoom, latitude) {
+            const radLat = latitude * Math.PI / 180;
+            const metrosPorPixel = 156543.03392 * Math.cos(radLat) / Math.pow(2, zoom);
+            const altitude = metrosPorPixel * 256;
+            return Math.max(50, Math.round(altitude));
+        }
+
+        function calcularParametrosEarthWeb(zoom, latitude) {
+            // Valores testados e validados pelo usuário
+            // A altitude (parâmetro 'a') é sempre ~595 para essa localização
+            const altitudeFixa = 594.81286735;
+            
+            const zoomRangeMap = {
+                21: 3405.18688813,
+                20: 7353.01885773,
+                19: 15595.86320988,
+                18: 32516.31324371
+            };
+
+            // Se o zoom está na tabela, usa o valor exato
+            if (zoomRangeMap[zoom] !== undefined) {
+                return { altitude: altitudeFixa, range: zoomRangeMap[zoom] };
+            }
+
+            // Para zooms fora da tabela, calcula usando interpolação exponencial
+            // Fator aproximado: ~2.12x por nível de zoom (média dos fatores calculados)
+            // Zoom 20→21: 7353/3405 = 2.159
+            // Zoom 19→20: 15596/7353 = 2.121  
+            // Zoom 18→19: 32516/15596 = 2.085
+            const referenceZoom = 21;
+            const baseRange = 3405.18688813;
+            const fatorMultiplicacao = 2.121; // Média dos fatores entre os zooms testados
+            const exponent = referenceZoom - zoom;
+            const rangeCalculado = baseRange * Math.pow(fatorMultiplicacao, exponent);
+            
+            // Garante valores mínimos e máximos razoáveis
+            const range = Math.max(100, Math.min(rangeCalculado, 500000));
+            
+            return { altitude: altitudeFixa, range };
         }
 
         // Sistema de medição de régua
@@ -3328,9 +3426,17 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     polygon.setMap(null);
                 });
             }
+            if (window.loteamentosLabels) {
+                window.loteamentosLabels.forEach(marker => {
+                    if (marker) {
+                        marker.setMap(null);
+                    }
+                });
+            }
 
             // Cria uma nova camada para os loteamentos
             window.loteamentosLayer = [];
+            window.loteamentosLabels = [];
 
             loteamentos.forEach((loteamento, index) => {
 
@@ -3359,10 +3465,10 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             // Cria o polígono
                             const polygon = new google.maps.Polygon({
                                 paths: path,
-                                strokeColor: '#FF8C00',
+                                strokeColor: '#B9E2FF',
                                 strokeOpacity: 0.8,
                                 strokeWeight: 7,
-                                fillColor: '#FF8C00',
+                                fillColor: '#B9E2FF',
                                 fillOpacity: 0.2,
                                 clickable: false,
                                 map: MapFramework.map
@@ -3370,6 +3476,19 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
                             // Adiciona à camada
                             window.loteamentosLayer.push(polygon);
+
+                            const centroid = calcularCentroidePoligono(path);
+                            if (centroid) {
+                                const labelElement = criarElementoRotuloLoteamento(loteamento.nome);
+                                const labelMarker = new google.maps.marker.AdvancedMarkerElement({
+                                    position: centroid,
+                                    content: labelElement,
+                                    gmpClickable: false,
+                                    map: MapFramework.map,
+                                    zIndex: 60
+                                });
+                                window.loteamentosLabels.push(labelMarker);
+                            }
 
 
                         } catch (error) {
@@ -3415,6 +3534,19 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                 window.loteamentosPolygons = {};
                             }
                             window.loteamentosPolygons[loteamento.nome] = polygonosDoLoteamento;
+
+                            const centroid = calcularCentroideMultiPoligono(primeiraCoordenada.coordinates);
+                            if (centroid) {
+                                const labelElement = criarElementoRotuloLoteamento(loteamento.nome);
+                                const labelMarker = new google.maps.marker.AdvancedMarkerElement({
+                                    position: centroid,
+                                    content: labelElement,
+                                    gmpClickable: false,
+                                    map: MapFramework.map,
+                                    zIndex: 60
+                                });
+                                window.loteamentosLabels.push(labelMarker);
+                            }
 
                         } catch (error) {
                             console.error(`Erro ao criar MultiPolygon para ${loteamento.nome}:`, error);
@@ -3462,6 +3594,14 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     polygon.setMap(null);
                 });
                 window.loteamentosLayer = [];
+            }
+            if (window.loteamentosLabels && window.loteamentosLabels.length > 0) {
+                window.loteamentosLabels.forEach(marker => {
+                    if (marker) {
+                        marker.setMap(null);
+                    }
+                });
+                window.loteamentosLabels = [];
             }
 
             //aqui desabilita o clique no poligonos quadra e lote
@@ -3667,6 +3807,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 $("#btnLerPDF").removeClass("d-none");
             }
 
+            const nomeLoteamentoSelecionado = window.loteamentosSelecionados && window.loteamentosSelecionados[indexLoteamento] ? window.loteamentosSelecionados[indexLoteamento].nome : null;
+
             // Remove destaque anterior
             if (window.loteamentosLayer) {
                 window.loteamentosLayer.forEach((polygon, i) => {
@@ -3688,8 +3830,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     if (pertenceAoSelecionado) {
                         // Mantém o loteamento selecionado com cor original e grossura 5
                         polygon.setOptions({
-                            strokeColor: '#FF8C00',
-                            fillColor: '#FF8C00',
+                            strokeColor: '#B9E2FF',
+                            fillColor: '#B9E2FF',
                             strokeWeight: 7,
                             fillOpacity: 0.3,
                             zIndex: 4
@@ -3707,6 +3849,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     }
                 });
             }
+
+            // Controla visibilidade dos rótulos
+            // Labels permanecem sempre visíveis
 
             // Obtém as coordenadas do loteamento selecionado
             if (window.loteamentosSelecionados && window.loteamentosSelecionados[indexLoteamento]) {
@@ -3920,6 +4065,91 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 const target = itemScrollTop - containerHeight + itemHeight + 20;
                 container.stop().animate({ scrollTop: Math.max(target, 0) }, 200);
             }
+        }
+
+        // Função utilitária: rolar modal até elemento visível
+        function scrollParaElemento(containerSelector, elemento) {
+            const container = $(containerSelector);
+            if (!container.length || !elemento || !elemento.length) {
+                return;
+            }
+
+            const containerHeight = container.outerHeight();
+            const itemHeight = elemento.outerHeight();
+
+            const containerOffsetTop = container.offset().top;
+            const itemOffsetTop = elemento.offset().top;
+
+            const itemScrollTop = container.scrollTop() + (itemOffsetTop - containerOffsetTop);
+
+            if (itemScrollTop < container.scrollTop()) {
+                container.stop().animate({ scrollTop: Math.max(itemScrollTop - 20, 0) }, 200);
+            } else if ((itemScrollTop + itemHeight) > (container.scrollTop() + containerHeight)) {
+                const target = itemScrollTop - containerHeight + itemHeight + 20;
+                container.stop().animate({ scrollTop: Math.max(target, 0) }, 200);
+            }
+        }
+
+        function criarElementoRotuloLoteamento(nomeLoteamento) {
+            const el = document.createElement('div');
+            el.className = 'rotulo-loteamento';
+            el.style.background = 'rgba(185, 226, 255, 0.8)';
+            el.style.color = '#027cff';
+            el.style.padding = '4px 10px';
+            el.style.borderRadius = '8px';
+            el.style.fontSize = '13px';
+            el.style.fontWeight = '600';
+            el.style.whiteSpace = 'nowrap';
+            el.style.pointerEvents = 'none';
+            el.style.boxShadow = '0 2px 6px rgba(0,0,0,0.35)';
+            el.textContent = nomeLoteamento;
+            return el;
+        }
+
+        function calcularCentroidePoligono(path) {
+            if (!path || path.length === 0) {
+                return null;
+            }
+
+            const bounds = new google.maps.LatLngBounds();
+            path.forEach(coord => {
+                bounds.extend(new google.maps.LatLng(coord.lat, coord.lng));
+            });
+
+            const isEmpty = (typeof bounds.isEmpty === 'function') ? bounds.isEmpty() : false;
+            if (isEmpty) {
+                return null;
+            }
+
+            const centro = bounds.getCenter();
+            return centro ? { lat: centro.lat(), lng: centro.lng() } : null;
+        }
+
+        function calcularCentroideMultiPoligono(multiPolygonCoordinates) {
+            if (!multiPolygonCoordinates || multiPolygonCoordinates.length === 0) {
+                return null;
+            }
+
+            const bounds = new google.maps.LatLngBounds();
+
+            multiPolygonCoordinates.forEach(polygonCoords => {
+                if (!Array.isArray(polygonCoords) || polygonCoords.length === 0) return;
+
+                const anelPrincipal = polygonCoords[0] || [];
+                anelPrincipal.forEach(coord => {
+                    if (Array.isArray(coord) && coord.length >= 2) {
+                        bounds.extend(new google.maps.LatLng(coord[1], coord[0]));
+                    }
+                });
+            });
+
+            const isEmpty = (typeof bounds.isEmpty === 'function') ? bounds.isEmpty() : false;
+            if (isEmpty) {
+                return null;
+            }
+
+            const centro = bounds.getCenter();
+            return centro ? { lat: centro.lat(), lng: centro.lng() } : null;
         }
 
         // Função para carregar os dados complementares dos quarteirões

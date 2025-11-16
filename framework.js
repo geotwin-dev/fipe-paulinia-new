@@ -1711,6 +1711,11 @@ const MapFramework = {
 
         this.map.setOptions({ draggableCursor: 'default' });
 
+        this.map.addListener('zoom_changed', () => {
+            const zoomAtual = this.map.getZoom();
+            console.log(`Zoom atual do mapa: ${zoomAtual}`);
+        });
+
         this.listenerGlobalClick = this.map.addListener('click', () => {
             this.desselecionarDesenho();
             // Fecha o infowindow se estiver aberto
@@ -1737,6 +1742,9 @@ const MapFramework = {
                 }
             }
         });
+
+        
+
     },
 
     // Função para mostrar marcadores apenas do quarteirão selecionado
@@ -4181,7 +4189,7 @@ const MapFramework = {
                                     }
                                 });
 
-                                // Sistema de abas para Cadastro e IPTU
+								// Sistema de abas para Cadastro, IPTU e Outros endereços
                                 const infoWindowId = 'iw_' + desenho.id;
                                 const abasHTML = `
                                     <div style="display: flex; border-bottom: 2px solid #ddd; margin-bottom: 10px; margin-top: 10px;">
@@ -4191,6 +4199,9 @@ const MapFramework = {
                                         <button class="info-tab-iptu" data-tab="iptu" data-iwid="${infoWindowId}" style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid transparent; font-weight: 500; color: #666; transition: all 0.3s ease;">
                                             IPTU
                                         </button>
+										<button class="info-tab-enderecos" data-tab="enderecos" data-iwid="${infoWindowId}" style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid transparent; font-weight: 500; color: #666; transition: all 0.3s ease;">
+											Outros endereços
+										</button>
                                     </div>
                                 `;
 
@@ -4208,6 +4219,32 @@ const MapFramework = {
                                     </div>
                                 `;
 
+								const conteudoEnderecosHTML = `
+									<div id="tab-enderecos-${infoWindowId}" class="tab-enderecos-content" style="display: none; line-height: 1.4;">
+										<div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
+											<h4 style="margin: 0; color: #333; font-size: 14px; font-weight: bold;">Endereços alternativos</h4>
+											<button type="button" class="btn btn-sm btn-primary btn-end-alt-add" id="btn-add-endereco-${infoWindowId}" style="padding: 4px 8px; color: #fff !important;">Adicionar endereço</button>
+										</div>
+										<div id="form-endereco-${infoWindowId}" style="display:none; margin-bottom: 10px; border: 1px solid #ddd; padding: 10px; border-radius: 4px; background:#fafafa;">
+											<div style="display:flex; gap:8px; flex-wrap: wrap;">
+												<input type="text" class="form-control" id="inp-endereco-${infoWindowId}" placeholder="Endereço" style="flex:2; min-width: 180px; padding:6px 8px;">
+												<input type="text" class="form-control" id="inp-numero-${infoWindowId}" placeholder="Número" style="flex:1; min-width: 90px; padding:6px 8px;">
+												<input type="text" class="form-control" id="inp-complemento-${infoWindowId}" placeholder="Complemento" style="flex:1; min-width: 140px; padding:6px 8px;">
+											</div>
+											<textarea class="form-control" id="inp-observacao-${infoWindowId}" placeholder="Observação" rows="2" style="margin-top:8px; width:100%; padding:6px 8px;"></textarea>
+											<div style="margin-top:8px; display:flex; gap:8px;">
+												<button type="button" class="btn btn-sm btn-success btn-end-alt-salvar" id="btn-salvar-endereco-${infoWindowId}" style="padding: 4px 8px; color: #fff !important;">Salvar</button>
+												<button type="button" class="btn btn-sm btn-secondary btn-end-alt-cancelar" id="btn-cancelar-endereco-${infoWindowId}" style="padding: 4px 8px; color: #fff !important;">Cancelar</button>
+											</div>
+										</div>
+										<div id="lista-enderecos-${infoWindowId}" style="min-height: 60px;">
+											<div style="text-align: center; padding: 20px; color: #666;">
+												<i class="fas fa-spinner fa-spin"></i> Clique na aba Outros endereços para carregar a lista
+											</div>
+										</div>
+									</div>
+								`;
+
                                 conteudoInfoWindow = `
                                     <div style="padding: 0 10px 10px 10px; font-family: Arial, sans-serif;">
                                         ${tituloInicialHtml}
@@ -4218,6 +4255,7 @@ const MapFramework = {
                                             ${abasHTML}
                                             ${conteudoCadastroHTML}
                                             ${conteudoIptuHTML}
+											${conteudoEnderecosHTML}
                                         </div>
                                     </div>
                                 `;
@@ -4291,13 +4329,16 @@ const MapFramework = {
                                                 // Mostra/oculta conteúdo das abas
                                                 const tabCadastro = document.querySelector(`#tab-cadastro-${iwid}`);
                                                 const tabIptu = document.querySelector(`#tab-iptu-${iwid}`);
+												const tabEnderecos = document.querySelector(`#tab-enderecos-${iwid}`);
                                                 
                                                 if (tabName === 'cadastro') {
                                                     if (tabCadastro) tabCadastro.style.display = 'block';
                                                     if (tabIptu) tabIptu.style.display = 'none';
+													if (tabEnderecos) tabEnderecos.style.display = 'none';
                                                 } else if (tabName === 'iptu') {
                                                     if (tabCadastro) tabCadastro.style.display = 'none';
                                                     if (tabIptu) tabIptu.style.display = 'block';
+													if (tabEnderecos) tabEnderecos.style.display = 'none';
                                                     
                                                     // Carrega dados do IPTU se ainda não foram carregados
                                                     if (tabIptu && !tabIptu.dataset.loaded && imobId) {
@@ -4431,6 +4472,269 @@ const MapFramework = {
                                                     } else if (!imobId) {
                                                         tabIptu.innerHTML = '<div style="color: #666; font-style: italic; padding: 10px;">ID Imobiliário não disponível para carregar dados do IPTU</div>';
                                                     }
+												} else if (tabName === 'enderecos') {
+													if (tabCadastro) tabCadastro.style.display = 'none';
+													if (tabIptu) tabIptu.style.display = 'none';
+													if (tabEnderecos) tabEnderecos.style.display = 'block';
+
+													// Carrega endereços alternativos se ainda não carregou
+													if (tabEnderecos && !tabEnderecos.dataset.loaded) {
+														const listaCont = document.querySelector(`#lista-enderecos-${iwid}`);
+														if (listaCont) {
+															listaCont.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Carregando endereços alternativos...</div>';
+														}
+														$.ajax({
+															url: 'carregarEnderecosAlternativos.php',
+															method: 'GET',
+															data: { id_marcador: desenho.id },
+															dataType: 'json',
+															success: function(resp) {
+																tabEnderecos.dataset.loaded = 'true';
+																const lista = document.querySelector(`#lista-enderecos-${iwid}`);
+																if (!lista) return;
+																if (resp && resp.status === 'sucesso' && Array.isArray(resp.dados) && resp.dados.length > 0) {
+																	let html = '';
+																	resp.dados.forEach((row, idx) => {
+																		html += `
+																			<div class="card-end-alt" data-id="${row.id}" style="position:relative; padding:10px; border:1px solid #ddd; border-radius:4px; background:#fff; ${idx>0 ? 'margin-top:10px;' : ''}">
+																				<button type="button" class="btn btn-sm btn-warning btn-edit-end-alt" title="Editar" data-id="${row.id}" style="position:absolute; top:6px; right:32px; padding:2px 6px; line-height:1; color:#fff !important; background-color:#ffc107; border-color:#ffc107;">✎</button>
+																				<button type="button" class="btn btn-sm btn-danger btn-del-end-alt" title="Excluir" data-id="${row.id}" style="position:absolute; top:6px; right:6px; padding:2px 6px; line-height:1; color:#fff !important;">×</button>
+																				<div style="margin-bottom:4px;"><strong style="color:#333;">Endereço:</strong> <span style="color:#555;">${(row.endereco||'').toString()}</span></div>
+																				<div style="margin-bottom:4px;"><strong style="color:#333;">Número:</strong> <span style="color:#555;">${(row.numero||'').toString()}</span></div>
+																				<div style="margin-bottom:4px;"><strong style="color:#333;">Complemento:</strong> <span style="color:#555;">${(row.complemento||'').toString()}</span></div>
+																				<div><strong style="color:#333;">Observação:</strong> <span style="color:#555;">${(row.observacao||'').toString()}</span></div>
+																			</div>
+																		`;
+																	});
+																	lista.innerHTML = html;
+																	// Bind de edição
+																	const botoesEditar = lista.querySelectorAll('.btn-edit-end-alt');
+																	botoesEditar.forEach(btn => {
+																		btn.addEventListener('click', function(ev) {
+																			ev.preventDefault();
+																			ev.stopPropagation();
+																			const idEnd = this.getAttribute('data-id');
+																			if (!idEnd) return;
+																			// Busca os dados do card
+																			const card = this.closest('.card-end-alt');
+																			if (!card) return;
+																			// Preenche o formulário com os dados
+																			const enderecoText = card.querySelector('div:first-of-type span').textContent.trim();
+																			const numeroText = card.querySelector('div:nth-of-type(2) span').textContent.trim();
+																			const complementoText = card.querySelector('div:nth-of-type(3) span').textContent.trim();
+																			const observacaoText = card.querySelector('div:nth-of-type(4) span').textContent.trim();
+																			// Preenche os campos
+																			const inpEndereco = document.getElementById(`inp-endereco-${iwid}`);
+																			const inpNumero = document.getElementById(`inp-numero-${iwid}`);
+																			const inpComplemento = document.getElementById(`inp-complemento-${iwid}`);
+																			const inpObservacao = document.getElementById(`inp-observacao-${iwid}`);
+																			if (inpEndereco) inpEndereco.value = enderecoText;
+																			if (inpNumero) inpNumero.value = numeroText;
+																			if (inpComplemento) inpComplemento.value = complementoText;
+																			if (inpObservacao) inpObservacao.value = observacaoText;
+																			// Mostra o formulário
+																			const formBox = document.getElementById(`form-endereco-${iwid}`);
+																			if (formBox) {
+																				formBox.style.display = 'block';
+																				formBox.dataset.editId = idEnd;
+																			}
+																			// Muda o botão Salvar para Atualizar
+																			const btnSalvar = document.getElementById(`btn-salvar-endereco-${iwid}`);
+																			if (btnSalvar) {
+																				btnSalvar.textContent = 'Atualizar';
+																				btnSalvar.dataset.editId = idEnd;
+																			}
+																		});
+																	});
+																	// Bind de exclusão
+																	const botoesExcluir = lista.querySelectorAll('.btn-del-end-alt');
+																	botoesExcluir.forEach(btn => {
+																		btn.addEventListener('click', function(ev) {
+																			ev.preventDefault();
+																			ev.stopPropagation();
+																			const idEnd = this.getAttribute('data-id');
+																			console.log('[EndAlt] Clique excluir - id:', idEnd);
+																			if (!idEnd) return;
+																			if (!confirm('Deseja realmente excluir este endereço?')) return;
+																			const btnRef = this;
+																			btnRef.disabled = true;
+																			btnRef.textContent = '...';
+																			const urlDel = 'deletarEnderecoAlternativo.php';
+																			console.log('[EndAlt] Enviando exclusão para:', urlDel, 'payload:', { id: idEnd });
+																			$.ajax({
+																				url: urlDel,
+																				method: 'POST',
+																				dataType: 'json',
+																				data: { id: idEnd },
+																				success: function(resDel, textStatus, xhr) {
+																					console.log('[EndAlt] Sucesso exclusão - status:', textStatus, 'json:', resDel);
+																					if (resDel && resDel.status === 'sucesso') {
+																						// Remove visualmente o bloco
+                                                                                        const card = btnRef.closest('.card-end-alt');
+                                                                                        if (card) card.remove();
+                                                                                        // Se esvaziou, mostra mensagem
+                                                                                        if (!lista.querySelector('.card-end-alt')) {
+                                                                                            lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhum endereço alternativo cadastrado.</div>';
+                                                                                        }
+																					} else {
+																						console.warn('[EndAlt] Falha exclusão - resposta:', resDel);
+																						alert((resDel && resDel.mensagem) ? resDel.mensagem : 'Falha ao excluir o endereço.');
+																						btnRef.disabled = false;
+																						btnRef.textContent = '×';
+																					}
+																				},
+																				error: function(xhr, status, errorThrown) {
+																					console.error('[EndAlt] Erro AJAX exclusão', { status, errorThrown, responseText: xhr && xhr.responseText });
+																					alert('Erro ao excluir o endereço.');
+																					btnRef.disabled = false;
+																					btnRef.textContent = '×';
+																				}
+																			});
+																		});
+																	});
+																} else {
+																	lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhum endereço alternativo cadastrado.</div>';
+																}
+															},
+															error: function() {
+																const lista = document.querySelector(`#lista-enderecos-${iwid}`);
+																if (lista) {
+																	lista.innerHTML = '<div style="padding: 10px; color: #a00;">Erro ao carregar endereços alternativos.</div>';
+																}
+															}
+														});
+
+														// Eventos do formulário
+														const btnAdd = document.getElementById(`btn-add-endereco-${iwid}`);
+														const formBox = document.getElementById(`form-endereco-${iwid}`);
+														const btnSalvar = document.getElementById(`btn-salvar-endereco-${iwid}`);
+														const btnCancelar = document.getElementById(`btn-cancelar-endereco-${iwid}`);
+
+														if (btnAdd && formBox) {
+															btnAdd.onclick = function(e) {
+																e.preventDefault();
+																const isShowing = formBox.style.display !== 'none' && formBox.style.display !== '';
+																formBox.style.display = isShowing ? 'none' : 'block';
+																if (!isShowing) {
+																	// Limpa modo de edição ao abrir para novo
+																	delete formBox.dataset.editId;
+																	const btnSalvarLoc = document.getElementById(`btn-salvar-endereco-${iwid}`);
+																	if (btnSalvarLoc) {
+																		btnSalvarLoc.textContent = 'Salvar';
+																		delete btnSalvarLoc.dataset.editId;
+																	}
+																	// Limpa os campos
+																	['endereco','numero','complemento','observacao'].forEach(suf => {
+																		const el = document.getElementById(`inp-${suf}-${iwid}`);
+																		if (el) el.value = '';
+																	});
+																}
+																// Garante texto branco e habilita os botões ao abrir
+																const btnSalvarLoc = document.getElementById(`btn-salvar-endereco-${iwid}`);
+																const btnCancelarLoc = document.getElementById(`btn-cancelar-endereco-${iwid}`);
+																if (btnSalvarLoc) {
+																	btnSalvarLoc.removeAttribute('disabled');
+																	btnSalvarLoc.style.color = '#fff';
+																	btnSalvarLoc.style.opacity = '1';
+																}
+																if (btnCancelarLoc) {
+																	btnCancelarLoc.removeAttribute('disabled');
+																	btnCancelarLoc.style.color = '#fff';
+																	btnCancelarLoc.style.opacity = '1';
+																}
+															};
+														}
+														if (btnCancelar && formBox) {
+															btnCancelar.onclick = function(e) {
+																e.preventDefault();
+																formBox.style.display = 'none';
+																// Limpa modo de edição
+																delete formBox.dataset.editId;
+																const btnSalvarLoc = document.getElementById(`btn-salvar-endereco-${iwid}`);
+																if (btnSalvarLoc) {
+																	btnSalvarLoc.textContent = 'Salvar';
+																	delete btnSalvarLoc.dataset.editId;
+																}
+																// Limpa os campos
+																['endereco','numero','complemento','observacao'].forEach(suf => {
+																	const el = document.getElementById(`inp-${suf}-${iwid}`);
+																	if (el) el.value = '';
+																});
+															};
+														}
+														if (btnSalvar) {
+															btnSalvar.onclick = function(e) {
+																e.preventDefault();
+																const endereco = (document.getElementById(`inp-endereco-${iwid}`) || {}).value || '';
+																const numero = (document.getElementById(`inp-numero-${iwid}`) || {}).value || '';
+																const complemento = (document.getElementById(`inp-complemento-${iwid}`) || {}).value || '';
+																const observacao = (document.getElementById(`inp-observacao-${iwid}`) || {}).value || '';
+
+																if (!endereco.trim()) {
+																	alert('Informe o endereço.');
+																	return;
+																}
+
+																// Verifica se está editando ou criando novo
+																const editId = this.dataset.editId || formBox.dataset.editId;
+																const isEdit = editId && editId !== '';
+
+																btnSalvar.disabled = true;
+																btnSalvar.textContent = isEdit ? 'Atualizando...' : 'Salvando...';
+
+																const urlAjax = isEdit ? 'atualizarEnderecoAlternativo.php' : 'salvarEnderecoAlternativo.php';
+																const dataAjax = isEdit ? {
+																	id: editId,
+																	endereco: endereco,
+																	numero: numero,
+																	complemento: complemento,
+																	observacao: observacao
+																} : {
+																	id_marcador: desenho.id,
+																	endereco: endereco,
+																	numero: numero,
+																	complemento: complemento,
+																	observacao: observacao
+																};
+
+																$.ajax({
+																	url: urlAjax,
+																	method: 'POST',
+																	dataType: 'json',
+																	data: dataAjax,
+																	success: function(res) {
+																		btnSalvar.disabled = false;
+																		btnSalvar.textContent = 'Salvar';
+																		if (res && res.status === 'sucesso') {
+																			// Limpa modo de edição
+																			delete formBox.dataset.editId;
+																			delete btnSalvar.dataset.editId;
+																			// Força recarga da lista
+																			const lista = document.querySelector(`#lista-enderecos-${iwid}`);
+																			if (lista) {
+																				lista.innerHTML = '<div style="text-align: center; padding: 10px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Atualizando lista...</div>';
+																			}
+																			delete tabEnderecos.dataset.loaded;
+																			const btnEnd = document.querySelector(`button.info-tab-enderecos[data-iwid="${iwid}"]`);
+																			if (btnEnd) btnEnd.click();
+																			if (formBox) formBox.style.display = 'none';
+																			['endereco','numero','complemento','observacao'].forEach(suf => {
+																				const el = document.getElementById(`inp-${suf}-${iwid}`);
+																				if (el) el.value = '';
+																			});
+																		} else {
+																			alert((res && res.mensagem) ? res.mensagem : (isEdit ? 'Falha ao atualizar o endereço.' : 'Falha ao salvar o endereço.'));
+																		}
+																	},
+																	error: function() {
+																		btnSalvar.disabled = false;
+																		btnSalvar.textContent = isEdit ? 'Atualizar' : 'Salvar';
+																		alert(isEdit ? 'Erro ao atualizar o endereço.' : 'Erro ao salvar o endereço.');
+																	}
+																});
+															};
+														}
+													}
                                                 }
                                             });
                                         });
