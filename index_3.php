@@ -1456,6 +1456,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         <i class="fas fa-edit"></i> Corrigir Trajeto
                     </button>-->
 
+                    <!-- Botão Crop -->
+                    <button id="btnModoCrop" class="btn btn-danger">
+                        <i class="fas fa-crop"></i> Crop
+                    </button>
+
                     <!-- Botão Régua -->
                     <div class="btn-group">
                         <button class="btn btn-light dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
@@ -2628,6 +2633,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#btnIncluirPoligono').on('click', function() {
             MapFramework.iniciarDesenhoQuadra();
             controlarVisibilidadeBotoes('quadra');
+        });
+
+        // Botão Crop
+        $('#btnModoCrop').on('click', function() {
+            MapFramework.iniciarModoCrop();
         });
 
         $('#btnIncluirLinha').on('click', function() {

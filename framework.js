@@ -42,6 +42,15 @@ const MapFramework = {
     modoEdicao: false,
     desenhosEditados: [], // Array para armazenar desenhos que foram editados
 
+    // Modo Crop
+    crop: {
+        ativo: false,
+        poligonoTemporario: null,
+        listenerClick: null,
+        listenerRightClick: null,
+        cliqueEmVertice: false
+    },
+
     selecionarDesenho: function (objeto) {
         if (this.desenho.temporario) return; // Não selecionar durante desenho
 
@@ -1713,7 +1722,7 @@ const MapFramework = {
 
         this.map.addListener('zoom_changed', () => {
             const zoomAtual = this.map.getZoom();
-            console.log(`Zoom atual do mapa: ${zoomAtual}`);
+            //console.log(`Zoom atual do mapa: ${zoomAtual}`);
         });
 
         this.listenerGlobalClick = this.map.addListener('click', () => {
@@ -2702,6 +2711,583 @@ const MapFramework = {
             // Salva o desenho
             this.salvarDesenho("lote");
         });
+    },
+
+    iniciarModoCrop: function () {
+        // Limpa listeners anteriores se existirem
+        if (this.crop.listenerClick) {
+            this.crop.listenerClick.remove();
+            this.crop.listenerClick = null;
+        }
+        if (this.crop.listenerRightClick) {
+            this.crop.listenerRightClick.remove();
+            this.crop.listenerRightClick = null;
+        }
+
+        // Remove polígono temporário anterior se existir
+        if (this.crop.poligonoTemporario) {
+            this.crop.poligonoTemporario.setMap(null);
+            this.crop.poligonoTemporario = null;
+        }
+
+        this.crop.ativo = true;
+        this.crop.cliqueEmVertice = false;
+        this.map.setOptions({ draggableCursor: 'crosshair' });
+
+        // Listener para adicionar pontos ao polígono
+        this.crop.listenerClick = this.map.addListener('click', (e) => {
+            const ponto = e.latLng;
+
+            if (!this.crop.poligonoTemporario) {
+                // Cria novo polígono com fundo transparente e linha vermelha
+                this.crop.poligonoTemporario = new google.maps.Polygon({
+                    paths: [ponto],
+                    strokeColor: "#ff0000",
+                    strokeOpacity: 1.0,
+                    strokeWeight: 2,
+                    fillColor: "#ff0000",
+                    fillOpacity: 0.0, // Fundo transparente
+                    editable: true,
+                    map: this.map,
+                    clickable: false,
+                    zIndex: 1000 // Fica por cima de tudo
+                });
+
+                // Permite remover vértices com botão direito
+                google.maps.event.addListener(this.crop.poligonoTemporario, 'rightclick', (e) => {
+                    const path = this.crop.poligonoTemporario.getPath();
+                    if (typeof e.vertex === 'number') {
+                        if (path.getLength() > 3) {
+                            this.crop.cliqueEmVertice = true;
+                            path.removeAt(e.vertex);
+                        } else {
+                            alert("Polígono precisa de pelo menos 3 pontos.");
+                        }
+                    }
+                });
+            } else {
+                this.crop.poligonoTemporario.getPath().push(ponto);
+            }
+        });
+
+        // Listener para finalizar o crop com botão direito
+        this.crop.listenerRightClick = this.map.addListener('rightclick', (e) => {
+            if (this.crop.cliqueEmVertice) {
+                this.crop.cliqueEmVertice = false;
+                return;
+            }
+
+            if (!this.crop.poligonoTemporario) return;
+
+            const pathLength = this.crop.poligonoTemporario.getPath().getLength();
+            if (pathLength < 3) {
+                alert("Você precisa de pelo menos 3 pontos para finalizar o crop.");
+                return;
+            }
+
+            // Finaliza o crop e processa os desenhos
+            this.finalizarCrop();
+        });
+    },
+
+    finalizarCrop: function () {
+        if (!this.crop.poligonoTemporario) return;
+
+        // Obtém coordenadas do polígono de crop
+        const pathCrop = this.crop.poligonoTemporario.getPath();
+        const coordenadasCrop = [];
+        for (let i = 0; i < pathCrop.getLength(); i++) {
+            const ponto = pathCrop.getAt(i);
+            coordenadasCrop.push([ponto.lng(), ponto.lat()]);
+        }
+        // Fecha o polígono (último ponto igual ao primeiro)
+        coordenadasCrop.push(coordenadasCrop[0]);
+
+        // Cria o polígono de crop em formato GeoJSON (Turf)
+        const cropPolygon = turf.polygon([coordenadasCrop]);
+
+        // Coleta todos os desenhos de todas as camadas
+        const desenhosRecortados = [];
+        
+        // Itera sobre todas as camadas do arrayCamadas (definido no index_3.php)
+        if (typeof arrayCamadas !== 'undefined') {
+            Object.keys(arrayCamadas).forEach(camadaNome => {
+                const camada = arrayCamadas[camadaNome];
+                if (Array.isArray(camada)) {
+                    camada.forEach(objeto => {
+                        if (objeto instanceof google.maps.Polygon || objeto instanceof google.maps.Polyline) {
+                            try {
+                                // Obtém coordenadas do objeto
+                                const path = objeto.getPath();
+                                const coordenadas = [];
+                                for (let i = 0; i < path.getLength(); i++) {
+                                    const ponto = path.getAt(i);
+                                    coordenadas.push([ponto.lng(), ponto.lat()]);
+                                }
+
+                                if (objeto instanceof google.maps.Polygon) {
+                                    // Fecha o polígono
+                                    coordenadas.push(coordenadas[0]);
+                                    const objetoPolygon = turf.polygon([coordenadas]);
+                                    
+                                    // Verifica se há interseção
+                                    if (turf.booleanIntersects(objetoPolygon, cropPolygon)) {
+                                        // Faz o clipping geométrico
+                                        const clipped = turf.intersect(objetoPolygon, cropPolygon);
+                                        
+                                        if (clipped) {
+                                            // Converte de volta para formato do Google Maps
+                                            const coordsClipped = clipped.geometry.coordinates[0].map(coord => ({
+                                                lat: coord[1],
+                                                lng: coord[0]
+                                            }));
+
+                                            desenhosRecortados.push({
+                                                tipo: 'poligono',
+                                                camada: camadaNome,
+                                                coordenadas: coordsClipped,
+                                                identificador: objeto.identificador || null,
+                                                id_desenho: objeto.id_desenho || null,
+                                                cor: objeto.strokeColor || objeto.fillColor || '#000000'
+                                            });
+                                        }
+                                    }
+                                } else if (objeto instanceof google.maps.Polyline) {
+                                    // Para polylines, faz clipping real criando novos vértices nas interseções
+                                    const objetoLine = turf.lineString(coordenadas);
+                                    
+                                    if (turf.booleanIntersects(objetoLine, cropPolygon)) {
+                                        // Encontra pontos de interseção entre a linha e o polígono
+                                        const intersections = turf.lineIntersect(objetoLine, cropPolygon);
+                                        const intersectionPoints = [];
+                                        
+                                        if (intersections && intersections.features) {
+                                            intersections.features.forEach(feature => {
+                                                intersectionPoints.push(feature.geometry.coordinates);
+                                            });
+                                        }
+
+                                        // Cria lista de todos os pontos: originais + interseções, ordenados
+                                        const todosPontos = [];
+                                        
+                                        // Adiciona pontos originais com sua posição na linha
+                                        for (let i = 0; i < coordenadas.length; i++) {
+                                            todosPontos.push({
+                                                coord: coordenadas[i],
+                                                tipo: 'original',
+                                                posicao: i,
+                                                dentro: turf.booleanPointInPolygon(turf.point(coordenadas[i]), cropPolygon)
+                                            });
+                                        }
+
+                                        // Adiciona pontos de interseção na posição correta
+                                        intersectionPoints.forEach(interPoint => {
+                                            // Encontra entre quais pontos originais a interseção ocorre
+                                            let melhorPosicao = 0;
+                                            let menorDist = Infinity;
+                                            
+                                            for (let i = 0; i < coordenadas.length - 1; i++) {
+                                                const segStart = coordenadas[i];
+                                                const segEnd = coordenadas[i + 1];
+                                                const segLine = turf.lineString([segStart, segEnd]);
+                                                const dist = turf.pointToLineDistance(turf.point(interPoint), segLine);
+                                                
+                                                if (dist < menorDist) {
+                                                    menorDist = dist;
+                                                    melhorPosicao = i + 0.5; // Entre os pontos i e i+1
+                                                }
+                                            }
+                                            
+                                            todosPontos.push({
+                                                coord: interPoint,
+                                                tipo: 'intersection',
+                                                posicao: melhorPosicao,
+                                                dentro: true // Interseções sempre estão na borda, consideramos como dentro
+                                            });
+                                        });
+
+                                        // Ordena todos os pontos por posição na linha
+                                        todosPontos.sort((a, b) => a.posicao - b.posicao);
+
+                                        // Reconstrói a linha mantendo apenas segmentos dentro do polígono
+                                        const coordsFinais = [];
+                                        let dentro = false;
+                                        
+                                        for (let i = 0; i < todosPontos.length; i++) {
+                                            const ponto = todosPontos[i];
+                                            
+                                            // Se é ponto de interseção ou ponto original dentro, adiciona
+                                            if (ponto.tipo === 'intersection' || ponto.dentro) {
+                                                // Se estava fora e agora entra, adiciona ponto de entrada
+                                                if (!dentro && ponto.tipo === 'intersection') {
+                                                    coordsFinais.push([ponto.coord[0], ponto.coord[1]]);
+                                                    dentro = true;
+                                                }
+                                                // Se está dentro, adiciona o ponto
+                                                else if (dentro || ponto.dentro) {
+                                                    coordsFinais.push([ponto.coord[0], ponto.coord[1]]);
+                                                    dentro = true;
+                                                }
+                                            } else {
+                                                // Ponto fora - se estava dentro, fecha o segmento anterior
+                                                if (dentro) {
+                                                    // Procura próxima interseção para fechar
+                                                    for (let j = i; j < todosPontos.length; j++) {
+                                                        if (todosPontos[j].tipo === 'intersection') {
+                                                            coordsFinais.push([
+                                                                todosPontos[j].coord[0],
+                                                                todosPontos[j].coord[1]
+                                                            ]);
+                                                            break;
+                                                        }
+                                                    }
+                                                    dentro = false;
+                                                }
+                                            }
+                                        }
+
+                                        // Remove pontos duplicados consecutivos
+                                        const coordsLimpos = [];
+                                        for (let i = 0; i < coordsFinais.length; i++) {
+                                            if (i === 0 || 
+                                                coordsFinais[i][0] !== coordsFinais[i-1][0] || 
+                                                coordsFinais[i][1] !== coordsFinais[i-1][1]) {
+                                                coordsLimpos.push(coordsFinais[i]);
+                                            }
+                                        }
+
+                                        if (coordsLimpos.length >= 2) {
+                                            const coordsClipped = coordsLimpos.map(coord => ({
+                                                lat: coord[1],
+                                                lng: coord[0]
+                                            }));
+
+                                            desenhosRecortados.push({
+                                                tipo: 'polilinha',
+                                                camada: camadaNome,
+                                                coordenadas: coordsClipped,
+                                                identificador: objeto.identificador || null,
+                                                id_desenho: objeto.id_desenho || null,
+                                                cor: objeto.strokeColor || '#000000'
+                                            });
+                                        }
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('Erro ao processar objeto para crop:', error, objeto);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        // Remove o polígono temporário do mapa
+        this.crop.poligonoTemporario.setMap(null);
+        this.crop.poligonoTemporario = null;
+
+        // Remove listeners
+        if (this.crop.listenerClick) {
+            this.crop.listenerClick.remove();
+            this.crop.listenerClick = null;
+        }
+        if (this.crop.listenerRightClick) {
+            this.crop.listenerRightClick.remove();
+            this.crop.listenerRightClick = null;
+        }
+
+        this.crop.ativo = false;
+        this.map.setOptions({ draggableCursor: null });
+
+        // Mapeamento de checkboxes para nomes de camadas
+        const mapeamentoCamadas = {
+            'chkQuadras': 'quadra',
+            'chkUnidades': 'unidade',
+            'chkPiscinas': 'piscina',
+            'chkLotes': 'lote',
+            'chkPoligono_lote': 'poligono_lote',
+            'chkLimite': 'limite',
+            'chkQuadriculas': 'quadriculas',
+            'chkPrefeitura': 'prefeitura',
+            'chkOrtofoto': 'ortofoto',
+            'chkQuarteiroes': 'quarteirao',
+            'chkMarcadores': 'marcador_quadra',
+            'new_checkLotes': 'lotesPref'
+        };
+
+        // Verifica quais camadas estão checadas
+        const camadasChecadas = [];
+        const camadasNaoChecadas = [];
+        
+        Object.keys(mapeamentoCamadas).forEach(checkboxId => {
+            const checkbox = document.getElementById(checkboxId);
+            const nomeCamada = mapeamentoCamadas[checkboxId];
+            
+            if (checkbox) {
+                if (checkbox.checked) {
+                    camadasChecadas.push(nomeCamada);
+                } else {
+                    camadasNaoChecadas.push(nomeCamada);
+                }
+            } else {
+                // Se o checkbox não existe, verifica se a camada tem desenhos
+                if (typeof arrayCamadas !== 'undefined' && arrayCamadas[nomeCamada] && arrayCamadas[nomeCamada].length > 0) {
+                    camadasNaoChecadas.push(nomeCamada);
+                }
+            }
+        });
+
+        // Adiciona outras camadas que podem existir mas não têm checkbox
+        if (typeof arrayCamadas !== 'undefined') {
+            Object.keys(arrayCamadas).forEach(camadaNome => {
+                if (!mapeamentoCamadas[Object.keys(mapeamentoCamadas).find(key => mapeamentoCamadas[key] === camadaNome)]) {
+                    // Camada sem checkbox correspondente
+                    if (arrayCamadas[camadaNome] && arrayCamadas[camadaNome].length > 0) {
+                        if (!camadasChecadas.includes(camadaNome) && !camadasNaoChecadas.includes(camadaNome)) {
+                            camadasNaoChecadas.push(camadaNome);
+                        }
+                    }
+                }
+            });
+        }
+
+        // Reorganiza desenhos por camada - APENAS camadas ativadas (checadas)
+        const desenhosPorCamada = {};
+        
+        // Cria um mapa dos objetos originais para buscar o ID correto do banco
+        const mapaObjetosPorId = {};
+        if (typeof arrayCamadas !== 'undefined') {
+            Object.keys(arrayCamadas).forEach(camadaNome => {
+                const camada = arrayCamadas[camadaNome];
+                if (Array.isArray(camada)) {
+                    camada.forEach(objeto => {
+                        if (objeto instanceof google.maps.Polygon || objeto instanceof google.maps.Polyline) {
+                            // Usa identificador ou id_desenho como chave
+                            const chaveId = objeto.identificador || objeto.id_desenho;
+                            if (chaveId) {
+                                const chave = `${camadaNome}_${chaveId}`;
+                                mapaObjetosPorId[chave] = objeto;
+                            }
+                        }
+                    });
+                }
+            });
+        }
+        
+        desenhosRecortados.forEach(desenho => {
+            const camada = desenho.camada;
+            
+            // Só adiciona se a camada estiver checada (ativada)
+            if (camadasChecadas.includes(camada)) {
+                if (!desenhosPorCamada[camada]) {
+                    desenhosPorCamada[camada] = [];
+                }
+                
+                // Busca o objeto original para pegar o ID correto do banco (objeto.identificador)
+                const chaveId = desenho.identificador || desenho.id_desenho;
+                const objetoOriginal = chaveId ? mapaObjetosPorId[`${camada}_${chaveId}`] : null;
+                
+                // Usa identificador (ID do banco) do objeto original, que é o que aparece no console
+                const id = objetoOriginal ? objetoOriginal.identificador : (desenho.identificador || desenho.id_desenho || null);
+                
+                desenhosPorCamada[camada].push({
+                    id: id,
+                    coordenadas: desenho.coordenadas.map(coord => [coord.lat, coord.lng])
+                });
+            }
+        });
+
+        // Obtém a quadrícula atual (ativa)
+        let quadriculaAtiva = null;
+        if (typeof dadosOrto !== 'undefined' && dadosOrto.length > 0 && dadosOrto[0]['quadricula']) {
+            quadriculaAtiva = dadosOrto[0]['quadricula'];
+        }
+        
+        // Identifica todas as quadrículas que estão dentro ou intersectam com o crop
+        const quadriculasNoCrop = [];
+        
+        if (typeof arrayCamadas !== 'undefined' && arrayCamadas.quadriculas && arrayCamadas.quadriculas_rotulos) {
+            // Itera sobre todas as quadrículas
+            arrayCamadas.quadriculas.forEach((poligonoQuadricula) => {
+                if (poligonoQuadricula instanceof google.maps.Polygon) {
+                    try {
+                        // Obtém coordenadas do polígono da quadrícula
+                        const pathQuadricula = poligonoQuadricula.getPath();
+                        const coordenadasQuadricula = [];
+                        for (let i = 0; i < pathQuadricula.getLength(); i++) {
+                            const ponto = pathQuadricula.getAt(i);
+                            coordenadasQuadricula.push([ponto.lng(), ponto.lat()]);
+                        }
+                        coordenadasQuadricula.push(coordenadasQuadricula[0]); // Fecha o polígono
+                        
+                        // Cria polígono GeoJSON da quadrícula
+                        const quadriculaPolygon = turf.polygon([coordenadasQuadricula]);
+                        
+                        // Verifica se há interseção com o crop
+                        if (turf.booleanIntersects(quadriculaPolygon, cropPolygon)) {
+                            // Calcula os bounds da quadrícula
+                            const bounds = poligonoQuadricula.getBounds();
+                            if (bounds) {
+                                const centroQuadricula = bounds.getCenter();
+                                
+                                // Encontra o rótulo mais próximo para obter o nome
+                                let nomeQuadricula = null;
+                                let menorDistancia = Infinity;
+                                
+                                arrayCamadas.quadriculas_rotulos.forEach(rotulo => {
+                                    if (rotulo.position) {
+                                        const distancia = google.maps.geometry.spherical.computeDistanceBetween(
+                                            centroQuadricula,
+                                            rotulo.position
+                                        );
+                                        
+                                        if (distancia < menorDistancia) {
+                                            menorDistancia = distancia;
+                                            
+                                            if (rotulo.label && rotulo.label.text) {
+                                                nomeQuadricula = rotulo.label.text;
+                                            } else if (rotulo.content && rotulo.content.innerText) {
+                                                nomeQuadricula = rotulo.content.innerText;
+                                            }
+                                        }
+                                    }
+                                });
+                                
+                                if (nomeQuadricula) {
+                                    const ne = bounds.getNorthEast();
+                                    const sw = bounds.getSouthWest();
+                                    
+                                    quadriculasNoCrop.push({
+                                        nome: nomeQuadricula,
+                                        bounds: {
+                                            north: ne.lat(),
+                                            south: sw.lat(),
+                                            east: ne.lng(),
+                                            west: sw.lng()
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Erro ao processar quadrícula para crop:', error);
+                    }
+                }
+            });
+        }
+
+        // Processa marcadores se a camada estiver ativa
+        const marcadoresNoCrop = [];
+        
+        // Verifica se a camada de marcadores está checada
+        const checkboxMarcadores = document.getElementById('chkMarcadores');
+        const camadaMarcadoresAtiva = checkboxMarcadores ? checkboxMarcadores.checked : false;
+        
+        if (camadaMarcadoresAtiva && typeof arrayCamadas !== 'undefined') {
+            // Verifica tanto 'marcador' quanto 'marcador_quadra'
+            const camadasMarcador = ['marcador', 'marcador_quadra'];
+            
+            camadasMarcador.forEach(camadaNome => {
+                const camada = arrayCamadas[camadaNome];
+                
+                if (Array.isArray(camada) && camada.length > 0) {
+                    camada.forEach((marker) => {
+                        // Verifica se é um marcador válido
+                        if (marker) {
+                            try {
+                                // Tenta obter a posição de diferentes formas
+                                let lat = null;
+                                let lng = null;
+                                
+                                if (marker.position) {
+                                    const pos = marker.position;
+                                    lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
+                                    lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
+                                } else if (marker.getPosition) {
+                                    const pos = marker.getPosition();
+                                    if (pos) {
+                                        lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
+                                        lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
+                                    }
+                                }
+                                
+                                if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+                                    // Verifica se o marcador está dentro do crop
+                                    const ponto = turf.point([lng, lat]);
+                                    if (turf.booleanPointInPolygon(ponto, cropPolygon)) {
+                                        // Obtém o ID do marcador
+                                        const id = marker.identificadorBanco || marker.identificador || marker.id || null;
+                                        
+                                        // Obtém o label do marcador
+                                        let label = null;
+                                        if (marker.numeroMarcador !== undefined && marker.numeroMarcador !== null) {
+                                            label = marker.numeroMarcador.toString();
+                                        } else if (marker.content) {
+                                            if (marker.content.innerText) {
+                                                label = marker.content.innerText;
+                                            } else if (marker.content.textContent) {
+                                                label = marker.content.textContent;
+                                            } else if (typeof marker.content === 'string') {
+                                                label = marker.content;
+                                            }
+                                        } else if (marker.label) {
+                                            if (marker.label.text) {
+                                                label = marker.label.text;
+                                            } else if (typeof marker.label === 'string') {
+                                                label = marker.label;
+                                            }
+                                        }
+                                        
+                                        // Se não encontrou label, tenta usar o ID como fallback
+                                        if (!label && id) {
+                                            label = id.toString();
+                                        }
+                                        
+                                        // Adiciona mesmo se não tiver label, mas precisa ter ID
+                                        if (id) {
+                                            marcadoresNoCrop.push({
+                                                id: id,
+                                                label: label || id.toString(),
+                                                coordenadas: [lat, lng]
+                                            });
+                                        }
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('Erro ao processar marcador para crop:', error, marker);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        // Cria estrutura JSON final
+        const jsonFinal = {
+            quadriculaAtiva: quadriculaAtiva,
+            quadriculas: quadriculasNoCrop,
+            camadas: {
+                checadas: camadasChecadas,
+                naoChecadas: camadasNaoChecadas
+            },
+            desenhos: desenhosPorCamada,
+            marcadores: marcadoresNoCrop
+        };
+
+        // Salva em JSON e faz download
+        const jsonData = JSON.stringify(jsonFinal, null, 2);
+        const blob = new Blob([jsonData], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `crop_desenhos_${new Date().getTime()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        const totalDesenhos = Object.values(desenhosPorCamada).reduce((sum, arr) => sum + arr.length, 0);
+        alert(`Crop finalizado! ${totalDesenhos} desenho(s) recortado(s) e salvos em ${Object.keys(desenhosPorCamada).length} camada(s).`);
     },
 
     salvarDesenho: function (camada, identificador = '') {
