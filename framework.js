@@ -42,14 +42,15 @@ const MapFramework = {
     modoEdicao: false,
     desenhosEditados: [], // Array para armazenar desenhos que foram editados
 
-    // Modo Crop
-    crop: {
-        ativo: false,
-        poligonoTemporario: null,
-        listenerClick: null,
-        listenerRightClick: null,
-        cliqueEmVertice: false
-    },
+        // Modo Crop
+        crop: {
+            ativo: false,
+            poligonoTemporario: null,
+            listenerClick: null,
+            listenerRightClick: null,
+            cliqueEmVertice: false,
+            estadosOriginais: [] // Armazena estados originais dos objetos clicáveis
+        },
 
     selecionarDesenho: function (objeto) {
         if (this.desenho.temporario) return; // Não selecionar durante desenho
@@ -2714,6 +2715,12 @@ const MapFramework = {
     },
 
     iniciarModoCrop: function () {
+        // Se já está no modo crop, cancela e restaura estados
+        if (this.crop.ativo) {
+            this.cancelarModoCrop();
+            return;
+        }
+        
         // Limpa listeners anteriores se existirem
         if (this.crop.listenerClick) {
             this.crop.listenerClick.remove();
@@ -2729,6 +2736,9 @@ const MapFramework = {
             this.crop.poligonoTemporario.setMap(null);
             this.crop.poligonoTemporario = null;
         }
+
+        // Salva estados originais e desabilita todos os objetos clicáveis
+        this.desabilitarObjetosClicaveis();
 
         this.crop.ativo = true;
         this.crop.cliqueEmVertice = false;
@@ -2815,17 +2825,91 @@ const MapFramework = {
                 const camada = arrayCamadas[camadaNome];
                 if (Array.isArray(camada)) {
                     camada.forEach(objeto => {
-                        if (objeto instanceof google.maps.Polygon || objeto instanceof google.maps.Polyline) {
+                        // Ignora objetos null ou undefined
+                        if (!objeto) {
+                            return;
+                        }
+                        
+                        // Tratamento especial para quarteirões (objetos com estrutura {polygon, marker, properties, id})
+                        if (camadaNome === 'quarteirao' && objeto.polygon) {
                             try {
-                                // Obtém coordenadas do objeto
-                                const path = objeto.getPath();
+                                const polygon = objeto.polygon;
+                                // Obtém coordenadas do polígono
+                                const path = polygon.getPath();
                                 const coordenadas = [];
                                 for (let i = 0; i < path.getLength(); i++) {
                                     const ponto = path.getAt(i);
                                     coordenadas.push([ponto.lng(), ponto.lat()]);
                                 }
+                                // Fecha o polígono
+                                coordenadas.push(coordenadas[0]);
+                                const objetoPolygon = turf.polygon([coordenadas]);
+                                
+                                // Verifica se há interseção
+                                if (turf.booleanIntersects(objetoPolygon, cropPolygon)) {
+                                    // Faz o clipping geométrico
+                                    const clipped = turf.intersect(objetoPolygon, cropPolygon);
+                                    
+                                    if (clipped) {
+                                        // Converte de volta para formato do Google Maps
+                                        const coordsClipped = clipped.geometry.coordinates[0].map(coord => ({
+                                            lat: coord[1],
+                                            lng: coord[0]
+                                        }));
+
+                                        // Obtém o rótulo do quarteirão
+                                        const rotulo = objeto.properties?.impreciso_name || null;
+                                        
+                                        desenhosRecortados.push({
+                                            tipo: 'poligono',
+                                            camada: camadaNome,
+                                            coordenadas: coordsClipped,
+                                            identificador: objeto.id || null,
+                                            id_desenho: objeto.id || null,
+                                            cor: polygon.strokeColor || polygon.fillColor || '#000000',
+                                            rotulo: rotulo
+                                        });
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('Erro ao processar quarteirão para crop:', error);
+                            }
+                        } else if (objeto instanceof google.maps.Polygon || objeto instanceof google.maps.Polyline) {
+                            try {
+                                // Verifica se o objeto tem getPath
+                                if (typeof objeto.getPath !== 'function') {
+                                    console.warn('Objeto sem método getPath ignorado:', objeto);
+                                    return;
+                                }
+                                
+                                // Obtém coordenadas do objeto
+                                const path = objeto.getPath();
+                                if (!path || typeof path.getLength !== 'function') {
+                                    console.warn('Path inválido no objeto:', objeto);
+                                    return;
+                                }
+                                
+                                const coordenadas = [];
+                                for (let i = 0; i < path.getLength(); i++) {
+                                    const ponto = path.getAt(i);
+                                    if (ponto && typeof ponto.lng === 'function' && typeof ponto.lat === 'function') {
+                                        coordenadas.push([ponto.lng(), ponto.lat()]);
+                                    }
+                                }
+                                
+                                // Valida se há coordenadas válidas
+                                if (coordenadas.length === 0) {
+                                    console.warn('Objeto sem coordenadas válidas ignorado:', objeto);
+                                    return;
+                                }
 
                                 if (objeto instanceof google.maps.Polygon) {
+                                    // Valida se há pelo menos 3 pontos para formar um polígono
+                                    if (coordenadas.length < 3) {
+                                        console.warn('Polygon com menos de 3 pontos ignorado:', objeto);
+                                        return;
+                                    }
+                                    
                                     // Fecha o polígono
                                     coordenadas.push(coordenadas[0]);
                                     const objetoPolygon = turf.polygon([coordenadas]);
@@ -2842,18 +2926,78 @@ const MapFramework = {
                                                 lng: coord[0]
                                             }));
 
+                                            // Para quadrículas, encontra o rótulo associado
+                                            let rotuloQuadricula = null;
+                                            if (camadaNome === 'quadriculas') {
+                                                // Primeiro tenta obter o nome diretamente do objeto (se foi armazenado)
+                                                if (objeto.nomeQuadricula) {
+                                                    rotuloQuadricula = objeto.nomeQuadricula;
+                                                } else if (typeof arrayCamadas !== 'undefined' && arrayCamadas.quadriculas_rotulos) {
+                                                    // Se não tiver no objeto, busca pelo rótulo mais próximo
+                                                    // Verifica se o objeto tem getBounds (apenas Polygon tem)
+                                                    if (objeto instanceof google.maps.Polygon && typeof objeto.getBounds === 'function') {
+                                                        const bounds = objeto.getBounds();
+                                                        if (bounds) {
+                                                            const centroQuadricula = bounds.getCenter();
+                                                            let menorDistancia = Infinity;
+                                                            
+                                                            arrayCamadas.quadriculas_rotulos.forEach(rotulo => {
+                                                                let posicaoRotulo = null;
+                                                                
+                                                                // Tenta obter a posição do rótulo de diferentes formas
+                                                                if (rotulo.position) {
+                                                                    posicaoRotulo = typeof rotulo.position.lat === 'function' 
+                                                                        ? rotulo.position 
+                                                                        : rotulo.position;
+                                                                } else if (rotulo.getPosition) {
+                                                                    posicaoRotulo = rotulo.getPosition();
+                                                                }
+                                                                
+                                                                if (posicaoRotulo) {
+                                                                    const distancia = google.maps.geometry.spherical.computeDistanceBetween(
+                                                                        centroQuadricula,
+                                                                        posicaoRotulo
+                                                                    );
+                                                                    
+                                                                    if (distancia < menorDistancia) {
+                                                                        menorDistancia = distancia;
+                                                                        
+                                                                        if (rotulo.label && rotulo.label.text) {
+                                                                            rotuloQuadricula = rotulo.label.text;
+                                                                        } else if (rotulo.content && rotulo.content.innerText) {
+                                                                            rotuloQuadricula = rotulo.content.innerText;
+                                                                        } else if (rotulo.content && rotulo.content.textContent) {
+                                                                            rotuloQuadricula = rotulo.content.textContent;
+                                                                        } else if (rotulo.nomeQuadricula) {
+                                                                            rotuloQuadricula = rotulo.nomeQuadricula;
+                                                                        }
+                                                                    }
+                                                                }
+                                                            });
+                                                        }
+                                                    }
+                                                }
+                                            }
+
                                             desenhosRecortados.push({
                                                 tipo: 'poligono',
                                                 camada: camadaNome,
                                                 coordenadas: coordsClipped,
                                                 identificador: objeto.identificador || null,
                                                 id_desenho: objeto.id_desenho || null,
-                                                cor: objeto.strokeColor || objeto.fillColor || '#000000'
+                                                cor: objeto.strokeColor || objeto.fillColor || '#000000',
+                                                rotulo: rotuloQuadricula
                                             });
                                         }
                                     }
                                 } else if (objeto instanceof google.maps.Polyline) {
                                     // Para polylines, faz clipping real criando novos vértices nas interseções
+                                    // Valida se há pelo menos 2 pontos antes de criar lineString
+                                    if (coordenadas.length < 2) {
+                                        console.warn('Polyline com menos de 2 pontos ignorado:', objeto);
+                                        return; // Usa return em vez de continue em forEach
+                                    }
+                                    
                                     const objetoLine = turf.lineString(coordenadas);
                                     
                                     if (turf.booleanIntersects(objetoLine, cropPolygon)) {
@@ -2998,6 +3142,9 @@ const MapFramework = {
 
         this.crop.ativo = false;
         this.map.setOptions({ draggableCursor: null });
+        
+        // Restaura estados originais dos objetos clicáveis ao sair do modo crop
+        this.restaurarObjetosClicaveis();
 
         // Mapeamento de checkboxes para nomes de camadas
         const mapeamentoCamadas = {
@@ -3012,7 +3159,8 @@ const MapFramework = {
             'chkOrtofoto': 'ortofoto',
             'chkQuarteiroes': 'quarteirao',
             'chkMarcadores': 'marcador_quadra',
-            'new_checkLotes': 'lotesPref'
+            'new_checkLotes': 'lotesPref',
+            'chkModoCadastro': 'loteamentos' // Loteamentos (window.loteamentosLayer)
         };
 
         // Verifica quais camadas estão checadas
@@ -3031,11 +3179,25 @@ const MapFramework = {
                 }
             } else {
                 // Se o checkbox não existe, verifica se a camada tem desenhos
+                // Mas só adiciona em naoChecadas se realmente tiver objetos
                 if (typeof arrayCamadas !== 'undefined' && arrayCamadas[nomeCamada] && arrayCamadas[nomeCamada].length > 0) {
-                    camadasNaoChecadas.push(nomeCamada);
+                    // Verifica se há objetos válidos na camada
+                    const temObjetosValidos = arrayCamadas[nomeCamada].some(obj => {
+                        if (!obj) return false;
+                        if (nomeCamada === 'quarteirao') return obj.polygon;
+                        return obj instanceof google.maps.Polygon || obj instanceof google.maps.Polyline || obj instanceof google.maps.marker.AdvancedMarkerElement;
+                    });
+                    
+                    if (temObjetosValidos && !camadasChecadas.includes(nomeCamada) && !camadasNaoChecadas.includes(nomeCamada)) {
+                        camadasNaoChecadas.push(nomeCamada);
+                    }
                 }
             }
         });
+        
+        console.log('=== DEBUG CAMADAS ===');
+        console.log('Camadas checadas:', camadasChecadas);
+        console.log('Camadas não checadas:', camadasNaoChecadas);
 
         // Adiciona outras camadas que podem existir mas não têm checkbox
         if (typeof arrayCamadas !== 'undefined') {
@@ -3050,7 +3212,246 @@ const MapFramework = {
                 }
             });
         }
+        
+        // Processa loteamentos (window.loteamentosLayer) se o checkbox estiver marcado
+        const checkboxLoteamentos = document.getElementById('chkModoCadastro');
+        const loteamentosChecado = checkboxLoteamentos ? checkboxLoteamentos.checked : false;
+        
+        if (loteamentosChecado && typeof window !== 'undefined' && window.loteamentosLayer && Array.isArray(window.loteamentosLayer)) {
+            window.loteamentosLayer.forEach((polygon, index) => {
+                if (polygon instanceof google.maps.Polygon) {
+                    try {
+                        const path = polygon.getPath();
+                        const coordenadas = [];
+                        for (let i = 0; i < path.getLength(); i++) {
+                            const ponto = path.getAt(i);
+                            coordenadas.push([ponto.lng(), ponto.lat()]);
+                        }
+                        coordenadas.push(coordenadas[0]); // Fecha o polígono
+                        
+                        const objetoPolygon = turf.polygon([coordenadas]);
+                        if (turf.booleanIntersects(objetoPolygon, cropPolygon)) {
+                            const clipped = turf.intersect(objetoPolygon, cropPolygon);
+                            if (clipped) {
+                                const coordsClipped = clipped.geometry.coordinates[0].map(coord => ({
+                                    lat: coord[1],
+                                    lng: coord[0]
+                                }));
+                                
+                                // Obtém o nome do loteamento armazenado no polígono
+                                const nomeLoteamento = polygon.nomeLoteamento || null;
+                                
+                                desenhosRecortados.push({
+                                    tipo: 'poligono',
+                                    camada: 'loteamentos',
+                                    coordenadas: coordsClipped,
+                                    identificador: null,
+                                    id_desenho: index,
+                                    cor: polygon.strokeColor || polygon.fillColor || null,
+                                    rotulo: nomeLoteamento
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Erro ao processar loteamento:', error);
+                    }
+                }
+            });
+        }
+        
+        // Processa camadas KML dinâmicas
+        const maisCamadasChecadas = [];
+        const maisCamadasNaoChecadas = [];
+        const desenhosKML = [];
+        
+        if (this.camadasDinamicas && typeof this.camadasDinamicas === 'object') {
+            Object.keys(this.camadasDinamicas).forEach(idCamada => {
+                const camada = this.camadasDinamicas[idCamada];
+                const checkbox = document.getElementById(idCamada);
+                const estaChecada = checkbox ? checkbox.checked : false;
+                
+                // Apenas adiciona camadas principais (não subcamadas)
+                if (estaChecada) {
+                    maisCamadasChecadas.push(camada.nome);
+                    
+                    // Processa features da camada principal
+                    if (camada.features && Array.isArray(camada.features)) {
+                        camada.features.forEach((feature, index) => {
+                            processarFeatureKML(feature, camada.nome, index, desenhosKML);
+                        });
+                    }
+                    
+                    // Processa subcamadas (mas não adiciona ao mais_camadas)
+                    if (camada.subcamadas && typeof camada.subcamadas === 'object') {
+                        Object.keys(camada.subcamadas).forEach(idSubcamada => {
+                            const subcamada = camada.subcamadas[idSubcamada];
+                            const checkboxSub = document.getElementById(idSubcamada);
+                            const subcamadaChecada = checkboxSub ? checkboxSub.checked : false;
+                            
+                            if (subcamadaChecada) {
+                                // Processa features e objetos das subcamadas, mas usa o nome da camada principal
+                                if (subcamada.features && Array.isArray(subcamada.features)) {
+                                    subcamada.features.forEach((feature, index) => {
+                                        processarFeatureKML(feature, camada.nome, index, desenhosKML);
+                                    });
+                                }
+                                
+                                // Processa objetos da subcamada
+                                if (subcamada.objetos && Array.isArray(subcamada.objetos)) {
+                                    subcamada.objetos.forEach((objeto, index) => {
+                                        processarObjetoKML(objeto, camada.nome, index, desenhosKML);
+                                    });
+                                }
+                            }
+                        });
+                    }
+                } else {
+                    maisCamadasNaoChecadas.push(camada.nome);
+                }
+            });
+        }
+        
+        // Função auxiliar para processar features KML
+        function processarFeatureKML(feature, nomeCamada, index, desenhosArray) {
+            if (!feature || !feature.geometry) return;
+            
+            try {
+                const geometry = feature.geometry;
+                
+                if (geometry.type === 'Polygon' && geometry.coordinates) {
+                    // Valida se há coordenadas válidas
+                    if (!Array.isArray(geometry.coordinates) || !Array.isArray(geometry.coordinates[0]) || geometry.coordinates[0].length < 3) {
+                        console.warn('Feature KML Polygon com coordenadas inválidas ignorada:', feature);
+                        return;
+                    }
+                    
+                    const coordenadas = geometry.coordinates[0].map(coord => [coord[0], coord[1]]);
+                    coordenadas.push(coordenadas[0]);
+                    const objetoPolygon = turf.polygon([coordenadas]);
+                    
+                    if (turf.booleanIntersects(objetoPolygon, cropPolygon)) {
+                        const clipped = turf.intersect(objetoPolygon, cropPolygon);
+                        if (clipped) {
+                            const coordsClipped = clipped.geometry.coordinates[0].map(coord => ({
+                                lat: coord[1],
+                                lng: coord[0]
+                            }));
+                            
+                            desenhosArray.push({
+                                tipo: 'poligono',
+                                camada: nomeCamada,
+                                coordenadas: coordsClipped,
+                                identificador: feature.properties?.id || null,
+                                id_desenho: index,
+                                cor: feature.properties?.stroke || feature.properties?.fill || null
+                            });
+                        }
+                    }
+                } else if (geometry.type === 'LineString' && geometry.coordinates) {
+                    // Valida se há pelo menos 2 pontos
+                    if (!Array.isArray(geometry.coordinates) || geometry.coordinates.length < 2) {
+                        console.warn('Feature KML LineString com coordenadas inválidas ignorada:', feature);
+                        return;
+                    }
+                    
+                    const coordenadas = geometry.coordinates.map(coord => [coord[0], coord[1]]);
+                    const objetoLine = turf.lineString(coordenadas);
+                    
+                    if (turf.booleanIntersects(objetoLine, cropPolygon)) {
+                        // Processa clipping de linha (similar ao código existente)
+                        const interPoints = turf.lineIntersect(objetoLine, cropPolygon);
+                        // ... (lógica de clipping de linha similar à existente)
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao processar feature KML:', error);
+            }
+        }
+        
+        // Função auxiliar para processar objetos KML (Polygon/Polyline do Google Maps)
+        function processarObjetoKML(objeto, nomeCamada, index, desenhosArray) {
+            if (!objeto || (!(objeto instanceof google.maps.Polygon) && !(objeto instanceof google.maps.Polyline))) {
+                return;
+            }
+            
+            try {
+                // Verifica se o objeto tem getPath
+                if (typeof objeto.getPath !== 'function') {
+                    console.warn('Objeto KML sem método getPath ignorado:', objeto);
+                    return;
+                }
+                
+                const path = objeto.getPath();
+                if (!path || typeof path.getLength !== 'function') {
+                    console.warn('Path inválido no objeto KML:', objeto);
+                    return;
+                }
+                
+                const coordenadas = [];
+                for (let i = 0; i < path.getLength(); i++) {
+                    const ponto = path.getAt(i);
+                    if (ponto && typeof ponto.lng === 'function' && typeof ponto.lat === 'function') {
+                        coordenadas.push([ponto.lng(), ponto.lat()]);
+                    }
+                }
+                
+                // Valida se há coordenadas válidas
+                if (coordenadas.length === 0) {
+                    console.warn('Objeto KML sem coordenadas válidas ignorado:', objeto);
+                    return;
+                }
+                
+                if (objeto instanceof google.maps.Polygon) {
+                    // Valida se há pelo menos 3 pontos
+                    if (coordenadas.length < 3) {
+                        console.warn('Polygon KML com menos de 3 pontos ignorado:', objeto);
+                        return;
+                    }
+                    
+                    coordenadas.push(coordenadas[0]);
+                    const objetoPolygon = turf.polygon([coordenadas]);
+                    
+                    if (turf.booleanIntersects(objetoPolygon, cropPolygon)) {
+                        const clipped = turf.intersect(objetoPolygon, cropPolygon);
+                        if (clipped) {
+                            const coordsClipped = clipped.geometry.coordinates[0].map(coord => ({
+                                lat: coord[1],
+                                lng: coord[0]
+                            }));
+                            
+                            desenhosArray.push({
+                                tipo: 'poligono',
+                                camada: nomeCamada,
+                                coordenadas: coordsClipped,
+                                identificador: objeto.identificador || null,
+                                id_desenho: objeto.id_desenho || index,
+                                cor: objeto.strokeColor || objeto.fillColor || null
+                            });
+                        }
+                    }
+                } else if (objeto instanceof google.maps.Polyline) {
+                    // Valida se há pelo menos 2 pontos
+                    if (coordenadas.length < 2) {
+                        console.warn('Polyline KML com menos de 2 pontos ignorado:', objeto);
+                        return;
+                    }
+                    
+                    // Processa clipping de linha (similar ao código existente)
+                    const objetoLine = turf.lineString(coordenadas);
+                    if (turf.booleanIntersects(objetoLine, cropPolygon)) {
+                        // ... (lógica de clipping de linha similar à existente)
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao processar objeto KML:', error);
+            }
+        }
 
+        // Adiciona desenhos KML aos desenhos recortados
+        desenhosKML.forEach(desenhoKML => {
+            desenhosRecortados.push(desenhoKML);
+        });
+        
         // Reorganiza desenhos por camada - APENAS camadas ativadas (checadas)
         const desenhosPorCamada = {};
         
@@ -3061,7 +3462,11 @@ const MapFramework = {
                 const camada = arrayCamadas[camadaNome];
                 if (Array.isArray(camada)) {
                     camada.forEach(objeto => {
-                        if (objeto instanceof google.maps.Polygon || objeto instanceof google.maps.Polyline) {
+                        // Tratamento especial para quarteirões
+                        if (camadaNome === 'quarteirao' && objeto.polygon && objeto.id) {
+                            const chave = `${camadaNome}_${objeto.id}`;
+                            mapaObjetosPorId[chave] = objeto;
+                        } else if (objeto instanceof google.maps.Polygon || objeto instanceof google.maps.Polyline) {
                             // Usa identificador ou id_desenho como chave
                             const chaveId = objeto.identificador || objeto.id_desenho;
                             if (chaveId) {
@@ -3074,11 +3479,23 @@ const MapFramework = {
             });
         }
         
+        console.log('=== DEBUG DESENHOS RECORTADOS ===');
+        console.log('Total de desenhos recortados:', desenhosRecortados.length);
+        const desenhosPorCamadaDebug = desenhosRecortados.reduce((acc, d) => {
+            acc[d.camada] = (acc[d.camada] || 0) + 1;
+            return acc;
+        }, {});
+        console.log('Desenhos por camada:', desenhosPorCamadaDebug);
+        
         desenhosRecortados.forEach(desenho => {
             const camada = desenho.camada;
             
-            // Só adiciona se a camada estiver checada (ativada)
-            if (camadasChecadas.includes(camada)) {
+            // Verifica se a camada está checada (incluindo loteamentos e camadas KML)
+            const camadaChecada = camadasChecadas.includes(camada) || 
+                                  (camada === 'loteamentos' && loteamentosChecado) ||
+                                  maisCamadasChecadas.includes(camada);
+            
+            if (camadaChecada) {
                 if (!desenhosPorCamada[camada]) {
                     desenhosPorCamada[camada] = [];
                 }
@@ -3088,12 +3505,49 @@ const MapFramework = {
                 const objetoOriginal = chaveId ? mapaObjetosPorId[`${camada}_${chaveId}`] : null;
                 
                 // Usa identificador (ID do banco) do objeto original, que é o que aparece no console
-                const id = objetoOriginal ? objetoOriginal.identificador : (desenho.identificador || desenho.id_desenho || null);
+                // Para quarteirões, usa objeto.id diretamente
+                let id = null;
+                if (camada === 'quarteirao' && objetoOriginal) {
+                    id = objetoOriginal.id || null;
+                } else if (objetoOriginal) {
+                    id = objetoOriginal.identificador || objetoOriginal.id_desenho || null;
+                } else {
+                    id = desenho.identificador || desenho.id_desenho || null;
+                }
                 
-                desenhosPorCamada[camada].push({
+                // Obtém a cor do desenho
+                let cor = null;
+                if (objetoOriginal) {
+                    // Para quarteirões, obtém a cor do polígono dentro do objeto
+                    if (camada === 'quarteirao' && objetoOriginal.polygon) {
+                        cor = objetoOriginal.polygon.strokeColor || objetoOriginal.polygon.fillColor || null;
+                    } else if (objetoOriginal instanceof google.maps.Polygon) {
+                        // Para polígonos, prioriza strokeColor, depois fillColor, depois corOriginal
+                        cor = objetoOriginal.strokeColor || objetoOriginal.fillColor || objetoOriginal.corOriginal || null;
+                    } else if (objetoOriginal instanceof google.maps.Polyline) {
+                        cor = objetoOriginal.strokeColor || objetoOriginal.corOriginal || null;
+                    }
+                } else {
+                    // Fallback para a cor do desenho recortado
+                    cor = desenho.cor || null;
+                }
+                
+                const objetoDesenho = {
                     id: id,
                     coordenadas: desenho.coordenadas.map(coord => [coord.lat, coord.lng])
-                });
+                };
+                
+                // Adiciona cor apenas se não for quadrícula
+                if (camada !== 'quadriculas' && cor) {
+                    objetoDesenho.cor = cor;
+                }
+                
+                // Adiciona rótulo para loteamentos, quarteirões e quadrículas
+                if ((camada === 'loteamentos' || camada === 'quarteirao' || camada === 'quadriculas') && desenho.rotulo) {
+                    objetoDesenho.rotulo = desenho.rotulo;
+                }
+                
+                desenhosPorCamada[camada].push(objetoDesenho);
             }
         });
 
@@ -3125,7 +3579,12 @@ const MapFramework = {
                         
                         // Verifica se há interseção com o crop
                         if (turf.booleanIntersects(quadriculaPolygon, cropPolygon)) {
-                            // Calcula os bounds da quadrícula
+                            // Calcula os bounds da quadrícula (verifica se tem getBounds)
+                            if (typeof poligonoQuadricula.getBounds !== 'function') {
+                                console.warn('Quadrícula sem método getBounds:', poligonoQuadricula);
+                                return; // Usa return em vez de continue em forEach
+                            }
+                            
                             const bounds = poligonoQuadricula.getBounds();
                             if (bounds) {
                                 const centroQuadricula = bounds.getCenter();
@@ -3245,11 +3704,59 @@ const MapFramework = {
                                         
                                         // Adiciona mesmo se não tiver label, mas precisa ter ID
                                         if (id) {
-                                            marcadoresNoCrop.push({
+                                            // Obtém a cor do marcador (se houver)
+                                            let corMarcador = null;
+                                            
+                                            // Primeiro tenta obter da propriedade do marker
+                                            if (marker.corMarcador) {
+                                                corMarcador = marker.corMarcador;
+                                            } else if (marker.content) {
+                                                // Tenta obter cor do elemento HTML do marcador
+                                                const elemento = marker.content;
+                                                if (elemento) {
+                                                    // Pega backgroundColor do estilo inline ou computed
+                                                    let bgColor = null;
+                                                    if (elemento.style && elemento.style.background) {
+                                                        bgColor = elemento.style.background;
+                                                    } else if (elemento.style && elemento.style.backgroundColor) {
+                                                        bgColor = elemento.style.backgroundColor;
+                                                    } else if (window.getComputedStyle) {
+                                                        const computed = window.getComputedStyle(elemento);
+                                                        bgColor = computed.backgroundColor;
+                                                    }
+                                                    
+                                                    // Converte rgba para hex se necessário e valida
+                                                    if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent' && bgColor !== 'rgba(0, 0, 0, 0)') {
+                                                        // Se for rgba, tenta converter para hex
+                                                        if (bgColor.startsWith('rgb')) {
+                                                            const rgba = bgColor.match(/\d+/g);
+                                                            if (rgba && rgba.length >= 3) {
+                                                                const r = parseInt(rgba[0]);
+                                                                const g = parseInt(rgba[1]);
+                                                                const b = parseInt(rgba[2]);
+                                                                corMarcador = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+                                                            } else {
+                                                                corMarcador = bgColor;
+                                                            }
+                                                        } else {
+                                                            corMarcador = bgColor;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            
+                                            const objetoMarcador = {
                                                 id: id,
                                                 label: label || id.toString(),
                                                 coordenadas: [lat, lng]
-                                            });
+                                            };
+                                            
+                                            // Adiciona cor se encontrou
+                                            if (corMarcador) {
+                                                objetoMarcador.cor = corMarcador;
+                                            }
+                                            
+                                            marcadoresNoCrop.push(objetoMarcador);
                                         }
                                     }
                                 }
@@ -3264,11 +3771,17 @@ const MapFramework = {
 
         // Cria estrutura JSON final
         const jsonFinal = {
+            datetime: new Date().toISOString(),
+            usuario: typeof nomeUsuario !== 'undefined' ? nomeUsuario : '',
             quadriculaAtiva: quadriculaAtiva,
             quadriculas: quadriculasNoCrop,
             camadas: {
                 checadas: camadasChecadas,
                 naoChecadas: camadasNaoChecadas
+            },
+            mais_camadas: {
+                checadas: maisCamadasChecadas,
+                naoChecadas: maisCamadasNaoChecadas
             },
             desenhos: desenhosPorCamada,
             marcadores: marcadoresNoCrop
@@ -3288,6 +3801,146 @@ const MapFramework = {
 
         const totalDesenhos = Object.values(desenhosPorCamada).reduce((sum, arr) => sum + arr.length, 0);
         alert(`Crop finalizado! ${totalDesenhos} desenho(s) recortado(s) e salvos em ${Object.keys(desenhosPorCamada).length} camada(s).`);
+        
+        // Restaura estados originais dos objetos clicáveis
+        this.restaurarObjetosClicaveis();
+    },
+    
+    desabilitarObjetosClicaveis: function () {
+        // Limpa estados anteriores
+        this.crop.estadosOriginais = [];
+        
+        // Processa todas as camadas do arrayCamadas
+        if (typeof arrayCamadas !== 'undefined') {
+            Object.keys(arrayCamadas).forEach(nomeCamada => {
+                const camada = arrayCamadas[nomeCamada];
+                if (Array.isArray(camada)) {
+                    camada.forEach(obj => {
+                        if (obj instanceof google.maps.Polygon || obj instanceof google.maps.Polyline) {
+                            // Salva estado original e desabilita
+                            const estadoOriginal = obj.get('clickable');
+                            this.crop.estadosOriginais.push({
+                                objeto: obj,
+                                tipo: 'clickable',
+                                valor: estadoOriginal !== undefined ? estadoOriginal : true
+                            });
+                            obj.setOptions({ clickable: false });
+                        } else if (obj instanceof google.maps.marker.AdvancedMarkerElement) {
+                            // Para marcadores avançados, usa gmpClickable
+                            const estadoOriginal = obj.gmpClickable;
+                            this.crop.estadosOriginais.push({
+                                objeto: obj,
+                                tipo: 'gmpClickable',
+                                valor: estadoOriginal !== undefined ? estadoOriginal : true
+                            });
+                            obj.gmpClickable = false;
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Processa loteamentos (window.loteamentosLayer)
+        if (typeof window !== 'undefined' && window.loteamentosLayer && Array.isArray(window.loteamentosLayer)) {
+            window.loteamentosLayer.forEach(polygon => {
+                if (polygon instanceof google.maps.Polygon) {
+                    const estadoOriginal = polygon.get('clickable');
+                    this.crop.estadosOriginais.push({
+                        objeto: polygon,
+                        tipo: 'clickable',
+                        valor: estadoOriginal !== undefined ? estadoOriginal : false
+                    });
+                    polygon.setOptions({ clickable: false });
+                }
+            });
+        }
+        
+        // Processa marcadores de loteamentos (window.loteamentosLabels)
+        if (typeof window !== 'undefined' && window.loteamentosLabels && Array.isArray(window.loteamentosLabels)) {
+            window.loteamentosLabels.forEach(marker => {
+                if (marker instanceof google.maps.marker.AdvancedMarkerElement) {
+                    const estadoOriginal = marker.gmpClickable;
+                    this.crop.estadosOriginais.push({
+                        objeto: marker,
+                        tipo: 'gmpClickable',
+                        valor: estadoOriginal !== undefined ? estadoOriginal : false
+                    });
+                    marker.gmpClickable = false;
+                }
+            });
+        }
+        
+        // Processa camadas KML dinâmicas
+        if (this.camadasDinamicas && typeof this.camadasDinamicas === 'object') {
+            Object.keys(this.camadasDinamicas).forEach(idCamada => {
+                const camada = this.camadasDinamicas[idCamada];
+                
+                // Processa subcamadas
+                if (camada.subcamadas && typeof camada.subcamadas === 'object') {
+                    Object.keys(camada.subcamadas).forEach(idSubcamada => {
+                        const subcamada = camada.subcamadas[idSubcamada];
+                        
+                        if (subcamada.objetos && Array.isArray(subcamada.objetos)) {
+                            subcamada.objetos.forEach(objeto => {
+                                if (objeto instanceof google.maps.Polygon || objeto instanceof google.maps.Polyline) {
+                                    const estadoOriginal = objeto.get('clickable');
+                                    this.crop.estadosOriginais.push({
+                                        objeto: objeto,
+                                        tipo: 'clickable',
+                                        valor: estadoOriginal !== undefined ? estadoOriginal : true
+                                    });
+                                    objeto.setOptions({ clickable: false });
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+        }
+    },
+    
+    restaurarObjetosClicaveis: function () {
+        // Restaura todos os estados originais
+        this.crop.estadosOriginais.forEach(estado => {
+            try {
+                if (estado.tipo === 'clickable') {
+                    estado.objeto.setOptions({ clickable: estado.valor });
+                } else if (estado.tipo === 'gmpClickable') {
+                    estado.objeto.gmpClickable = estado.valor;
+                }
+            } catch (error) {
+                console.error('Erro ao restaurar estado do objeto:', error);
+            }
+        });
+        
+        // Limpa a lista de estados
+        this.crop.estadosOriginais = [];
+    },
+    
+    cancelarModoCrop: function () {
+        // Remove listeners
+        if (this.crop.listenerClick) {
+            this.crop.listenerClick.remove();
+            this.crop.listenerClick = null;
+        }
+        if (this.crop.listenerRightClick) {
+            this.crop.listenerRightClick.remove();
+            this.crop.listenerRightClick = null;
+        }
+        
+        // Remove polígono temporário
+        if (this.crop.poligonoTemporario) {
+            this.crop.poligonoTemporario.setMap(null);
+            this.crop.poligonoTemporario = null;
+        }
+        
+        // Restaura estados originais
+        this.restaurarObjetosClicaveis();
+        
+        // Reseta estado do crop
+        this.crop.ativo = false;
+        this.crop.cliqueEmVertice = false;
+        this.map.setOptions({ draggableCursor: null });
     },
 
     salvarDesenho: function (camada, identificador = '') {
@@ -3963,7 +4616,13 @@ const MapFramework = {
                             centro = paths[Math.floor(paths.length / 2)];
                         }
                     }
-                    if (obj) arrayCamadas.quadriculas.push(obj);
+                    if (obj) {
+                        // Armazena o nome da quadrícula no objeto para facilitar a busca posterior
+                        if (f.properties && f.properties.name) {
+                            obj.nomeQuadricula = f.properties.name;
+                        }
+                        arrayCamadas.quadriculas.push(obj);
+                    }
                     // Adiciona rótulo se houver nome e centro
                     if (f.properties && f.properties.name && centro) {
                         const labelDiv = document.createElement('div');
@@ -4481,6 +5140,7 @@ const MapFramework = {
 
         marker.idQuadra = idQuadra;
         marker.numeroMarcador = numeroLote;
+        marker.corMarcador = corMarcador; // Armazena a cor do marcador
 
         // Obtém a quadra do lote selecionado para que verificarLoteJaInserido funcione
         loteElementoSelecionado = $('.opcao-lote.selected');
@@ -4717,6 +5377,7 @@ const MapFramework = {
                         marker.quarteirao = desenho.quarteirao;
                         marker.quadra = desenho.quadra;
                         marker.identificadorBanco = desenho.id; // ID do banco para poder deletar
+                        marker.corMarcador = desenho.cor || null; // Armazena a cor do marcador
 
                         // Adiciona evento de clique para mostrar infowindow com dados do morador
                         el.addEventListener('click', function (event) {

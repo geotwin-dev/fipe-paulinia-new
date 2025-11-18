@@ -1529,6 +1529,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
     <script>
         const paginaAtual = 'index_3';
         const userControl = <?php echo json_encode($_SESSION['usuario'][2]); ?>;
+        const nomeUsuario = <?php echo json_encode($_SESSION['usuario'][0] ?? ''); ?>;
 
         function criaBotAdm() {
 
@@ -2602,7 +2603,17 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             $('#tooltipMarcador').hide();
         });
 
-        MapFramework.carregarControleNavegacaoQuadriculas(dadosOrto[0]['quadricula']);
+        // Aguarda o MapFramework estar disponível antes de usar
+        if (typeof MapFramework !== 'undefined' && dadosOrto && dadosOrto.length > 0 && dadosOrto[0]['quadricula']) {
+            MapFramework.carregarControleNavegacaoQuadriculas(dadosOrto[0]['quadricula']);
+        } else {
+            // Tenta novamente após um pequeno delay se o framework ainda não estiver carregado
+            setTimeout(function() {
+                if (typeof MapFramework !== 'undefined' && dadosOrto && dadosOrto.length > 0 && dadosOrto[0]['quadricula']) {
+                    MapFramework.carregarControleNavegacaoQuadriculas(dadosOrto[0]['quadricula']);
+                }
+            }, 100);
+        }
 
 
         function adicionarObjetoNaCamada(nome, objeto) {
@@ -3484,6 +3495,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                 map: MapFramework.map
                             });
 
+                            // Armazena o nome do loteamento no polígono
+                            polygon.nomeLoteamento = loteamento.nome;
+                            
                             // Adiciona à camada
                             window.loteamentosLayer.push(polygon);
 
@@ -3532,6 +3546,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                     map: MapFramework.map
                                 });
 
+                                // Armazena o nome do loteamento no polígono
+                                polygon.nomeLoteamento = loteamento.nome;
+                                
                                 // Adiciona à camada
                                 window.loteamentosLayer.push(polygon);
 
