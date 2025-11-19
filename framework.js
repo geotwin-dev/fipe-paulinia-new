@@ -2803,18 +2803,43 @@ const MapFramework = {
     finalizarCrop: function () {
         if (!this.crop.poligonoTemporario) return;
 
-        // Obtém coordenadas do polígono de crop
+        // Obtém coordenadas do polígono de crop (para uso no Turf)
         const pathCrop = this.crop.poligonoTemporario.getPath();
-        const coordenadasCrop = [];
+        const coordenadasCropTurf = [];
         for (let i = 0; i < pathCrop.getLength(); i++) {
             const ponto = pathCrop.getAt(i);
-            coordenadasCrop.push([ponto.lng(), ponto.lat()]);
+            coordenadasCropTurf.push([ponto.lng(), ponto.lat()]);
         }
         // Fecha o polígono (último ponto igual ao primeiro)
-        coordenadasCrop.push(coordenadasCrop[0]);
+        coordenadasCropTurf.push(coordenadasCropTurf[0]);
+
+        // Obtém coordenadas para GeoTIFF (formato [lat, lng])
+        const coordenadasCropGeoTiff = [];
+        for (let i = 0; i < pathCrop.getLength(); i++) {
+            const ponto = pathCrop.getAt(i);
+            coordenadasCropGeoTiff.push([ponto.lat(), ponto.lng()]);
+        }
+
+        // Obtém bounds do polígono (antes de qualquer processamento)
+        // Verifica se o polígono tem o método getBounds
+        let boundsCrop = null;
+        if (this.crop.poligonoTemporario instanceof google.maps.Polygon && 
+            typeof this.crop.poligonoTemporario.getBounds === 'function') {
+            boundsCrop = this.crop.poligonoTemporario.getBounds();
+        } else {
+            // Se não tiver getBounds, calcula manualmente a partir das coordenadas
+            if (coordenadasCropGeoTiff.length > 0) {
+                const lats = coordenadasCropGeoTiff.map(c => c[0]);
+                const lngs = coordenadasCropGeoTiff.map(c => c[1]);
+                boundsCrop = {
+                    getNorthEast: () => ({ lat: () => Math.max(...lats), lng: () => Math.max(...lngs) }),
+                    getSouthWest: () => ({ lat: () => Math.min(...lats), lng: () => Math.min(...lngs) })
+                };
+            }
+        }
 
         // Cria o polígono de crop em formato GeoJSON (Turf)
-        const cropPolygon = turf.polygon([coordenadasCrop]);
+        const cropPolygon = turf.polygon([coordenadasCropTurf]);
 
         // Coleta todos os desenhos de todas as camadas
         const desenhosRecortados = [];
@@ -3195,9 +3220,6 @@ const MapFramework = {
             }
         });
         
-        console.log('=== DEBUG CAMADAS ===');
-        console.log('Camadas checadas:', camadasChecadas);
-        console.log('Camadas não checadas:', camadasNaoChecadas);
 
         // Adiciona outras camadas que podem existir mas não têm checkbox
         if (typeof arrayCamadas !== 'undefined') {
@@ -3479,14 +3501,6 @@ const MapFramework = {
             });
         }
         
-        console.log('=== DEBUG DESENHOS RECORTADOS ===');
-        console.log('Total de desenhos recortados:', desenhosRecortados.length);
-        const desenhosPorCamadaDebug = desenhosRecortados.reduce((acc, d) => {
-            acc[d.camada] = (acc[d.camada] || 0) + 1;
-            return acc;
-        }, {});
-        console.log('Desenhos por camada:', desenhosPorCamadaDebug);
-        
         desenhosRecortados.forEach(desenho => {
             const camada = desenho.camada;
             
@@ -3563,30 +3577,44 @@ const MapFramework = {
         if (typeof arrayCamadas !== 'undefined' && arrayCamadas.quadriculas && arrayCamadas.quadriculas_rotulos) {
             // Itera sobre todas as quadrículas
             arrayCamadas.quadriculas.forEach((poligonoQuadricula) => {
-                if (poligonoQuadricula instanceof google.maps.Polygon) {
-                    try {
-                        // Obtém coordenadas do polígono da quadrícula
-                        const pathQuadricula = poligonoQuadricula.getPath();
-                        const coordenadasQuadricula = [];
-                        for (let i = 0; i < pathQuadricula.getLength(); i++) {
-                            const ponto = pathQuadricula.getAt(i);
+                // Verifica se é um Polygon válido antes de processar
+                if (!(poligonoQuadricula instanceof google.maps.Polygon)) {
+                    return; // Ignora se não for Polygon
+                }
+                
+                // Verifica se tem getBounds antes de usar
+                if (typeof poligonoQuadricula.getBounds !== 'function') {
+                    return; // Ignora se não tiver getBounds
+                }
+                
+                try {
+                    // Obtém coordenadas do polígono da quadrícula
+                    const pathQuadricula = poligonoQuadricula.getPath();
+                    if (!pathQuadricula || typeof pathQuadricula.getLength !== 'function') {
+                        return; // Ignora se path inválido
+                    }
+                    
+                    const coordenadasQuadricula = [];
+                    for (let i = 0; i < pathQuadricula.getLength(); i++) {
+                        const ponto = pathQuadricula.getAt(i);
+                        if (ponto && typeof ponto.lng === 'function' && typeof ponto.lat === 'function') {
                             coordenadasQuadricula.push([ponto.lng(), ponto.lat()]);
                         }
-                        coordenadasQuadricula.push(coordenadasQuadricula[0]); // Fecha o polígono
-                        
-                        // Cria polígono GeoJSON da quadrícula
-                        const quadriculaPolygon = turf.polygon([coordenadasQuadricula]);
-                        
-                        // Verifica se há interseção com o crop
-                        if (turf.booleanIntersects(quadriculaPolygon, cropPolygon)) {
-                            // Calcula os bounds da quadrícula (verifica se tem getBounds)
-                            if (typeof poligonoQuadricula.getBounds !== 'function') {
-                                console.warn('Quadrícula sem método getBounds:', poligonoQuadricula);
-                                return; // Usa return em vez de continue em forEach
-                            }
-                            
-                            const bounds = poligonoQuadricula.getBounds();
-                            if (bounds) {
+                    }
+                    
+                    if (coordenadasQuadricula.length < 3) {
+                        return; // Ignora se não tiver pontos suficientes
+                    }
+                    
+                    coordenadasQuadricula.push(coordenadasQuadricula[0]); // Fecha o polígono
+                    
+                    // Cria polígono GeoJSON da quadrícula
+                    const quadriculaPolygon = turf.polygon([coordenadasQuadricula]);
+                    
+                    // Verifica se há interseção com o crop
+                    if (turf.booleanIntersects(quadriculaPolygon, cropPolygon)) {
+                        const bounds = poligonoQuadricula.getBounds();
+                        if (bounds) {
                                 const centroQuadricula = bounds.getCenter();
                                 
                                 // Encontra o rótulo mais próximo para obter o nome
@@ -3631,7 +3659,6 @@ const MapFramework = {
                     } catch (error) {
                         console.error('Erro ao processar quadrícula para crop:', error);
                     }
-                }
             });
         }
 
@@ -3787,6 +3814,137 @@ const MapFramework = {
             marcadores: marcadoresNoCrop
         };
 
+        // Função auxiliar para converter cor hex para formato KML (AABBGGRR)
+        function hexToKmlColor(hexColor) {
+            if (!hexColor) return 'ff000000'; // Preto por padrão
+            // Remove # se presente
+            hexColor = hexColor.replace('#', '');
+            // Se for formato curto (3 dígitos), expande para 6
+            if (hexColor.length === 3) {
+                hexColor = hexColor.split('').map(c => c + c).join('');
+            }
+            // KML usa formato AABBGGRR (Alpha, Blue, Green, Red)
+            // Assumimos opacidade total (ff) e convertemos RGB para BGR
+            if (hexColor.length === 6) {
+                const r = hexColor.substring(0, 2);
+                const g = hexColor.substring(2, 4);
+                const b = hexColor.substring(4, 6);
+                return `ff${b}${g}${r}`; // AABBGGRR
+            }
+            return 'ff000000';
+        }
+
+        // Função para gerar KML a partir dos desenhos e marcadores
+        function gerarKML(desenhosPorCamada, marcadoresNoCrop) {
+            let kml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+            kml += '<kml xmlns="http://www.opengis.net/kml/2.2">\n';
+            kml += '<Document>\n';
+            kml += `  <name>Crop Export - ${new Date().toISOString()}</name>\n`;
+            kml += `  <description>Exportação de desenhos e marcadores do crop</description>\n`;
+
+            // Processa desenhos por camada
+            Object.keys(desenhosPorCamada).forEach(camadaNome => {
+                const desenhos = desenhosPorCamada[camadaNome];
+                if (desenhos && desenhos.length > 0) {
+                    kml += `  <Folder>\n`;
+                    kml += `    <name>${camadaNome}</name>\n`;
+                    
+                    desenhos.forEach((desenho, index) => {
+                        const nome = desenho.rotulo || desenho.id || `${camadaNome}_${index + 1}`;
+                        const cor = desenho.cor || '#000000';
+                        const kmlColor = hexToKmlColor(cor);
+                        
+                        kml += `    <Placemark>\n`;
+                        kml += `      <name>${nome}</name>\n`;
+                        if (desenho.id) {
+                            kml += `      <description>ID: ${desenho.id}</description>\n`;
+                        }
+                        kml += `      <Style>\n`;
+                        kml += `        <LineStyle>\n`;
+                        kml += `          <color>${kmlColor}</color>\n`;
+                        kml += `          <width>2</width>\n`;
+                        kml += `        </LineStyle>\n`;
+                        kml += `        <PolyStyle>\n`;
+                        kml += `          <color>80${kmlColor.substring(2)}</color>\n`; // 50% de opacidade para preenchimento
+                        kml += `        </PolyStyle>\n`;
+                        kml += `      </Style>\n`;
+                        
+                        // Verifica se é polígono (fechado) ou polilinha
+                        const coordenadas = desenho.coordenadas;
+                        const isPolygon = coordenadas.length > 0 && 
+                                         coordenadas[0][0] === coordenadas[coordenadas.length - 1][0] &&
+                                         coordenadas[0][1] === coordenadas[coordenadas.length - 1][1];
+                        
+                        if (isPolygon && coordenadas.length >= 4) {
+                            // É um polígono
+                            kml += `      <Polygon>\n`;
+                            kml += `        <outerBoundaryIs>\n`;
+                            kml += `          <LinearRing>\n`;
+                            kml += `            <coordinates>`;
+                            coordenadas.forEach(coord => {
+                                kml += `${coord[1]},${coord[0]},0 `; // lng,lat,altitude
+                            });
+                            kml += `</coordinates>\n`;
+                            kml += `          </LinearRing>\n`;
+                            kml += `        </outerBoundaryIs>\n`;
+                            kml += `      </Polygon>\n`;
+                        } else if (coordenadas.length >= 2) {
+                            // É uma polilinha
+                            kml += `      <LineString>\n`;
+                            kml += `        <coordinates>`;
+                            coordenadas.forEach(coord => {
+                                kml += `${coord[1]},${coord[0]},0 `; // lng,lat,altitude
+                            });
+                            kml += `</coordinates>\n`;
+                            kml += `      </LineString>\n`;
+                        }
+                        
+                        kml += `    </Placemark>\n`;
+                    });
+                    
+                    kml += `  </Folder>\n`;
+                }
+            });
+
+            // Processa marcadores
+            if (marcadoresNoCrop && marcadoresNoCrop.length > 0) {
+                kml += `  <Folder>\n`;
+                kml += `    <name>Marcadores</name>\n`;
+                
+                marcadoresNoCrop.forEach((marcador, index) => {
+                    const nome = marcador.label || marcador.id || `Marcador_${index + 1}`;
+                    const cor = marcador.cor || '#FF0000';
+                    const kmlColor = hexToKmlColor(cor);
+                    
+                    kml += `    <Placemark>\n`;
+                    kml += `      <name>${nome}</name>\n`;
+                    if (marcador.id) {
+                        kml += `      <description>ID: ${marcador.id}</description>\n`;
+                    }
+                    kml += `      <Style>\n`;
+                    kml += `        <IconStyle>\n`;
+                    kml += `          <color>${kmlColor}</color>\n`;
+                    kml += `          <scale>1.0</scale>\n`;
+                    kml += `          <Icon>\n`;
+                    kml += `            <href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href>\n`;
+                    kml += `          </Icon>\n`;
+                    kml += `        </IconStyle>\n`;
+                    kml += `      </Style>\n`;
+                    kml += `      <Point>\n`;
+                    kml += `        <coordinates>${marcador.coordenadas[1]},${marcador.coordenadas[0]},0</coordinates>\n`;
+                    kml += `      </Point>\n`;
+                    kml += `    </Placemark>\n`;
+                });
+                
+                kml += `  </Folder>\n`;
+            }
+
+            kml += `</Document>\n`;
+            kml += `</kml>`;
+            
+            return kml;
+        }
+
         // Salva em JSON e faz download
         const jsonData = JSON.stringify(jsonFinal, null, 2);
         const blob = new Blob([jsonData], { type: 'application/json' });
@@ -3799,13 +3957,124 @@ const MapFramework = {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
+        // Gera e salva KML
+        const kmlData = gerarKML(desenhosPorCamada, marcadoresNoCrop);
+        const kmlBlob = new Blob([kmlData], { type: 'application/vnd.google-earth.kml+xml' });
+        const kmlUrl = URL.createObjectURL(kmlBlob);
+        const kmlA = document.createElement('a');
+        kmlA.href = kmlUrl;
+        kmlA.download = `crop_desenhos_${new Date().getTime()}.kml`;
+        document.body.appendChild(kmlA);
+        kmlA.click();
+        document.body.removeChild(kmlA);
+        URL.revokeObjectURL(kmlUrl);
+
         const totalDesenhos = Object.values(desenhosPorCamada).reduce((sum, arr) => sum + arr.length, 0);
-        alert(`Crop finalizado! ${totalDesenhos} desenho(s) recortado(s) e salvos em ${Object.keys(desenhosPorCamada).length} camada(s).`);
+        alert(`Crop finalizado! ${totalDesenhos} desenho(s) recortado(s) e salvos em ${Object.keys(desenhosPorCamada).length} camada(s). Arquivos JSON e KML gerados.`);
+        
+        // Prepara dados para gerar GeoTIFF (usa dados já obtidos no início da função)
+        if (coordenadasCropGeoTiff && boundsCrop) {
+            this.criar_dados_para_geotif(coordenadasCropGeoTiff, boundsCrop);
+        } else {
+            console.warn('Não foi possível obter dados do polígono de crop para gerar GeoTIFF');
+        }
         
         // Restaura estados originais dos objetos clicáveis
         this.restaurarObjetosClicaveis();
     },
     
+    criar_dados_para_geotif: function (coordenadasCrop, bounds) {
+        // Verifica se os parâmetros foram fornecidos
+        if (!coordenadasCrop || !bounds) {
+            console.warn('Não há dados do polígono de crop para gerar GeoTIFF');
+            return;
+        }
+
+        try {
+            // Obtém a quadrícula ativa
+            let quadriculaAtiva = null;
+            if (typeof dadosOrto !== 'undefined' && dadosOrto.length > 0 && dadosOrto[0]['quadricula']) {
+                quadriculaAtiva = dadosOrto[0]['quadricula'];
+            }
+
+            // Monta o objeto com os dados para enviar
+            const dadosParaGeoTiff = {
+                coordenadas_crop: coordenadasCrop, // Array de [lat, lng]
+                bounds: {
+                    north: bounds.getNorthEast().lat(),
+                    south: bounds.getSouthWest().lat(),
+                    east: bounds.getNorthEast().lng(),
+                    west: bounds.getSouthWest().lng()
+                },
+                quadricula: quadriculaAtiva,
+                zoom: 22
+            };
+
+            //=============================================================================
+            // Envia dados para o Flask gerar GeoTIFF de forma assíncrona
+            // URL do Flask (ajuste conforme necessário)
+            const flaskUrl = 'https://moduloautoma.ddns.net/api'; // ou a URL do seu servidor Flask
+            
+            $.ajax({
+                url: `${flaskUrl}/gerar_geotiff_crop`,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(dadosParaGeoTiff),
+                success: function(response) {
+                    console.log('Processamento de GeoTIFF iniciado:', response);
+                    
+                    if (response.job_id) {
+                        // Consulta status periodicamente
+                        const jobId = response.job_id;
+                        const intervaloStatus = setInterval(function() {
+                            $.ajax({
+                                url: `${flaskUrl}/status_geotiff/${jobId}`,
+                                method: 'GET',
+                                success: function(statusResponse) {
+                                    console.log('Status do GeoTIFF:', statusResponse);
+                                    
+                                    if (statusResponse.status === 'concluido') {
+                                        clearInterval(intervaloStatus);
+                                        
+                                        // Faz download do arquivo
+                                        if (statusResponse.url_download) {
+                                            const downloadUrl = `${flaskUrl}${statusResponse.url_download}`;
+                                            const a = document.createElement('a');
+                                            a.href = downloadUrl;
+                                            a.download = statusResponse.arquivo ? statusResponse.arquivo.split(/[/\\]/).pop() : 'geotiff_crop.tif';
+                                            document.body.appendChild(a);
+                                            a.click();
+                                            document.body.removeChild(a);
+                                            
+                                            alert('GeoTIFF gerado e download iniciado!');
+                                        }
+                                    } else if (statusResponse.status === 'erro') {
+                                        clearInterval(intervaloStatus);
+                                        console.error('Erro ao gerar GeoTIFF:', statusResponse.erro);
+                                        alert('Erro ao gerar GeoTIFF: ' + statusResponse.erro);
+                                    }
+                                    // Se status for 'processando', continua consultando
+                                },
+                                error: function(xhr, status, error) {
+                                    console.error('Erro ao consultar status do GeoTIFF:', error);
+                                }
+                            });
+                        }, 2000); // Consulta a cada 2 segundos
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Erro ao iniciar geração de GeoTIFF:', error);
+                    console.error('Resposta:', xhr.responseText);
+                    alert('Erro ao iniciar geração de GeoTIFF. Verifique o console para mais detalhes.');
+                }
+            });
+            //=============================================================================
+
+        } catch (error) {
+            console.error('Erro ao criar dados para GeoTIFF:', error);
+        }
+    },
+
     desabilitarObjetosClicaveis: function () {
         // Limpa estados anteriores
         this.crop.estadosOriginais = [];
