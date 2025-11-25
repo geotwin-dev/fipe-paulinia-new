@@ -970,6 +970,20 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             box-shadow: 0 3px 8px rgba(0,0,0,0.4);
             pointer-events: none;
         }
+
+        /* Estilo para botão ativo de desenho */
+        .active-tool {
+            background-color: #28a745 !important;
+            border-color: #20c997 !important;
+            color: white !important;
+            box-shadow: 0 0 10px rgba(40, 167, 69, 0.5) !important;
+            transform: scale(1.05);
+        }
+
+        .active-tool:hover {
+            background-color: #218838 !important;
+            border-color: #1e7e34 !important;
+        }
     </style>
 </head>
 
@@ -1193,6 +1207,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         </ul>
                     </div>
 
+                    <!-- Select de Camadas -->
+                    <select id="selectTodasCamadas" class="form-select" style="width: auto; min-width: 200px;">
+                        <option value="">Selecione uma camada...</option>
+                    </select>
+
+                    <!-- Botão Desenhar Quadrado -->
+                    <button id="btnDesenharQuadrado" class="btn btn-light" title="Desenhar Quadrado" style="width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-square" style="font-size: 16px;"></i>
+                    </button>
+
                     
 
                 </div>
@@ -1385,6 +1409,19 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             // Carrega as camadas novas do banco de dados
             carregarCamadasNovas();
+            
+            // Popula o select inicialmente (só com camadas fixas)
+            popularSelectTodasCamadas();
+            
+            // Event listener para o botão de desenhar polígono (toggle)
+            $('#btnDesenharQuadrado').on('click', function() {
+                // Se já está em modo de desenho, desativa
+                if (MapFramework.desenho.modo === 'desenho_poligono') {
+                    sairModoDesenhoQuadrado();
+                } else {
+                    iniciarDesenhoQuadrado();
+                }
+            });
 
             // Event listener para o botão de tipo de mapa
             $('#btnTipoMapa').on('click', function() {
@@ -1856,8 +1893,13 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             const lista = $('#listaCamadasNovas');
             lista.empty();
             
+            // Armazena as camadas para o select
+            window.camadasNovasParaSelect = camadas;
+            
             if (camadas.length === 0) {
                 lista.html('<li><span class="dropdown-item-text text-muted">Nenhuma camada cadastrada</span></li>');
+                // Atualiza o select mesmo sem camadas (só com as fixas)
+                popularSelectTodasCamadas();
                 return;
             }
             
@@ -1874,7 +1916,12 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                 ${camada.nome}
                             </label>
                         </div>
-                        <button class="btn btn-sm btn-link p-0 btn-editar-camada" data-id="${camada.id}" data-tipo="camada" style="color: #6c757d;">
+                        <button class="btn btn-sm btn-link p-0 btn-editar-camada" 
+                                data-id="${camada.id}" 
+                                data-tipo="camada" 
+                                data-nome="${camada.nome.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" 
+                                onclick="editarCamadaNovaPorId(${camada.id}); return false;"
+                                style="color: #6c757d;">
                             <i class="fas fa-edit"></i>
                         </button>
                     </div>
@@ -1900,7 +1947,13 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                         ${subcamada.nome}
                                     </label>
                                 </div>
-                                <button class="btn btn-sm btn-link p-0 btn-editar-subcamada" data-id="${subcamada.id}" data-tipo="subcamada" data-pertence="${subcamada.pertence}" style="color: #6c757d;">
+                                <button class="btn btn-sm btn-link p-0 btn-editar-subcamada" 
+                                        data-id="${subcamada.id}" 
+                                        data-tipo="subcamada" 
+                                        data-nome="${subcamada.nome.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" 
+                                        data-pertence="${subcamada.pertence}" 
+                                        onclick="editarCamadaNovaPorId(${subcamada.id}); return false;"
+                                        style="color: #6c757d;">
                                     <i class="fas fa-edit"></i>
                                 </button>
                             </li>
@@ -1911,16 +1964,6 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     });
                     itemCamada.append(submenu);
                 }
-            });
-            
-            // Adiciona event listeners para os botões de editar
-            $(document).off('click', '.btn-editar-camada, .btn-editar-subcamada').on('click', '.btn-editar-camada, .btn-editar-subcamada', function(e) {
-                e.stopPropagation();
-                const id = $(this).data('id');
-                const tipo = $(this).data('tipo');
-                const nome = $(this).data('nome');
-                const pertence = $(this).data('pertence');
-                abrirModalEditar(id, tipo, nome, pertence);
             });
             
             // Adiciona event listeners para os checkboxes das camadas novas
@@ -1934,11 +1977,418 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 console.log('Toggle camada:', { id, tipo, visivel });
                 // Por enquanto apenas log, depois implementaremos a lógica de carregar/exibir no mapa
             });
+            
+            // Atualiza o select com todas as camadas
+            popularSelectTodasCamadas();
         }
         
         // Armazena as camadas novas carregadas no mapa
         window.camadasNovasMapa = {};
+        
+        // Armazena as camadas novas para o select
+        window.camadasNovasParaSelect = [];
+        
+        // ========== FUNÇÃO PARA DESENHAR QUADRADO ==========
+        
+        function iniciarDesenhoQuadrado() {
+            // Verifica se já está em modo de desenho
+            if (MapFramework.desenho.modo) {
+                alert('Já existe um desenho em andamento. Finalize o desenho atual antes de iniciar um novo.');
+                return;
+            }
+            
+            // Obtém a camada selecionada no select
+            const camadaSelecionada = $('#selectTodasCamadas').val();
+            if (!camadaSelecionada) {
+                alert('Por favor, selecione uma camada antes de desenhar.');
+                return;
+            }
+            
+            // Obtém o nome da camada
+            const $optionSelecionada = $('#selectTodasCamadas option:selected');
+            const nomeCamada = $optionSelecionada.text();
+            const tipoCamada = $optionSelecionada.data('tipo');
+            
+            // Remove listeners anteriores se existirem
+            if (MapFramework.listenerGlobalClick) { 
+                MapFramework.listenerGlobalClick.remove(); 
+                MapFramework.listenerGlobalClick = null; 
+            }
+            
+            // Limpa seleção antes de começar novo desenho
+            MapFramework.desselecionarDesenho();
+            
+            // Desabilita outros desenhos (não clicáveis, não editáveis)
+            MapFramework.atualizarInteratividadeObjetos(false);
+            
+            // Define o modo de desenho
+            MapFramework.desenho.modo = 'desenho_poligono';
+            MapFramework.desenho.tipoAtual = 'poligono';
+            MapFramework.desenho.camadaSelecionada = camadaSelecionada;
+            MapFramework.desenho.nomeCamada = nomeCamada;
+            
+            // Define cor padrão para o quadrado (pode ser customizada depois)
+            MapFramework.desenho.cor = "#FF0000"; // Vermelho
+            
+            // Muda o cursor para crosshair
+            MapFramework.map.setOptions({ draggableCursor: 'crosshair' });
+            
+            // Remove listeners anteriores se existirem
+            if (MapFramework.desenho.listenerClick) {
+                MapFramework.desenho.listenerClick.remove();
+            }
+            if (MapFramework.desenho.listenerRightClick) {
+                MapFramework.desenho.listenerRightClick.remove();
+            }
+            // Listener para cliques no mapa (adiciona pontos ao polígono)
+            MapFramework.desenho.listenerClick = MapFramework.map.addListener('click', (e) => {
+                const ponto = e.latLng;
+                
+                if (!MapFramework.desenho.temporario) {
+                    // Primeiro clique: cria o polígono
+                    MapFramework.desenho.temporario = new google.maps.Polygon({
+                        paths: [ponto],
+                        strokeColor: MapFramework.desenho.cor,
+                        strokeOpacity: 0.8,
+                        strokeWeight: 2,
+                        fillColor: MapFramework.desenho.cor,
+                        fillOpacity: 0.35,
+                        editable: true,
+                        map: MapFramework.map,
+                        clickable: false,
+                        zIndex: 999
+                    });
+                    
+                    // Listener para botão direito no vértice do polígono (remove vértice)
+                    google.maps.event.addListener(MapFramework.desenho.temporario, 'rightclick', (e) => {
+                        const path = MapFramework.desenho.temporario.getPath();
+                        if (typeof e.vertex === 'number') {
+                            if (path.getLength() > 3) {
+                                MapFramework.desenho.cliqueEmVertice = true;
+                                path.removeAt(e.vertex);
+                            } else {
+                                alert("Polígono precisa de pelo menos 3 pontos.");
+                            }
+                        }
+                    });
+                } else {
+                    // Cliques subsequentes: adiciona pontos ao polígono
+                    MapFramework.desenho.temporario.getPath().push(ponto);
+                }
+            });
+            
+            // Listener para botão direito no mapa (encerra o desenho - não pode mais editar)
+            MapFramework.desenho.listenerRightClick = MapFramework.map.addListener('rightclick', (e) => {
+                // Se o clique foi em um vértice, ignora (já foi tratado pelo listener do polígono)
+                if (MapFramework.desenho.cliqueEmVertice) {
+                    MapFramework.desenho.cliqueEmVertice = false;
+                    return;
+                }
+                
+                // Verifica se existe um polígono
+                if (!MapFramework.desenho.temporario) {
+                    return;
+                }
+                
+                // Verifica se tem pelo menos 3 pontos
+                const pathLength = MapFramework.desenho.temporario.getPath().getLength();
+                if (pathLength < 3) {
+                    alert("Você precisa de pelo menos 3 pontos.");
+                    return;
+                }
+                
+                // Coleta os vértices do polígono
+                const path = MapFramework.desenho.temporario.getPath();
+                const vertices = [];
+                for (let i = 0; i < path.getLength(); i++) {
+                    const latLng = path.getAt(i);
+                    vertices.push({
+                        lat: latLng.lat(),
+                        lng: latLng.lng()
+                    });
+                }
+                
+                // Mostra os dados no console
+                console.log('=== DESENHO ENCERRADO ===');
+                console.log('Vértices:', vertices);
+                console.log('Camada selecionada:', MapFramework.desenho.camadaSelecionada);
+                console.log('Nome da camada:', MapFramework.desenho.nomeCamada);
+                console.log('Tipo da camada:', tipoCamada);
+                console.log('Cor:', MapFramework.desenho.cor);
+                console.log('Número de vértices:', vertices.length);
+                
+                // Torna o polígono não editável (encerra o desenho)
+                MapFramework.desenho.temporario.setOptions({
+                    editable: false
+                });
+                
+                // Finaliza o desenho atual (mas mantém o modo ativo para próximo)
+                finalizarDesenhoQuadrado();
+            });
+            
+            // Adiciona classe visual ao botão para indicar que está ativo
+            $('#btnDesenharQuadrado').addClass('active-tool');
+        }
+        
+        function finalizarDesenhoQuadrado() {
+            // NÃO remove o polígono do mapa - ele permanece na tela
+            // NÃO limpa o modo de desenho - permite desenhar mais polígonos
+            
+            // Remove listeners do desenho atual
+            if (MapFramework.desenho.listenerClick) {
+                MapFramework.desenho.listenerClick.remove();
+                MapFramework.desenho.listenerClick = null;
+            }
+            if (MapFramework.desenho.listenerRightClick) {
+                MapFramework.desenho.listenerRightClick.remove();
+                MapFramework.desenho.listenerRightClick = null;
+            }
+            
+            // Limpa apenas o temporário (mas mantém o modo ativo)
+            // O polígono finalizado já está no mapa e não editável
+            MapFramework.desenho.temporario = null;
+            
+            // NÃO limpa o modo - mantém ativo para próximo desenho
+            // MapFramework.desenho.modo = null; // Mantém como 'desenho_poligono'
+            // MapFramework.desenho.tipoAtual = null; // Mantém como 'poligono'
+            
+            // Reinicia os listeners para o próximo desenho
+            reiniciarListenersDesenhoQuadrado();
+        }
+        
+        function reiniciarListenersDesenhoQuadrado() {
+            // Listener para cliques no mapa (adiciona pontos ao polígono)
+            MapFramework.desenho.listenerClick = MapFramework.map.addListener('click', (e) => {
+                const ponto = e.latLng;
+                
+                if (!MapFramework.desenho.temporario) {
+                    // Primeiro clique: cria o polígono
+                    MapFramework.desenho.temporario = new google.maps.Polygon({
+                        paths: [ponto],
+                        strokeColor: MapFramework.desenho.cor,
+                        strokeOpacity: 0.8,
+                        strokeWeight: 2,
+                        fillColor: MapFramework.desenho.cor,
+                        fillOpacity: 0.35,
+                        editable: true,
+                        map: MapFramework.map,
+                        clickable: false,
+                        zIndex: 999
+                    });
+                    
+                    // Listener para botão direito no vértice do polígono (remove vértice)
+                    google.maps.event.addListener(MapFramework.desenho.temporario, 'rightclick', (e) => {
+                        const path = MapFramework.desenho.temporario.getPath();
+                        if (typeof e.vertex === 'number') {
+                            if (path.getLength() > 3) {
+                                MapFramework.desenho.cliqueEmVertice = true;
+                                path.removeAt(e.vertex);
+                            } else {
+                                alert("Polígono precisa de pelo menos 3 pontos.");
+                            }
+                        }
+                    });
+                } else {
+                    // Cliques subsequentes: adiciona pontos ao polígono
+                    MapFramework.desenho.temporario.getPath().push(ponto);
+                }
+            });
+            
+            // Listener para botão direito no mapa (encerra o desenho - não pode mais editar)
+            MapFramework.desenho.listenerRightClick = MapFramework.map.addListener('rightclick', (e) => {
+                // Se o clique foi em um vértice, ignora (já foi tratado pelo listener do polígono)
+                if (MapFramework.desenho.cliqueEmVertice) {
+                    MapFramework.desenho.cliqueEmVertice = false;
+                    return;
+                }
+                
+                // Verifica se existe um polígono
+                if (!MapFramework.desenho.temporario) {
+                    return;
+                }
+                
+                // Verifica se tem pelo menos 3 pontos
+                const pathLength = MapFramework.desenho.temporario.getPath().getLength();
+                if (pathLength < 3) {
+                    alert("Você precisa de pelo menos 3 pontos.");
+                    return;
+                }
+                
+                // Coleta os vértices do polígono
+                const path = MapFramework.desenho.temporario.getPath();
+                const vertices = [];
+                for (let i = 0; i < path.getLength(); i++) {
+                    const latLng = path.getAt(i);
+                    vertices.push({
+                        lat: latLng.lat(),
+                        lng: latLng.lng()
+                    });
+                }
+                
+                // Mostra os dados no console
+                console.log('=== DESENHO ENCERRADO ===');
+                console.log('Vértices:', vertices);
+                console.log('Camada selecionada:', MapFramework.desenho.camadaSelecionada);
+                console.log('Nome da camada:', MapFramework.desenho.nomeCamada);
+                console.log('Tipo da camada:', MapFramework.desenho.tipoAtual);
+                console.log('Cor:', MapFramework.desenho.cor);
+                console.log('Número de vértices:', vertices.length);
+                
+                // Torna o polígono não editável (encerra o desenho)
+                MapFramework.desenho.temporario.setOptions({
+                    editable: false
+                });
+                
+                // Finaliza o desenho atual (mas mantém o modo ativo para próximo)
+                finalizarDesenhoQuadrado();
+            });
+        }
+        
+        function sairModoDesenhoQuadrado() {
+            // Remove listeners
+            if (MapFramework.desenho.listenerClick) {
+                MapFramework.desenho.listenerClick.remove();
+                MapFramework.desenho.listenerClick = null;
+            }
+            if (MapFramework.desenho.listenerRightClick) {
+                MapFramework.desenho.listenerRightClick.remove();
+                MapFramework.desenho.listenerRightClick = null;
+            }
+            
+            // Remove polígono temporário se existir (mas mantém os finalizados)
+            if (MapFramework.desenho.temporario) {
+                MapFramework.desenho.temporario.setMap(null);
+                MapFramework.desenho.temporario = null;
+            }
+            
+            // Limpa o estado do desenho completamente
+            MapFramework.desenho.modo = null;
+            MapFramework.desenho.tipoAtual = null;
+            MapFramework.desenho.camadaSelecionada = null;
+            MapFramework.desenho.nomeCamada = null;
+            
+            // Reabilita outros desenhos
+            MapFramework.atualizarInteratividadeObjetos(true);
+            
+            // Restaura o cursor padrão
+            MapFramework.map.setOptions({ draggableCursor: null });
+            
+            // Remove classe visual do botão
+            $('#btnDesenharQuadrado').removeClass('active-tool');
+            
+            // Restaura o listener global de clique
+            if (!MapFramework.listenerGlobalClick && MapFramework.map) {
+                MapFramework.listenerGlobalClick = MapFramework.map.addListener('click', () => {
+                    MapFramework.desselecionarDesenho();
+                    if (MapFramework.infoWindow) {
+                        MapFramework.infoWindow.close();
+                    }
+                    if (MapFramework.infoWindow_poligono_lote) {
+                        MapFramework.infoWindow_poligono_lote.close();
+                    }
+                });
+            }
+        }
+        
+        // Popula o select com todas as camadas (fixas + dinâmicas)
+        function popularSelectTodasCamadas() {
+            const $select = $('#selectTodasCamadas');
+            $select.empty();
+            $select.append('<option value="">Selecione uma camada...</option>');
+            
+            // Lista de camadas fixas do dropdown "Camadas"
+            const camadasFixas = [
+                { id: 'chkOrtofoto', nome: 'Ortofoto', tipo: 'fixa' },
+                { id: 'chkQuadras', nome: 'Quadras', tipo: 'fixa' },
+                { id: 'chkUnidades', nome: 'Edificações', tipo: 'fixa' },
+                { id: 'chkPiscinas', nome: 'Piscinas', tipo: 'fixa' },
+                { id: 'chkPoligono_lote', nome: 'Lotes Ortofoto', tipo: 'fixa' },
+                { id: 'chkLotes', nome: 'Cortes dos lotes', tipo: 'fixa' },
+                { id: 'new_checkLotes', nome: 'Lotes Prefeitura', tipo: 'fixa' },
+                { id: 'chkLimite', nome: 'Limite do Município', tipo: 'fixa' },
+                { id: 'chkQuadriculas', nome: 'Limite das Quadriculas', tipo: 'fixa' },
+                { id: 'chkCondominiosVerticais', nome: 'Condomínios Verticais', tipo: 'fixa' },
+                { id: 'chkCondominiosHorizontais', nome: 'Condomínios Horizontais', tipo: 'fixa' },
+                { id: 'chkAreasPublicas', nome: 'Áreas Públicas', tipo: 'fixa' },
+                { id: 'chkPrefeitura', nome: 'Cartografia Prefeitura', tipo: 'fixa' },
+                { id: 'chkMarcadores', nome: 'Imóveis', tipo: 'fixa' },
+                { id: 'chkQuarteiroes', nome: 'Quarteirões', tipo: 'fixa' },
+                { id: 'chkImagensAereas', nome: 'Imagens Aéreas', tipo: 'fixa' },
+                { id: 'chkStreetview', nome: 'Streetview videos', tipo: 'fixa' },
+                { id: 'chkStreetviewFotos', nome: 'Streetview fotos', tipo: 'fixa' },
+                { id: 'chkModoCadastro', nome: 'Loteamentos', tipo: 'fixa' }
+            ];
+            
+            // Adiciona camadas fixas ao select
+            camadasFixas.forEach(function(camada) {
+                $select.append(`<option value="${camada.id}" data-tipo="${camada.tipo}">${camada.nome}</option>`);
+            });
+            
+            // Adiciona camadas dinâmicas (Camadas Novas)
+            if (window.camadasNovasParaSelect && window.camadasNovasParaSelect.length > 0) {
+                window.camadasNovasParaSelect.forEach(function(camada) {
+                    // Se a camada tem subcamadas, adiciona apenas as subcamadas
+                    if (camada.subcamadas && camada.subcamadas.length > 0) {
+                        camada.subcamadas.forEach(function(subcamada) {
+                            $select.append(`<option value="camada_nova_${subcamada.id}" data-tipo="subcamada" data-id="${subcamada.id}" data-pertence="${camada.id}">${camada.nome} > ${subcamada.nome}</option>`);
+                        });
+                    } else {
+                        // Se não tem subcamadas, adiciona a camada
+                        $select.append(`<option value="camada_nova_${camada.id}" data-tipo="camada" data-id="${camada.id}">${camada.nome}</option>`);
+                    }
+                });
+            }
+        }
 
+        // Função global para editar camada/subcamada (chamada via onclick com ID)
+        function editarCamadaNovaPorId(id) {
+            // Busca o botão pelo ID
+            const $botao = $(`.btn-editar-camada[data-id="${id}"], .btn-editar-subcamada[data-id="${id}"]`);
+            
+            if ($botao.length === 0) {
+                console.error('ERRO: Botão não encontrado para ID:', id);
+                return;
+            }
+            
+            const tipo = $botao.data('tipo');
+            let nome = $botao.data('nome');
+            const pertence = $botao.data('pertence') || null;
+            
+            // Se não encontrou o nome nos data attributes, tenta buscar do label
+            if (!nome) {
+                nome = $botao.closest('.d-flex').find('label').text().trim();
+            }
+            
+            console.log('=== BOTÃO EDITAR CLICADO ===');
+            console.log('ID da camada/subcamada:', id);
+            console.log('Nome da camada/subcamada:', nome);
+            console.log('Tipo:', tipo);
+            console.log('Pertence (ID pai):', pertence);
+            
+            if (!id) {
+                console.error('ERRO: ID não encontrado!');
+                return;
+            }
+            
+            abrirModalEditar(id, tipo, nome, pertence);
+        }
+        
+        // Função global para editar camada/subcamada (chamada via onclick com parâmetros completos - mantida para compatibilidade)
+        function editarCamadaNova(id, tipo, nome, pertence) {
+            console.log('=== BOTÃO EDITAR CLICADO ===');
+            console.log('ID da camada/subcamada:', id);
+            console.log('Nome da camada/subcamada:', nome);
+            console.log('Tipo:', tipo);
+            console.log('Pertence (ID pai):', pertence);
+            
+            if (!id) {
+                console.error('ERRO: ID não encontrado!');
+                return;
+            }
+            
+            abrirModalEditar(id, tipo, nome, pertence);
+        }
+        
         // Abre modal para adicionar camada
         function abrirModalAdicionarCamada() {
             $('#inputNomeCamada').val('');
@@ -1971,7 +2421,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
         // Abre modal para editar/deletar
         function abrirModalEditar(id, tipo, nome, pertence = null) {
-            console.log('Abrindo modal editar:', { id, tipo, nome, pertence });
+            console.log('=== ABRINDO MODAL EDITAR ===');
+            console.log('Parâmetros recebidos:', { id, tipo, nome, pertence });
             
             // Se nome não foi passado, tenta buscar do elemento
             if (!nome || nome === 'undefined') {
