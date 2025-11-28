@@ -42,6 +42,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
     <!-- Font Awesome para ícones -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 
     <!--Conexão com biblioteca de BUFFER para poligono-->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
@@ -931,58 +934,8 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             transform: translate(0, 10px);
         }
 
-        /* Estilos para as labels de medição */
-        .measurement-label {
-            background-color: white;
-            padding: 4px 8px;
-            border: 2px solid #333;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-            color: #333;
-            white-space: nowrap;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-            pointer-events: none;
-        }
-
-        .measurement-area-label {
-            background-color: #4CAF50;
-            color: white;
-            padding: 6px 12px;
-            border: 2px solid #2E7D32;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: bold;
-            white-space: nowrap;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
-            pointer-events: none;
-        }
-
-        .measurement-distance-label {
-            background-color: #2196F3;
-            color: white;
-            padding: 6px 12px;
-            border: 2px solid #1565C0;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: bold;
-            white-space: nowrap;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
-            pointer-events: none;
-        }
-
-        /* Estilo para botão ativo de desenho */
-        .active-tool {
-            background-color: #28a745 !important;
-            border-color: #20c997 !important;
-            color: white !important;
-            box-shadow: 0 0 10px rgba(40, 167, 69, 0.5) !important;
-            transform: scale(1.05);
-        }
-
-        .active-tool:hover {
-            background-color: #218838 !important;
-            border-color: #1e7e34 !important;
+        #selectTodasCamadas{
+            cursor: pointer;
         }
     </style>
 </head>
@@ -1207,17 +1160,28 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         </ul>
                     </div>
 
-                    <!-- Select de Camadas -->
+                    <!-- Select de Camadas para Desenho -->
                     <select id="selectTodasCamadas" class="form-select" style="width: auto; min-width: 200px;">
                         <option value="">Selecione uma camada...</option>
                     </select>
 
-                    <!-- Botão Desenhar Quadrado -->
-                    <button id="btnDesenharQuadrado" class="btn btn-light" title="Desenhar Quadrado" style="width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center;">
-                        <i class="fas fa-square" style="font-size: 16px;"></i>
+                    <!-- Seletor de Cor -->
+                    <input type="color" id="seletorCor" value="#000000" style="width: 35px; height: 35px; border: 1px solid #ced4da; border-radius: 4px; cursor: pointer; padding: 2px;" title="Selecione a cor do desenho">
+
+                    <!-- Botão de Desenho de Polígono Livre -->
+                    <button id="btnDesenharPoligono" class="btn btn-light" style="width: 38px; height: 38px;" title="Desenhar Polígono Livre">
+                        <i class="fas fa-draw-polygon"></i>
                     </button>
 
-                    
+                    <!-- Botão de Desenho de Polilinha Livre -->
+                    <button id="btnDesenharPolilinha" class="btn btn-light" style="width: 38px; height: 38px;" title="Desenhar Polilinha Livre">
+                        <i class="bi bi-share"></i>
+                    </button>
+
+                    <!-- Botão de Criar Marcador -->
+                    <button id="btnCriarMarcador" class="btn btn-light" style="width: 38px; height: 38px;" title="Criar Marcador">
+                        <i class="fas fa-map-marker-alt"></i>
+                    </button>
 
                 </div>
 
@@ -1272,6 +1236,28 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                     <button type="button" class="btn btn-primary" id="btnSalvarSubcamada">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Descrição do Desenho -->
+    <div class="modal fade" id="modalDescricaoDesenho" tabindex="-1" aria-labelledby="modalDescricaoDesenhoLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalDescricaoDesenhoLabel">Adicionar Descrição</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="inputDescricaoDesenho" class="form-label">Descrição do desenho:</label>
+                        <textarea class="form-control" id="inputDescricaoDesenho" rows="3" placeholder="Digite uma descrição para este desenho..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btnPularDescricao" data-bs-dismiss="modal">Pular</button>
+                    <button type="button" class="btn btn-primary" id="btnSalvarDescricao">Salvar</button>
                 </div>
             </div>
         </div>
@@ -1346,6 +1332,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             }
         }
 
+
         $(document).ready(async function() {
             // Coordenadas padrão de Paulínia
             let coordsInitial = {
@@ -1409,19 +1396,88 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             // Carrega as camadas novas do banco de dados
             carregarCamadasNovas();
-            
-            // Popula o select inicialmente (só com camadas fixas)
-            popularSelectTodasCamadas();
-            
-            // Event listener para o botão de desenhar polígono (toggle)
-            $('#btnDesenharQuadrado').on('click', function() {
-                // Se já está em modo de desenho, desativa
-                if (MapFramework.desenho.modo === 'desenho_poligono') {
-                    sairModoDesenhoQuadrado();
+
+            // Event listener para o botão de tipo de mapa
+            $('#btnTipoMapa').on('click', function() {
+                MapFramework.alternarTipoMapa();
+            });
+
+            // Previne que o dropdown feche ao clicar dentro dele
+            $('#dropCamadas').on('click', function(e) {
+                e.stopPropagation();
+            });
+
+            // Event listeners para os checkboxes
+            // Checkbox da Ortofoto
+            $('#chkOrtofoto').on('change', function() {
+                if (!dadosOrto || dadosOrto.length === 0) {
+                    alert('Erro: Dados da ortofoto não estão disponíveis.');
+                    return;
+                }
+
+                const visivel = $(this).is(':checked');
+                if (visivel) {
+                    MapFramework.inserirOrtofoto2(dadosOrto[0]["quadricula"]);
                 } else {
-                    iniciarDesenhoQuadrado();
+                    MapFramework.limparOrtofoto();
                 }
             });
+
+            // Checkbox das Quadras
+            $('#chkQuadras').on('change', function() {
+                const visivel = $(this).is(':checked');
+                MapFramework.alternarVisibilidadeCamada('quadra', visivel);
+            });
+
+            // Checkbox das Piscinas
+            $('#chkPiscinas').on('change', function() {
+                const visivel = $(this).is(':checked');
+                MapFramework.alternarVisibilidadeCamada('piscina', visivel);
+            });
+
+            // Checkbox dos Lotes (linhas)
+            $('#chkLotes').on('change', function() {
+                const visivel = $(this).is(':checked');
+                MapFramework.alternarVisibilidadeCamada('lote', visivel);
+            });
+
+            // Carrega o limite do município
+            MapFramework.carregarLimiteKML();
+
+            // Carrega os desenhos salvos (quadras, piscinas, lotes) se houver quadrícula
+            if (dadosOrto && dadosOrto.length > 0) {
+                await MapFramework.carregarDesenhosSalvos('paulinia', dadosOrto[0]['quadricula']);
+                
+                // Garante que os z-index estejam corretos após carregamento
+                MapFramework.aplicarZIndexCorreto();
+
+                // Carrega os marcadores
+                await MapFramework.carregarMarcadoresSalvos(dadosOrto[0]['quadricula']);
+
+                // Garante que os z-index estejam corretos após todos os carregamentos
+                MapFramework.aplicarZIndexCorreto();
+
+                // Carrega os desenhos da prefeitura
+                await MapFramework.carregarDesenhosPrefeitura(dadosOrto[0]['quadricula']);
+
+                // Carrega os quarteirões
+                MapFramework.carregaQuarteiroes(dadosOrto[0]['quadricula']);
+
+                // Carrega as imagens aéreas
+                await MapFramework.carregarImagensAereas(dadosOrto[0]['quadricula']);
+
+                // Carrega os trajetos Streetview
+                MapFramework.carregarStreets(dadosOrto[0]['quadricula']);
+
+                // Carrega as fotos do Streetview
+                MapFramework.carregarStreetviewFotos(dadosOrto[0]['quadricula']);
+
+                // Carrega camadas dinâmicas adicionais de KML
+                MapFramework.carregarMaisCamadas();
+            }
+
+            // Carrega as camadas novas do banco de dados
+            carregarCamadasNovas();
 
             // Event listener para o botão de tipo de mapa
             $('#btnTipoMapa').on('click', function() {
@@ -1898,10 +1954,13 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             
             if (camadas.length === 0) {
                 lista.html('<li><span class="dropdown-item-text text-muted">Nenhuma camada cadastrada</span></li>');
-                // Atualiza o select mesmo sem camadas (só com as fixas)
+                // Atualiza o select mesmo sem camadas
                 popularSelectTodasCamadas();
                 return;
             }
+            
+            // Atualiza o select com as camadas
+            popularSelectTodasCamadas();
             
             camadas.forEach(function(camada) {
                 const itemCamada = $('<li style="border-bottom: 1px solid #e9ecef;"></li>');
@@ -1973,13 +2032,41 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 const tipo = $(this).data('tipo');
                 const visivel = $(this).is(':checked');
                 
-                // TODO: Implementar lógica para mostrar/ocultar camada no mapa
-                console.log('Toggle camada:', { id, tipo, visivel });
-                // Por enquanto apenas log, depois implementaremos a lógica de carregar/exibir no mapa
+                // Determina o ID da camada para buscar os desenhos
+                let camadaId = null;
+                if (tipo === 'camada') {
+                    camadaId = `camada_nova_${id}`;
+                } else if (tipo === 'subcamada') {
+                    camadaId = `camada_nova_${id}`;
+                }
+                
+                // Se for uma camada pai, atualiza todas as subcamadas filhas
+                if (tipo === 'camada') {
+                    // Encontra todas as subcamadas que pertencem a esta camada
+                    $(`.chk-subcamada-nova[data-pertence="${id}"]`).each(function() {
+                        // Marca/desmarca o checkbox filho sem disparar o evento novamente
+                        $(this).prop('checked', visivel);
+                        
+                        // Mostra/oculta os desenhos das subcamadas também
+                        // Desenhos removidos - funcionalidade desabilitada
+                    });
+                }
+                
+                // Mostra/oculta os desenhos desta camada/subcamada
+                // Desenhos removidos - funcionalidade desabilitada
+                if (false) {
+                    [].forEach(function(desenho) {
+                        if (visivel) {
+                            desenho.setMap(MapFramework.map);
+                        } else {
+                            desenho.setMap(null);
+                        }
+                    });
+                }
+                
+                console.log('Toggle camada:', { id, tipo, visivel, camadaId });
             });
             
-            // Atualiza o select com todas as camadas
-            popularSelectTodasCamadas();
         }
         
         // Armazena as camadas novas carregadas no mapa
@@ -1988,307 +2075,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         // Armazena as camadas novas para o select
         window.camadasNovasParaSelect = [];
         
-        // ========== FUNÇÃO PARA DESENHAR QUADRADO ==========
-        
-        function iniciarDesenhoQuadrado() {
-            // Verifica se já está em modo de desenho
-            if (MapFramework.desenho.modo) {
-                alert('Já existe um desenho em andamento. Finalize o desenho atual antes de iniciar um novo.');
-                return;
-            }
-            
-            // Obtém a camada selecionada no select
-            const camadaSelecionada = $('#selectTodasCamadas').val();
-            if (!camadaSelecionada) {
-                alert('Por favor, selecione uma camada antes de desenhar.');
-                return;
-            }
-            
-            // Obtém o nome da camada
-            const $optionSelecionada = $('#selectTodasCamadas option:selected');
-            const nomeCamada = $optionSelecionada.text();
-            const tipoCamada = $optionSelecionada.data('tipo');
-            
-            // Remove listeners anteriores se existirem
-            if (MapFramework.listenerGlobalClick) { 
-                MapFramework.listenerGlobalClick.remove(); 
-                MapFramework.listenerGlobalClick = null; 
-            }
-            
-            // Limpa seleção antes de começar novo desenho
-            MapFramework.desselecionarDesenho();
-            
-            // Desabilita outros desenhos (não clicáveis, não editáveis)
-            MapFramework.atualizarInteratividadeObjetos(false);
-            
-            // Define o modo de desenho
-            MapFramework.desenho.modo = 'desenho_poligono';
-            MapFramework.desenho.tipoAtual = 'poligono';
-            MapFramework.desenho.camadaSelecionada = camadaSelecionada;
-            MapFramework.desenho.nomeCamada = nomeCamada;
-            
-            // Define cor padrão para o quadrado (pode ser customizada depois)
-            MapFramework.desenho.cor = "#FF0000"; // Vermelho
-            
-            // Muda o cursor para crosshair
-            MapFramework.map.setOptions({ draggableCursor: 'crosshair' });
-            
-            // Remove listeners anteriores se existirem
-            if (MapFramework.desenho.listenerClick) {
-                MapFramework.desenho.listenerClick.remove();
-            }
-            if (MapFramework.desenho.listenerRightClick) {
-                MapFramework.desenho.listenerRightClick.remove();
-            }
-            // Listener para cliques no mapa (adiciona pontos ao polígono)
-            MapFramework.desenho.listenerClick = MapFramework.map.addListener('click', (e) => {
-                const ponto = e.latLng;
-                
-                if (!MapFramework.desenho.temporario) {
-                    // Primeiro clique: cria o polígono
-                    MapFramework.desenho.temporario = new google.maps.Polygon({
-                        paths: [ponto],
-                        strokeColor: MapFramework.desenho.cor,
-                        strokeOpacity: 0.8,
-                        strokeWeight: 2,
-                        fillColor: MapFramework.desenho.cor,
-                        fillOpacity: 0.35,
-                        editable: true,
-                        map: MapFramework.map,
-                        clickable: false,
-                        zIndex: 999
-                    });
-                    
-                    // Listener para botão direito no vértice do polígono (remove vértice)
-                    google.maps.event.addListener(MapFramework.desenho.temporario, 'rightclick', (e) => {
-                        const path = MapFramework.desenho.temporario.getPath();
-                        if (typeof e.vertex === 'number') {
-                            if (path.getLength() > 3) {
-                                MapFramework.desenho.cliqueEmVertice = true;
-                                path.removeAt(e.vertex);
-                            } else {
-                                alert("Polígono precisa de pelo menos 3 pontos.");
-                            }
-                        }
-                    });
-                } else {
-                    // Cliques subsequentes: adiciona pontos ao polígono
-                    MapFramework.desenho.temporario.getPath().push(ponto);
-                }
-            });
-            
-            // Listener para botão direito no mapa (encerra o desenho - não pode mais editar)
-            MapFramework.desenho.listenerRightClick = MapFramework.map.addListener('rightclick', (e) => {
-                // Se o clique foi em um vértice, ignora (já foi tratado pelo listener do polígono)
-                if (MapFramework.desenho.cliqueEmVertice) {
-                    MapFramework.desenho.cliqueEmVertice = false;
-                    return;
-                }
-                
-                // Verifica se existe um polígono
-                if (!MapFramework.desenho.temporario) {
-                    return;
-                }
-                
-                // Verifica se tem pelo menos 3 pontos
-                const pathLength = MapFramework.desenho.temporario.getPath().getLength();
-                if (pathLength < 3) {
-                    alert("Você precisa de pelo menos 3 pontos.");
-                    return;
-                }
-                
-                // Coleta os vértices do polígono
-                const path = MapFramework.desenho.temporario.getPath();
-                const vertices = [];
-                for (let i = 0; i < path.getLength(); i++) {
-                    const latLng = path.getAt(i);
-                    vertices.push({
-                        lat: latLng.lat(),
-                        lng: latLng.lng()
-                    });
-                }
-                
-                // Mostra os dados no console
-                console.log('=== DESENHO ENCERRADO ===');
-                console.log('Vértices:', vertices);
-                console.log('Camada selecionada:', MapFramework.desenho.camadaSelecionada);
-                console.log('Nome da camada:', MapFramework.desenho.nomeCamada);
-                console.log('Tipo da camada:', tipoCamada);
-                console.log('Cor:', MapFramework.desenho.cor);
-                console.log('Número de vértices:', vertices.length);
-                
-                // Torna o polígono não editável (encerra o desenho)
-                MapFramework.desenho.temporario.setOptions({
-                    editable: false
-                });
-                
-                // Finaliza o desenho atual (mas mantém o modo ativo para próximo)
-                finalizarDesenhoQuadrado();
-            });
-            
-            // Adiciona classe visual ao botão para indicar que está ativo
-            $('#btnDesenharQuadrado').addClass('active-tool');
-        }
-        
-        function finalizarDesenhoQuadrado() {
-            // NÃO remove o polígono do mapa - ele permanece na tela
-            // NÃO limpa o modo de desenho - permite desenhar mais polígonos
-            
-            // Remove listeners do desenho atual
-            if (MapFramework.desenho.listenerClick) {
-                MapFramework.desenho.listenerClick.remove();
-                MapFramework.desenho.listenerClick = null;
-            }
-            if (MapFramework.desenho.listenerRightClick) {
-                MapFramework.desenho.listenerRightClick.remove();
-                MapFramework.desenho.listenerRightClick = null;
-            }
-            
-            // Limpa apenas o temporário (mas mantém o modo ativo)
-            // O polígono finalizado já está no mapa e não editável
-            MapFramework.desenho.temporario = null;
-            
-            // NÃO limpa o modo - mantém ativo para próximo desenho
-            // MapFramework.desenho.modo = null; // Mantém como 'desenho_poligono'
-            // MapFramework.desenho.tipoAtual = null; // Mantém como 'poligono'
-            
-            // Reinicia os listeners para o próximo desenho
-            reiniciarListenersDesenhoQuadrado();
-        }
-        
-        function reiniciarListenersDesenhoQuadrado() {
-            // Listener para cliques no mapa (adiciona pontos ao polígono)
-            MapFramework.desenho.listenerClick = MapFramework.map.addListener('click', (e) => {
-                const ponto = e.latLng;
-                
-                if (!MapFramework.desenho.temporario) {
-                    // Primeiro clique: cria o polígono
-                    MapFramework.desenho.temporario = new google.maps.Polygon({
-                        paths: [ponto],
-                        strokeColor: MapFramework.desenho.cor,
-                        strokeOpacity: 0.8,
-                        strokeWeight: 2,
-                        fillColor: MapFramework.desenho.cor,
-                        fillOpacity: 0.35,
-                        editable: true,
-                        map: MapFramework.map,
-                        clickable: false,
-                        zIndex: 999
-                    });
-                    
-                    // Listener para botão direito no vértice do polígono (remove vértice)
-                    google.maps.event.addListener(MapFramework.desenho.temporario, 'rightclick', (e) => {
-                        const path = MapFramework.desenho.temporario.getPath();
-                        if (typeof e.vertex === 'number') {
-                            if (path.getLength() > 3) {
-                                MapFramework.desenho.cliqueEmVertice = true;
-                                path.removeAt(e.vertex);
-                            } else {
-                                alert("Polígono precisa de pelo menos 3 pontos.");
-                            }
-                        }
-                    });
-                } else {
-                    // Cliques subsequentes: adiciona pontos ao polígono
-                    MapFramework.desenho.temporario.getPath().push(ponto);
-                }
-            });
-            
-            // Listener para botão direito no mapa (encerra o desenho - não pode mais editar)
-            MapFramework.desenho.listenerRightClick = MapFramework.map.addListener('rightclick', (e) => {
-                // Se o clique foi em um vértice, ignora (já foi tratado pelo listener do polígono)
-                if (MapFramework.desenho.cliqueEmVertice) {
-                    MapFramework.desenho.cliqueEmVertice = false;
-                    return;
-                }
-                
-                // Verifica se existe um polígono
-                if (!MapFramework.desenho.temporario) {
-                    return;
-                }
-                
-                // Verifica se tem pelo menos 3 pontos
-                const pathLength = MapFramework.desenho.temporario.getPath().getLength();
-                if (pathLength < 3) {
-                    alert("Você precisa de pelo menos 3 pontos.");
-                    return;
-                }
-                
-                // Coleta os vértices do polígono
-                const path = MapFramework.desenho.temporario.getPath();
-                const vertices = [];
-                for (let i = 0; i < path.getLength(); i++) {
-                    const latLng = path.getAt(i);
-                    vertices.push({
-                        lat: latLng.lat(),
-                        lng: latLng.lng()
-                    });
-                }
-                
-                // Mostra os dados no console
-                console.log('=== DESENHO ENCERRADO ===');
-                console.log('Vértices:', vertices);
-                console.log('Camada selecionada:', MapFramework.desenho.camadaSelecionada);
-                console.log('Nome da camada:', MapFramework.desenho.nomeCamada);
-                console.log('Tipo da camada:', MapFramework.desenho.tipoAtual);
-                console.log('Cor:', MapFramework.desenho.cor);
-                console.log('Número de vértices:', vertices.length);
-                
-                // Torna o polígono não editável (encerra o desenho)
-                MapFramework.desenho.temporario.setOptions({
-                    editable: false
-                });
-                
-                // Finaliza o desenho atual (mas mantém o modo ativo para próximo)
-                finalizarDesenhoQuadrado();
-            });
-        }
-        
-        function sairModoDesenhoQuadrado() {
-            // Remove listeners
-            if (MapFramework.desenho.listenerClick) {
-                MapFramework.desenho.listenerClick.remove();
-                MapFramework.desenho.listenerClick = null;
-            }
-            if (MapFramework.desenho.listenerRightClick) {
-                MapFramework.desenho.listenerRightClick.remove();
-                MapFramework.desenho.listenerRightClick = null;
-            }
-            
-            // Remove polígono temporário se existir (mas mantém os finalizados)
-            if (MapFramework.desenho.temporario) {
-                MapFramework.desenho.temporario.setMap(null);
-                MapFramework.desenho.temporario = null;
-            }
-            
-            // Limpa o estado do desenho completamente
-            MapFramework.desenho.modo = null;
-            MapFramework.desenho.tipoAtual = null;
-            MapFramework.desenho.camadaSelecionada = null;
-            MapFramework.desenho.nomeCamada = null;
-            
-            // Reabilita outros desenhos
-            MapFramework.atualizarInteratividadeObjetos(true);
-            
-            // Restaura o cursor padrão
-            MapFramework.map.setOptions({ draggableCursor: null });
-            
-            // Remove classe visual do botão
-            $('#btnDesenharQuadrado').removeClass('active-tool');
-            
-            // Restaura o listener global de clique
-            if (!MapFramework.listenerGlobalClick && MapFramework.map) {
-                MapFramework.listenerGlobalClick = MapFramework.map.addListener('click', () => {
-                    MapFramework.desselecionarDesenho();
-                    if (MapFramework.infoWindow) {
-                        MapFramework.infoWindow.close();
-                    }
-                    if (MapFramework.infoWindow_poligono_lote) {
-                        MapFramework.infoWindow_poligono_lote.close();
-                    }
-                });
-            }
-        }
+        // Funções de desenho removidas - serão implementadas do zero
         
         // Popula o select com todas as camadas (fixas + dinâmicas)
         function popularSelectTodasCamadas() {
@@ -2296,35 +2083,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             $select.empty();
             $select.append('<option value="">Selecione uma camada...</option>');
             
-            // Lista de camadas fixas do dropdown "Camadas"
-            const camadasFixas = [
-                { id: 'chkOrtofoto', nome: 'Ortofoto', tipo: 'fixa' },
-                { id: 'chkQuadras', nome: 'Quadras', tipo: 'fixa' },
-                { id: 'chkUnidades', nome: 'Edificações', tipo: 'fixa' },
-                { id: 'chkPiscinas', nome: 'Piscinas', tipo: 'fixa' },
-                { id: 'chkPoligono_lote', nome: 'Lotes Ortofoto', tipo: 'fixa' },
-                { id: 'chkLotes', nome: 'Cortes dos lotes', tipo: 'fixa' },
-                { id: 'new_checkLotes', nome: 'Lotes Prefeitura', tipo: 'fixa' },
-                { id: 'chkLimite', nome: 'Limite do Município', tipo: 'fixa' },
-                { id: 'chkQuadriculas', nome: 'Limite das Quadriculas', tipo: 'fixa' },
-                { id: 'chkCondominiosVerticais', nome: 'Condomínios Verticais', tipo: 'fixa' },
-                { id: 'chkCondominiosHorizontais', nome: 'Condomínios Horizontais', tipo: 'fixa' },
-                { id: 'chkAreasPublicas', nome: 'Áreas Públicas', tipo: 'fixa' },
-                { id: 'chkPrefeitura', nome: 'Cartografia Prefeitura', tipo: 'fixa' },
-                { id: 'chkMarcadores', nome: 'Imóveis', tipo: 'fixa' },
-                { id: 'chkQuarteiroes', nome: 'Quarteirões', tipo: 'fixa' },
-                { id: 'chkImagensAereas', nome: 'Imagens Aéreas', tipo: 'fixa' },
-                { id: 'chkStreetview', nome: 'Streetview videos', tipo: 'fixa' },
-                { id: 'chkStreetviewFotos', nome: 'Streetview fotos', tipo: 'fixa' },
-                { id: 'chkModoCadastro', nome: 'Loteamentos', tipo: 'fixa' }
-            ];
-            
-            // Adiciona camadas fixas ao select
-            camadasFixas.forEach(function(camada) {
-                $select.append(`<option value="${camada.id}" data-tipo="${camada.tipo}">${camada.nome}</option>`);
-            });
-            
-            // Adiciona camadas dinâmicas (Camadas Novas)
+            // Adiciona apenas camadas dinâmicas (Camadas Novas)
             if (window.camadasNovasParaSelect && window.camadasNovasParaSelect.length > 0) {
                 window.camadasNovasParaSelect.forEach(function(camada) {
                     // Se a camada tem subcamadas, adiciona apenas as subcamadas
@@ -2811,6 +2570,1551 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         $('#dropCamadasNovas').on('click', function(e) {
             e.stopPropagation();
         });
+
+        // ========== SISTEMA DE DESENHO DE POLÍGONOS LIVRES ==========
+        
+        // Estado do modo de desenho
+        let modoPoligonoLivre = false;
+        let modoPolilinhaLivre = false;
+        let modoMarcador = false;
+        let camadaSelecionadaDesenho = null;
+        let poligonoAtual = null;
+        let polilinhaAtual = null;
+        let marcadorAtual = null;
+        let verticesAtuais = [];
+        let labelsDistancia = [];
+        let listenersMapa = [];
+        let desenhosOriginaisInteratividade = new Map(); // Armazena estado original dos desenhos
+        let desenhoSelecionadoAtual = null; // Armazena o desenho atualmente selecionado para edição
+        let listenersDesenhos = new Map(); // Armazena listeners dos desenhos para poder removê-los
+        let desenhoAguardandoDescricao = null; // Armazena o desenho que está aguardando descrição
+        let infoWindowMarcador = null; // InfoWindow para mostrar descrição do marcador
+        let arrastandoMarcador = false; // Flag para rastrear se estamos arrastando um marcador
+        let ultimoDragendTime = 0; // Timestamp do último dragend para evitar criar marcador após arrastar
+        
+        // Armazena os desenhos das camadas novas
+        if (!window.desenhosCamadasNovas) {
+            window.desenhosCamadasNovas = {};
+        }
+        
+        // Função para calcular distância entre dois pontos em metros
+        function calcularDistanciaMetros(ponto1, ponto2) {
+            return google.maps.geometry.spherical.computeDistanceBetween(
+                new google.maps.LatLng(ponto1.lat, ponto1.lng),
+                new google.maps.LatLng(ponto2.lat, ponto2.lng)
+            );
+        }
+        
+        // Função para criar label de distância
+        function criarLabelDistancia(texto, posicao) {
+            const label = new google.maps.marker.AdvancedMarkerElement({
+                position: posicao,
+                content: document.createElement('div'),
+                gmpClickable: false,
+                map: MapFramework.map,
+                zIndex: 1000
+            });
+            
+            const div = label.content;
+            div.className = 'map-label-text';
+            div.style.background = 'rgba(0, 0, 0, 0.7)';
+            div.style.padding = '4px 8px';
+            div.style.borderRadius = '4px';
+            div.style.fontSize = '12px';
+            div.style.fontWeight = 'bold';
+            div.style.color = '#fff';
+            div.style.whiteSpace = 'nowrap';
+            div.textContent = texto;
+            
+            return label;
+        }
+        
+        // Função para atualizar labels de distância
+        function atualizarLabelsDistancia() {
+            // Remove labels antigos
+            labelsDistancia.forEach(label => {
+                if (label && label.setMap) {
+                    label.setMap(null);
+                }
+            });
+            labelsDistancia = [];
+            
+            if (verticesAtuais.length < 2) return;
+            
+            // Label entre vértices
+            for (let i = 0; i < verticesAtuais.length - 1; i++) {
+                const v1 = verticesAtuais[i];
+                const v2 = verticesAtuais[i + 1];
+                const distancia = calcularDistanciaMetros(v1, v2);
+                const centro = {
+                    lat: (v1.lat + v2.lat) / 2,
+                    lng: (v1.lng + v2.lng) / 2
+                };
+                const label = criarLabelDistancia(`${distancia.toFixed(2)} m`, centro);
+                labelsDistancia.push(label);
+            }
+        }
+        
+        // Função para desabilitar interatividade de todos os desenhos
+        function desabilitarInteratividadeDesenhos() {
+            desenhosOriginaisInteratividade.clear();
+            
+            // Itera sobre todas as camadas
+            Object.keys(arrayCamadas).forEach(nomeCamada => {
+                arrayCamadas[nomeCamada].forEach(obj => {
+                    // Verifica se é um objeto válido do Google Maps
+                    if (!obj || typeof obj.setOptions !== 'function') {
+                        return; // Pula objetos inválidos
+                    }
+                    
+                    if (obj instanceof google.maps.Polygon || obj instanceof google.maps.Polyline) {
+                        // Salva estado original - usa get() se disponível, senão assume valores padrão
+                        let clickableOriginal = true;
+                        let editableOriginal = false;
+                        
+                        if (typeof obj.get === 'function') {
+                            try {
+                                clickableOriginal = obj.get('clickable') !== undefined ? obj.get('clickable') : true;
+                                editableOriginal = obj.get('editable') !== undefined ? obj.get('editable') : false;
+                            } catch (e) {
+                                // Se get() falhar, usa valores padrão
+                                console.warn('Erro ao obter propriedades do objeto:', e);
+                            }
+                        }
+                        
+                        desenhosOriginaisInteratividade.set(obj, {
+                            clickable: clickableOriginal,
+                            editable: editableOriginal
+                        });
+                        
+                        // Desabilita interatividade
+                        obj.setOptions({
+                            clickable: false,
+                            editable: false
+                        });
+                    } else if (obj instanceof google.maps.Marker || obj instanceof google.maps.marker.AdvancedMarkerElement) {
+                        // Para markers, tenta obter clickable se disponível
+                        let clickableOriginal = true;
+                        
+                        if (typeof obj.get === 'function') {
+                            try {
+                                clickableOriginal = obj.get('clickable') !== undefined ? obj.get('clickable') : true;
+                            } catch (e) {
+                                // Se get() falhar, usa valor padrão
+                            }
+                        } else if (obj.gmpClickable !== undefined) {
+                            // Para AdvancedMarkerElement, pode usar gmpClickable
+                            clickableOriginal = obj.gmpClickable;
+                        }
+                        
+                        desenhosOriginaisInteratividade.set(obj, {
+                            clickable: clickableOriginal
+                        });
+                        
+                        if (obj.setOptions) {
+                            obj.setOptions({ clickable: false });
+                        } else if (obj.gmpClickable !== undefined) {
+                            obj.gmpClickable = false;
+                        }
+                    }
+                });
+            });
+        }
+        
+        // Função para restaurar interatividade dos desenhos
+        function restaurarInteratividadeDesenhos() {
+            desenhosOriginaisInteratividade.forEach((estadoOriginal, obj) => {
+                // Verifica se o objeto ainda existe e é válido
+                if (!obj || typeof obj.setOptions !== 'function') {
+                    return; // Pula objetos inválidos
+                }
+                
+                try {
+                    if (obj instanceof google.maps.Polygon || obj instanceof google.maps.Polyline) {
+                        obj.setOptions({
+                            clickable: estadoOriginal.clickable !== undefined ? estadoOriginal.clickable : true,
+                            editable: estadoOriginal.editable !== undefined ? estadoOriginal.editable : false
+                        });
+                    } else if (obj instanceof google.maps.Marker || obj instanceof google.maps.marker.AdvancedMarkerElement) {
+                        if (obj.setOptions) {
+                            obj.setOptions({ 
+                                clickable: estadoOriginal.clickable !== undefined ? estadoOriginal.clickable : true 
+                            });
+                        } else if (obj.gmpClickable !== undefined) {
+                            obj.gmpClickable = estadoOriginal.clickable !== undefined ? estadoOriginal.clickable : true;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Erro ao restaurar interatividade do objeto:', e);
+                }
+            });
+            desenhosOriginaisInteratividade.clear();
+        }
+        
+        // Variável para armazenar listener de mouse move
+        let mouseMoveListenerAtual = null;
+        
+        // Função para entrar no modo de desenho
+        function entrarModoPoligonoLivre() {
+            const camadaSelecionada = $('#selectTodasCamadas').val();
+            
+            if (!camadaSelecionada || camadaSelecionada === '') {
+                alert('Por favor, selecione uma camada antes de desenhar.');
+                return;
+            }
+            
+            // Deseleciona qualquer desenho selecionado
+            deselecionarDesenho();
+            
+            // Remove listener de clique no mapa (se existir)
+            if (window.mapClickListenerDeselecionar) {
+                google.maps.event.removeListener(window.mapClickListenerDeselecionar);
+                window.mapClickListenerDeselecionar = null;
+            }
+            
+            modoPoligonoLivre = true;
+            camadaSelecionadaDesenho = camadaSelecionada;
+            poligonoAtual = null;
+            verticesAtuais = [];
+            
+            // Atualiza botão - mantém o ícone original, só muda a cor
+            $('#btnDesenharPoligono').removeClass('btn-light').addClass('btn-success');
+            
+            // Desabilita interatividade de todos os desenhos
+            desabilitarInteratividadeDesenhos();
+            
+            // Adiciona listener de mouse move para mostrar distância
+            function adicionarMouseMoveListener() {
+                if (mouseMoveListenerAtual) {
+                    google.maps.event.removeListener(mouseMoveListenerAtual);
+                }
+                
+                mouseMoveListenerAtual = MapFramework.map.addListener('mousemove', function(event) {
+                    if (!modoPoligonoLivre || verticesAtuais.length === 0) return;
+                    
+                    const ultimoVertice = verticesAtuais[verticesAtuais.length - 1];
+                    const distancia = calcularDistanciaMetros(ultimoVertice, {
+                        lat: event.latLng.lat(),
+                        lng: event.latLng.lng()
+                    });
+                    
+                    // Remove label temporário anterior
+                    const labelTempAnterior = labelsDistancia.find(l => l.isTemporario);
+                    if (labelTempAnterior) {
+                        labelTempAnterior.setMap(null);
+                        const index = labelsDistancia.indexOf(labelTempAnterior);
+                        if (index > -1) labelsDistancia.splice(index, 1);
+                    }
+                    
+                    // Cria novo label temporário
+                    const labelTemp = criarLabelDistancia(`${distancia.toFixed(2)} m`, event.latLng);
+                    labelTemp.isTemporario = true;
+                    labelsDistancia.push(labelTemp);
+                });
+            }
+            
+            // Adiciona listeners ao mapa
+            const clickListener = MapFramework.map.addListener('click', function(event) {
+                if (!modoPoligonoLivre) return;
+                
+                const lat = event.latLng.lat();
+                const lng = event.latLng.lng();
+                const novoVertice = { lat, lng };
+                
+                verticesAtuais.push(novoVertice);
+                
+                // Remove label temporário ao clicar
+                const labelTempAnterior = labelsDistancia.find(l => l.isTemporario);
+                if (labelTempAnterior) {
+                    labelTempAnterior.setMap(null);
+                    const index = labelsDistancia.indexOf(labelTempAnterior);
+                    if (index > -1) labelsDistancia.splice(index, 1);
+                }
+                
+                // Cria ou atualiza polígono
+                if (poligonoAtual) {
+                    const path = poligonoAtual.getPath();
+                    path.push(event.latLng);
+                } else {
+                    // Obtém a cor selecionada (padrão: preto)
+                    const corSelecionada = $('#seletorCor').val() || '#000000';
+                    
+                    // Primeiro vértice - cria polígono
+                    poligonoAtual = new google.maps.Polygon({
+                        paths: [novoVertice],
+                        strokeColor: corSelecionada,
+                        strokeOpacity: 0.8,
+                        strokeWeight: 3,
+                        fillColor: corSelecionada,
+                        fillOpacity: 0.2,
+                        editable: true,
+                        draggable: false,
+                        map: MapFramework.map,
+                        zIndex: 1000
+                    });
+                    
+                    // Listener para quando o usuário editar o polígono (mover vértice)
+                    const path = poligonoAtual.getPath();
+                    google.maps.event.addListener(path, 'set_at', function(index) {
+                        // Atualiza verticesAtuais quando o usuário move um vértice
+                        const newPath = path.getArray();
+                        verticesAtuais = newPath.map(p => ({
+                            lat: p.lat(),
+                            lng: p.lng()
+                        }));
+                        atualizarLabelsDistancia();
+                    });
+                    
+                    // Listener para quando remove vértice (botão direito no vértice)
+                    google.maps.event.addListener(path, 'remove_at', function(index) {
+                        const newPath = path.getArray();
+                        verticesAtuais = newPath.map(p => ({
+                            lat: p.lat(),
+                            lng: p.lng()
+                        }));
+                        atualizarLabelsDistancia();
+                    });
+                    
+                    // Listener para botão direito no polígono (deletar vértice ou finalizar)
+                    google.maps.event.addListener(poligonoAtual, 'rightclick', function(e) {
+                        if (typeof e.vertex === 'number') {
+                            // Clicou em um vértice - remove se tiver mais de 3 vértices
+                            const totalVertices = path.getLength();
+                            if (totalVertices <= 3) {
+                                alert('⚠️ Não é possível remover este vértice.\nO polígono precisa ter pelo menos 3 vértices.');
+                                return;
+                            }
+                            path.removeAt(e.vertex);
+                            const newPath = path.getArray();
+                            verticesAtuais = newPath.map(p => ({
+                                lat: p.lat(),
+                                lng: p.lng()
+                            }));
+                            atualizarLabelsDistancia();
+                        }
+                    });
+                }
+                
+                atualizarLabelsDistancia();
+                
+                // Adiciona listener de mouse move após adicionar vértice
+                adicionarMouseMoveListener();
+            });
+            listenersMapa.push(clickListener);
+            
+            // Listener para botão direito no mapa (finalizar desenho)
+            // Nota: O Google Maps automaticamente remove vértices quando você clica com botão direito neles
+            // se o polígono estiver editável. O evento 'remove_at' já foi tratado acima.
+            // Para finalizar, o usuário deve clicar com botão direito em uma área do mapa que não seja um vértice.
+            const rightClickListener = MapFramework.map.addListener('rightclick', function(event) {
+                if (!modoPoligonoLivre) return;
+                
+                // Pequeno delay para garantir que se um vértice foi removido, o evento já foi processado
+                setTimeout(() => {
+                    if (!modoPoligonoLivre || !poligonoAtual) return;
+                    
+                    const path = poligonoAtual.getPath();
+                    const currentVertices = path.getArray();
+                    
+                    // Se tem pelo menos 3 vértices, finaliza o desenho
+                    if (currentVertices.length >= 3) {
+                        verticesAtuais = currentVertices.map(p => ({
+                            lat: p.lat(),
+                            lng: p.lng()
+                        }));
+                        finalizarDesenhoAtual();
+                    }
+                }, 50);
+            });
+            listenersMapa.push(rightClickListener);
+            
+            // Adiciona listener inicial de mouse move
+            adicionarMouseMoveListener();
+            
+            console.log('Modo de desenho ativado para camada:', camadaSelecionadaDesenho);
+        }
+        
+        // Função para adicionar listener de clique em um desenho (polígono ou polilinha)
+        function adicionarListenerCliqueDesenho(desenho) {
+            if (!desenho || !desenho.infoDesenho) return;
+            
+            // Remove listener anterior se existir
+            if (listenersDesenhos.has(desenho)) {
+                google.maps.event.removeListener(listenersDesenhos.get(desenho));
+            }
+            
+            // Torna clicável
+            desenho.setOptions({ clickable: true });
+            
+            // Adiciona listener de clique
+            const listener = desenho.addListener('click', function(event) {
+                selecionarDesenhoParaEdicao(desenho);
+            });
+            
+            listenersDesenhos.set(desenho, listener);
+        }
+        
+        // Função para selecionar um desenho para edição (polígono ou polilinha)
+        function selecionarDesenhoParaEdicao(desenho) {
+            // Se já tem um desenho selecionado, deseleciona
+            if (desenhoSelecionadoAtual && desenhoSelecionadoAtual !== desenho) {
+                deselecionarDesenho();
+            }
+            
+            // Seleciona o novo desenho
+            desenhoSelecionadoAtual = desenho;
+            
+            // Mostra informações no console
+            if (desenho.infoDesenho) {
+                console.log('=== DESENHO SELECIONADO ===');
+                console.log('Tipo:', desenho.infoDesenho.tipo || 'poligono');
+                console.log('Camada:', desenho.infoDesenho.camada);
+                console.log('Camada ID:', desenho.infoDesenho.camadaId);
+                console.log('Cor:', desenho.infoDesenho.cor);
+                console.log('Coordenadas:', desenho.infoDesenho.coordenadas);
+                console.log('Objeto completo:', desenho.infoDesenho);
+            }
+            
+            // Torna editável - mantém a cor original mas aumenta um pouco o strokeWeight para destacar
+            const corOriginal = desenho.infoDesenho?.cor || desenho.get('strokeColor') || desenho.get('fillColor') || '#000000';
+            const strokeWeightOriginal = desenho.get('strokeWeight') || 3;
+            
+            desenho.setOptions({
+                editable: true,
+                draggable: false,
+                strokeColor: corOriginal,
+                strokeWeight: strokeWeightOriginal + 1, // Aumenta um pouco para destacar
+                strokeOpacity: 1.0
+            });
+            
+            // Para polígonos, também mantém a cor de preenchimento
+            if (desenho instanceof google.maps.Polygon) {
+                desenho.setOptions({
+                    fillColor: corOriginal,
+                    fillOpacity: 0.3
+                });
+            }
+            
+            // Atualiza coordenadas iniciais para mostrar labels
+            const path = desenho.getPath();
+            verticesAtuais = path.getArray().map(p => ({
+                lat: p.lat(),
+                lng: p.lng()
+            }));
+            
+            // Mostra labels de distância
+            atualizarLabelsDistancia();
+            
+            // Adiciona listeners para atualizar quando editar
+            const pathListener = path.addListener('set_at', function(index) {
+                atualizarDesenhoSelecionado();
+            });
+            
+            const removeListener = path.addListener('remove_at', function(index) {
+                atualizarDesenhoSelecionado();
+            });
+            
+            const insertListener = path.addListener('insert_at', function(index) {
+                atualizarDesenhoSelecionado();
+            });
+            
+            // Armazena listeners para poder removê-los depois
+            if (!desenho.editListeners) {
+                desenho.editListeners = [];
+            }
+            desenho.editListeners.push(pathListener, removeListener, insertListener);
+        }
+        
+        // Função para atualizar desenho selecionado quando editado (polígono ou polilinha)
+        function atualizarDesenhoSelecionado() {
+            if (!desenhoSelecionadoAtual) return;
+            
+            const path = desenhoSelecionadoAtual.getPath();
+            const coordenadas = path.getArray().map(p => ({
+                lat: p.lat(),
+                lng: p.lng()
+            }));
+            
+            // Atualiza verticesAtuais
+            verticesAtuais = coordenadas;
+            
+            // Atualiza informações do desenho
+            if (desenhoSelecionadoAtual.infoDesenho) {
+                desenhoSelecionadoAtual.infoDesenho.coordenadas = coordenadas;
+            }
+            
+            // Atualiza labels
+            atualizarLabelsDistancia();
+            
+            // Log atualização
+            console.log('=== DESENHO ATUALIZADO ===');
+            console.log('Tipo:', desenhoSelecionadoAtual.infoDesenho?.tipo || 'poligono');
+            console.log('Novas coordenadas:', coordenadas);
+            if (desenhoSelecionadoAtual.infoDesenho) {
+                console.log('Objeto atualizado:', desenhoSelecionadoAtual.infoDesenho);
+            }
+        }
+        
+        // Função para deselecionar desenho
+        function deselecionarDesenho() {
+            if (!desenhoSelecionadoAtual) return;
+            
+            // Remove listeners de edição
+            if (desenhoSelecionadoAtual.editListeners) {
+                desenhoSelecionadoAtual.editListeners.forEach(listener => {
+                    google.maps.event.removeListener(listener);
+                });
+                desenhoSelecionadoAtual.editListeners = [];
+            }
+            
+            // Torna não editável e restaura propriedades originais
+            if (desenhoSelecionadoAtual.infoDesenho) {
+                const corOriginal = desenhoSelecionadoAtual.infoDesenho.cor;
+                const strokeWeightOriginal = desenhoSelecionadoAtual.get('strokeWeight') || 3;
+                
+                desenhoSelecionadoAtual.setOptions({
+                    editable: false,
+                    draggable: false,
+                    strokeColor: corOriginal,
+                    strokeWeight: strokeWeightOriginal > 1 ? strokeWeightOriginal - 1 : strokeWeightOriginal, // Restaura peso original
+                    strokeOpacity: 0.8
+                });
+                
+                // Para polígonos, restaura cor de preenchimento
+                if (desenhoSelecionadoAtual instanceof google.maps.Polygon) {
+                    desenhoSelecionadoAtual.setOptions({
+                        fillColor: corOriginal,
+                        fillOpacity: 0.2
+                    });
+                }
+            } else {
+                desenhoSelecionadoAtual.setOptions({
+                    editable: false,
+                    draggable: false
+                });
+            }
+            
+            // Remove labels
+            labelsDistancia.forEach(label => {
+                if (label && label.setMap) {
+                    label.setMap(null);
+                }
+            });
+            labelsDistancia = [];
+            
+            desenhoSelecionadoAtual = null;
+            verticesAtuais = [];
+        }
+        
+        // Função para sair do modo de desenho
+        function sairModoPoligonoLivre() {
+            modoPoligonoLivre = false;
+            
+            // Remove listener de mouse move
+            if (mouseMoveListenerAtual) {
+                google.maps.event.removeListener(mouseMoveListenerAtual);
+                mouseMoveListenerAtual = null;
+            }
+            
+            // Finaliza desenho atual se houver
+            if (poligonoAtual && verticesAtuais.length >= 3) {
+                finalizarDesenhoAtual();
+            } else if (poligonoAtual) {
+                // Remove polígono incompleto
+                poligonoAtual.setMap(null);
+                poligonoAtual = null;
+                verticesAtuais = [];
+            }
+            
+            // Remove labels
+            labelsDistancia.forEach(label => {
+                if (label && label.setMap) {
+                    label.setMap(null);
+                }
+            });
+            labelsDistancia = [];
+            
+            // Remove listeners
+            listenersMapa.forEach(listener => {
+                google.maps.event.removeListener(listener);
+            });
+            listenersMapa = [];
+            
+            // Restaura interatividade
+            restaurarInteratividadeDesenhos();
+            
+            // Torna todos os desenhos das camadas novas clicáveis
+            tornarDesenhosClicaveis();
+            
+            // Adiciona listener para clicar no mapa (deselecionar) - apenas quando não está no modo de desenho
+            if (window.mapClickListenerDeselecionar) {
+                google.maps.event.removeListener(window.mapClickListenerDeselecionar);
+            }
+            window.mapClickListenerDeselecionar = MapFramework.map.addListener('click', function(event) {
+                // Fecha qualquer InfoWindow aberto
+                if (infoWindowMarcador) {
+                    infoWindowMarcador.close();
+                    infoWindowMarcador = null;
+                }
+                
+                // Se clicou no mapa (não em um desenho), deseleciona
+                // O evento de clique do polígono não dispara este listener
+                if (desenhoSelecionadoAtual && !modoPoligonoLivre) {
+                    deselecionarDesenho();
+                }
+            });
+            
+            // Atualiza botão
+            $('#btnDesenharPoligono').removeClass('btn-success').addClass('btn-light');
+            $('#btnDesenharPoligono').html('<i class="fas fa-draw-polygon"></i>');
+            
+            camadaSelecionadaDesenho = null;
+            console.log('Modo de desenho desativado');
+        }
+        
+        // Função para tornar todos os desenhos das camadas novas clicáveis (polígonos e polilinhas)
+        function tornarDesenhosClicaveis() {
+            Object.keys(window.desenhosCamadasNovas || {}).forEach(camadaId => {
+                if (window.desenhosCamadasNovas[camadaId]) {
+                    window.desenhosCamadasNovas[camadaId].forEach(desenho => {
+                        if (desenho && desenho.setOptions) {
+                            adicionarListenerCliqueDesenho(desenho);
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Função para finalizar o desenho atual
+        function finalizarDesenhoAtual() {
+            if (!poligonoAtual || verticesAtuais.length < 3) return;
+            
+            // Obtém a camada do select no momento da finalização (não a do início do modo)
+            const $select = $('#selectTodasCamadas');
+            const camadaAtual = $select.val(); // Value (ex: "camada_nova_2")
+            const camadaNomeTexto = $select.find('option:selected').text(); // Texto exibido (ex: "teste")
+            
+            if (!camadaAtual || camadaAtual === '') {
+                alert('⚠️ Erro: Nenhuma camada selecionada. O desenho não foi salvo.');
+                return;
+            }
+            
+            // Remove labels temporários
+            const labelsParaRemover = labelsDistancia.filter(l => l.isTemporario);
+            labelsParaRemover.forEach(label => {
+                if (label && label.setMap) {
+                    label.setMap(null);
+                }
+                const index = labelsDistancia.indexOf(label);
+                if (index > -1) labelsDistancia.splice(index, 1);
+            });
+            
+            // Torna o polígono não editável
+            poligonoAtual.setOptions({
+                editable: false,
+                draggable: false,
+                clickable: false
+            });
+            
+            // Obtém informações do desenho
+            const path = poligonoAtual.getPath();
+            const coordenadas = path.getArray().map(p => ({
+                lat: p.lat(),
+                lng: p.lng()
+            }));
+            
+            const cor = poligonoAtual.get('fillColor');
+            
+            // Armazena informações do desenho no próprio objeto
+            poligonoAtual.infoDesenho = {
+                camada: camadaNomeTexto,
+                camadaId: camadaAtual,
+                cor: cor,
+                coordenadas: coordenadas,
+                tipo: 'poligono'
+            };
+            
+            // Adiciona à camada selecionada (usando a camada atual do select)
+            if (!window.desenhosCamadasNovas[camadaAtual]) {
+                window.desenhosCamadasNovas[camadaAtual] = [];
+            }
+            window.desenhosCamadasNovas[camadaAtual].push(poligonoAtual);
+            
+            // Adiciona ao arrayCamadas também
+            if (!arrayCamadas[camadaAtual]) {
+                arrayCamadas[camadaAtual] = [];
+            }
+            arrayCamadas[camadaAtual].push(poligonoAtual);
+            
+            // Adiciona listener de clique para quando sair do modo
+            adicionarListenerCliqueDesenho(poligonoAtual);
+            
+            // Armazena o desenho para adicionar descrição
+            desenhoAguardandoDescricao = poligonoAtual;
+            
+            // Abre modal para adicionar descrição
+            $('#inputDescricaoDesenho').val('');
+            const modal = new bootstrap.Modal(document.getElementById('modalDescricaoDesenho'));
+            modal.show();
+            
+            // Log no console
+            console.log('=== DESENHO FINALIZADO ===');
+            console.log('Camada (ID):', camadaAtual);
+            console.log('Camada (Nome):', camadaNomeTexto);
+            console.log('Cor:', cor);
+            console.log('Coordenadas:', coordenadas);
+            console.log('Objeto completo:', {
+                camada: camadaNomeTexto, // Mostra o nome ao invés do ID
+                camadaId: camadaAtual,   // ID também disponível
+                cor: cor,
+                coordenadas: coordenadas,
+                tipo: 'poligono'
+            });
+            
+            // Remove todos os labels fixos do desenho finalizado
+            labelsDistancia.forEach(label => {
+                if (label && label.setMap) {
+                    label.setMap(null);
+                }
+            });
+            labelsDistancia = [];
+            
+            // Reseta para próximo desenho
+            poligonoAtual = null;
+            verticesAtuais = [];
+        }
+        
+        // ========== FUNÇÕES PARA POLILINHA (similar ao polígono) ==========
+        
+        // Função para entrar no modo de desenho de polilinha
+        function entrarModoPolilinhaLivre() {
+            const camadaSelecionada = $('#selectTodasCamadas').val();
+            
+            if (!camadaSelecionada || camadaSelecionada === '') {
+                alert('Por favor, selecione uma camada antes de desenhar.');
+                return;
+            }
+            
+            // Deseleciona qualquer desenho selecionado
+            deselecionarDesenho();
+            
+            // Remove listener de clique no mapa (se existir)
+            if (window.mapClickListenerDeselecionar) {
+                google.maps.event.removeListener(window.mapClickListenerDeselecionar);
+                window.mapClickListenerDeselecionar = null;
+            }
+            
+            modoPolilinhaLivre = true;
+            camadaSelecionadaDesenho = camadaSelecionada;
+            polilinhaAtual = null;
+            verticesAtuais = [];
+            
+            // Atualiza botão - mantém o ícone original, só muda a cor
+            $('#btnDesenharPolilinha').removeClass('btn-light').addClass('btn-success');
+            
+            // Desabilita interatividade de todos os desenhos
+            desabilitarInteratividadeDesenhos();
+            
+            // Adiciona listener de mouse move para mostrar distância
+            function adicionarMouseMoveListener() {
+                if (mouseMoveListenerAtual) {
+                    google.maps.event.removeListener(mouseMoveListenerAtual);
+                }
+                
+                mouseMoveListenerAtual = MapFramework.map.addListener('mousemove', function(event) {
+                    if (!modoPolilinhaLivre || verticesAtuais.length === 0) return;
+                    
+                    const ultimoVertice = verticesAtuais[verticesAtuais.length - 1];
+                    const distancia = calcularDistanciaMetros(ultimoVertice, {
+                        lat: event.latLng.lat(),
+                        lng: event.latLng.lng()
+                    });
+                    
+                    // Remove label temporário anterior
+                    const labelTempAnterior = labelsDistancia.find(l => l.isTemporario);
+                    if (labelTempAnterior) {
+                        labelTempAnterior.setMap(null);
+                        const index = labelsDistancia.indexOf(labelTempAnterior);
+                        if (index > -1) labelsDistancia.splice(index, 1);
+                    }
+                    
+                    // Cria novo label temporário
+                    const labelTemp = criarLabelDistancia(`${distancia.toFixed(2)} m`, event.latLng);
+                    labelTemp.isTemporario = true;
+                    labelsDistancia.push(labelTemp);
+                });
+            }
+            
+            // Adiciona listeners ao mapa
+            const clickListener = MapFramework.map.addListener('click', function(event) {
+                if (!modoPolilinhaLivre) return;
+                
+                const lat = event.latLng.lat();
+                const lng = event.latLng.lng();
+                const novoVertice = { lat, lng };
+                
+                verticesAtuais.push(novoVertice);
+                
+                // Remove label temporário ao clicar
+                const labelTempAnterior = labelsDistancia.find(l => l.isTemporario);
+                if (labelTempAnterior) {
+                    labelTempAnterior.setMap(null);
+                    const index = labelsDistancia.indexOf(labelTempAnterior);
+                    if (index > -1) labelsDistancia.splice(index, 1);
+                }
+                
+                // Cria ou atualiza polilinha
+                if (polilinhaAtual) {
+                    const path = polilinhaAtual.getPath();
+                    path.push(event.latLng);
+                } else {
+                    // Primeiro vértice - cria polilinha
+                    const corSelecionada = $('#seletorCor').val() || '#000000';
+                    
+                    polilinhaAtual = new google.maps.Polyline({
+                        path: [novoVertice],
+                        strokeColor: corSelecionada,
+                        strokeOpacity: 0.8,
+                        strokeWeight: 3,
+                        editable: true,
+                        draggable: false,
+                        map: MapFramework.map,
+                        zIndex: 1000
+                    });
+                    
+                    // Listener para quando o usuário editar a polilinha (mover vértice)
+                    const path = polilinhaAtual.getPath();
+                    google.maps.event.addListener(path, 'set_at', function(index) {
+                        const newPath = path.getArray();
+                        verticesAtuais = newPath.map(p => ({
+                            lat: p.lat(),
+                            lng: p.lng()
+                        }));
+                        atualizarLabelsDistancia();
+                    });
+                    
+                    // Listener para quando remove vértice
+                    google.maps.event.addListener(path, 'remove_at', function(index) {
+                        const newPath = path.getArray();
+                        verticesAtuais = newPath.map(p => ({
+                            lat: p.lat(),
+                            lng: p.lng()
+                        }));
+                        atualizarLabelsDistancia();
+                    });
+                    
+                    // Listener para botão direito na polilinha (deletar vértice)
+                    google.maps.event.addListener(polilinhaAtual, 'rightclick', function(e) {
+                        if (typeof e.vertex === 'number') {
+                            const totalVertices = path.getLength();
+                            if (totalVertices <= 2) {
+                                alert('⚠️ Não é possível remover este vértice.\nA polilinha precisa ter pelo menos 2 vértices.');
+                                return;
+                            }
+                            path.removeAt(e.vertex);
+                            const newPath = path.getArray();
+                            verticesAtuais = newPath.map(p => ({
+                                lat: p.lat(),
+                                lng: p.lng()
+                            }));
+                            atualizarLabelsDistancia();
+                        }
+                    });
+                }
+                
+                atualizarLabelsDistancia();
+                adicionarMouseMoveListener();
+            });
+            listenersMapa.push(clickListener);
+            
+            // Listener para botão direito no mapa (finalizar desenho)
+            const rightClickListener = MapFramework.map.addListener('rightclick', function(event) {
+                if (!modoPolilinhaLivre) return;
+                
+                setTimeout(() => {
+                    if (!modoPolilinhaLivre || !polilinhaAtual) return;
+                    
+                    const path = polilinhaAtual.getPath();
+                    const currentVertices = path.getArray();
+                    
+                    // Se tem pelo menos 2 vértices, finaliza o desenho
+                    if (currentVertices.length >= 2) {
+                        verticesAtuais = currentVertices.map(p => ({
+                            lat: p.lat(),
+                            lng: p.lng()
+                        }));
+                        finalizarPolilinhaAtual();
+                    }
+                }, 50);
+            });
+            listenersMapa.push(rightClickListener);
+            
+            // Adiciona listener inicial de mouse move
+            adicionarMouseMoveListener();
+            
+            console.log('Modo de desenho de polilinha ativado para camada:', camadaSelecionadaDesenho);
+        }
+        
+        // Função para sair do modo de desenho de polilinha
+        function sairModoPolilinhaLivre() {
+            modoPolilinhaLivre = false;
+            
+            // Remove listener de mouse move
+            if (mouseMoveListenerAtual) {
+                google.maps.event.removeListener(mouseMoveListenerAtual);
+                mouseMoveListenerAtual = null;
+            }
+            
+            // Finaliza polilinha atual se houver
+            if (polilinhaAtual && verticesAtuais.length >= 2) {
+                finalizarPolilinhaAtual();
+            } else if (polilinhaAtual) {
+                // Remove polilinha incompleta
+                polilinhaAtual.setMap(null);
+                polilinhaAtual = null;
+                verticesAtuais = [];
+            }
+            
+            // Remove labels
+            labelsDistancia.forEach(label => {
+                if (label && label.setMap) {
+                    label.setMap(null);
+                }
+            });
+            labelsDistancia = [];
+            
+            // Remove listeners
+            listenersMapa.forEach(listener => {
+                google.maps.event.removeListener(listener);
+            });
+            listenersMapa = [];
+            
+            // Restaura interatividade
+            restaurarInteratividadeDesenhos();
+            
+            // Torna todos os desenhos das camadas novas clicáveis
+            tornarDesenhosClicaveis();
+            
+            // Adiciona listener para clicar no mapa (deselecionar)
+            if (window.mapClickListenerDeselecionar) {
+                google.maps.event.removeListener(window.mapClickListenerDeselecionar);
+            }
+            window.mapClickListenerDeselecionar = MapFramework.map.addListener('click', function(event) {
+                // Fecha qualquer InfoWindow aberto
+                if (infoWindowMarcador) {
+                    infoWindowMarcador.close();
+                    infoWindowMarcador = null;
+                }
+                
+                if (desenhoSelecionadoAtual && !modoPolilinhaLivre) {
+                    deselecionarDesenho();
+                }
+            });
+            
+            // Atualiza botão
+            $('#btnDesenharPolilinha').removeClass('btn-success').addClass('btn-light');
+            $('#btnDesenharPolilinha').html('<i class="bi bi-share"></i>');
+            
+            camadaSelecionadaDesenho = null;
+            console.log('Modo de desenho de polilinha desativado');
+        }
+        
+        // Função para finalizar a polilinha atual
+        function finalizarPolilinhaAtual() {
+            if (!polilinhaAtual || verticesAtuais.length < 2) return;
+            
+            // Obtém a camada do select no momento da finalização
+            const $select = $('#selectTodasCamadas');
+            const camadaAtual = $select.val();
+            const camadaNomeTexto = $select.find('option:selected').text();
+            
+            if (!camadaAtual || camadaAtual === '') {
+                alert('⚠️ Erro: Nenhuma camada selecionada. O desenho não foi salvo.');
+                return;
+            }
+            
+            // Remove labels temporários
+            const labelsParaRemover = labelsDistancia.filter(l => l.isTemporario);
+            labelsParaRemover.forEach(label => {
+                if (label && label.setMap) {
+                    label.setMap(null);
+                }
+                const index = labelsDistancia.indexOf(label);
+                if (index > -1) labelsDistancia.splice(index, 1);
+            });
+            
+            // Torna a polilinha não editável
+            polilinhaAtual.setOptions({
+                editable: false,
+                draggable: false,
+                clickable: false
+            });
+            
+            // Obtém informações do desenho
+            const path = polilinhaAtual.getPath();
+            const coordenadas = path.getArray().map(p => ({
+                lat: p.lat(),
+                lng: p.lng()
+            }));
+            
+            const cor = polilinhaAtual.get('strokeColor');
+            
+            // Armazena informações do desenho no próprio objeto
+            polilinhaAtual.infoDesenho = {
+                camada: camadaNomeTexto,
+                camadaId: camadaAtual,
+                cor: cor,
+                coordenadas: coordenadas,
+                tipo: 'polilinha'
+            };
+            
+            // Adiciona à camada selecionada
+            if (!window.desenhosCamadasNovas[camadaAtual]) {
+                window.desenhosCamadasNovas[camadaAtual] = [];
+            }
+            window.desenhosCamadasNovas[camadaAtual].push(polilinhaAtual);
+            
+            // Adiciona ao arrayCamadas também
+            if (!arrayCamadas[camadaAtual]) {
+                arrayCamadas[camadaAtual] = [];
+            }
+            arrayCamadas[camadaAtual].push(polilinhaAtual);
+            
+            // Adiciona listener de clique para quando sair do modo
+            adicionarListenerCliqueDesenho(polilinhaAtual);
+            
+            // Armazena o desenho para adicionar descrição
+            desenhoAguardandoDescricao = polilinhaAtual;
+            
+            // Abre modal para adicionar descrição
+            $('#inputDescricaoDesenho').val('');
+            const modal = new bootstrap.Modal(document.getElementById('modalDescricaoDesenho'));
+            modal.show();
+            
+            // Log no console
+            console.log('=== POLILINHA FINALIZADA ===');
+            console.log('Camada (ID):', camadaAtual);
+            console.log('Camada (Nome):', camadaNomeTexto);
+            console.log('Cor:', cor);
+            console.log('Coordenadas:', coordenadas);
+            console.log('Objeto completo:', {
+                camada: camadaNomeTexto,
+                camadaId: camadaAtual,
+                cor: cor,
+                coordenadas: coordenadas,
+                tipo: 'polilinha'
+            });
+            
+            // Remove todos os labels fixos do desenho finalizado
+            labelsDistancia.forEach(label => {
+                if (label && label.setMap) {
+                    label.setMap(null);
+                }
+            });
+            labelsDistancia = [];
+            
+            // Reseta para próximo desenho
+            polilinhaAtual = null;
+            verticesAtuais = [];
+        }
+        
+        // Event listener para o botão de desenho de polígono
+        $('#btnDesenharPoligono').on('click', function() {
+            // Se estiver no modo de polilinha, sai primeiro
+            if (modoPolilinhaLivre) {
+                sairModoPolilinhaLivre();
+            }
+            
+            if (modoPoligonoLivre) {
+                sairModoPoligonoLivre();
+            } else {
+                entrarModoPoligonoLivre();
+            }
+        });
+        
+        // Event listener para o botão de desenho de polilinha
+        $('#btnDesenharPolilinha').on('click', function() {
+            // Se estiver no modo de polígono, sai primeiro
+            if (modoPoligonoLivre) {
+                sairModoPoligonoLivre();
+            }
+            
+            if (modoPolilinhaLivre) {
+                sairModoPolilinhaLivre();
+            } else {
+                entrarModoPolilinhaLivre();
+            }
+        });
+        
+        // Atualiza checkboxes para controlar visibilidade dos desenhos das camadas novas
+        $(document).off('change', '.chk-camada-nova, .chk-subcamada-nova').on('change', '.chk-camada-nova, .chk-subcamada-nova', function(e) {
+            e.stopPropagation();
+            const id = $(this).data('id');
+            const tipo = $(this).data('tipo');
+            const visivel = $(this).is(':checked');
+            
+            // Determina o ID da camada para buscar os desenhos
+            let camadaId = null;
+            if (tipo === 'camada') {
+                camadaId = `camada_nova_${id}`;
+            } else if (tipo === 'subcamada') {
+                camadaId = `camada_nova_${id}`;
+            }
+            
+            // Se for uma camada pai, atualiza todas as subcamadas filhas
+            if (tipo === 'camada') {
+                // Encontra todas as subcamadas que pertencem a esta camada
+                $(`.chk-subcamada-nova[data-pertence="${id}"]`).each(function() {
+                    // Marca/desmarca o checkbox filho sem disparar o evento novamente
+                    $(this).prop('checked', visivel);
+                    
+                    // Mostra/oculta os desenhos das subcamadas também
+                    const subcamadaId = $(this).data('id');
+                    const subcamadaCamadaId = `camada_nova_${subcamadaId}`;
+                    if (window.desenhosCamadasNovas[subcamadaCamadaId]) {
+                        window.desenhosCamadasNovas[subcamadaCamadaId].forEach(function(desenho) {
+                            if (desenho && desenho.setMap) {
+                                desenho.setMap(visivel ? MapFramework.map : null);
+                            }
+                        });
+                    }
+                });
+            }
+            
+            // Mostra/oculta os desenhos desta camada/subcamada
+            if (camadaId && window.desenhosCamadasNovas[camadaId]) {
+                window.desenhosCamadasNovas[camadaId].forEach(function(desenho) {
+                    if (desenho && desenho.setMap) {
+                        desenho.setMap(visivel ? MapFramework.map : null);
+                    }
+                });
+            }
+            
+            // Também controla através do arrayCamadas
+            if (camadaId && arrayCamadas[camadaId]) {
+                arrayCamadas[camadaId].forEach(function(desenho) {
+                    if (desenho && desenho.setMap) {
+                        desenho.setMap(visivel ? MapFramework.map : null);
+                    }
+                });
+            }
+            
+            console.log('Toggle camada:', { id, tipo, visivel, camadaId });
+        });
+        
+        // ========== FUNCIONALIDADE DE MARCADOR ==========
+        
+        // Função para entrar no modo de criar marcador
+        async function entrarModoMarcador() {
+            const camadaSelecionada = $('#selectTodasCamadas').val();
+            
+            if (!camadaSelecionada || camadaSelecionada === '') {
+                alert('Por favor, selecione uma camada antes de criar um marcador.');
+                return;
+            }
+            
+            // Deseleciona qualquer desenho selecionado
+            deselecionarDesenho();
+            
+            // Remove listener de clique no mapa (se existir)
+            if (window.mapClickListenerDeselecionar) {
+                google.maps.event.removeListener(window.mapClickListenerDeselecionar);
+                window.mapClickListenerDeselecionar = null;
+            }
+            
+            modoMarcador = true;
+            camadaSelecionadaDesenho = camadaSelecionada;
+            
+            // Atualiza botão
+            $('#btnCriarMarcador').removeClass('btn-light').addClass('btn-success');
+            
+            // Desabilita interatividade de todos os desenhos
+            desabilitarInteratividadeDesenhos();
+            
+            // Torna todos os marcadores existentes draggable
+            Object.keys(window.desenhosCamadasNovas || {}).forEach(camadaId => {
+                if (window.desenhosCamadasNovas[camadaId]) {
+                    window.desenhosCamadasNovas[camadaId].forEach(desenho => {
+                        if (desenho instanceof google.maps.marker.AdvancedMarkerElement) {
+                            desenho.gmpDraggable = true;
+                            
+                            // Adiciona listener para atualizar coordenadas quando arrastado (se ainda não tiver)
+                            if (!desenho.dragListenerAdicionado) {
+                                // Listener para quando começa a arrastar
+                                desenho.addListener('dragstart', function() {
+                                    arrastandoMarcador = true;
+                                });
+                                
+                                // Listener para quando termina de arrastar
+                                desenho.addListener('dragend', function() {
+                                    arrastandoMarcador = false;
+                                    ultimoDragendTime = Date.now(); // Registra o timestamp do dragend
+                                    
+                                    if (desenho.infoDesenho) {
+                                        const pos = desenho.position;
+                                        desenho.infoDesenho.coordenadas = [{
+                                            lat: typeof pos.lat === 'function' ? pos.lat() : pos.lat,
+                                            lng: typeof pos.lng === 'function' ? pos.lng() : pos.lng
+                                        }];
+                                        console.log('Marcador movido. Novas coordenadas:', desenho.infoDesenho.coordenadas);
+                                        console.log('Objeto atualizado:', desenho.infoDesenho);
+                                    }
+                                });
+                                desenho.dragListenerAdicionado = true;
+                            }
+                        }
+                    });
+                }
+            });
+            
+            // Adiciona listener de clique no mapa para criar marcador
+            const clickListener = MapFramework.map.addListener('click', async function(event) {
+                if (!modoMarcador) return;
+                
+                // Se estamos arrastando um marcador, não cria um novo
+                if (arrastandoMarcador) {
+                    return;
+                }
+                
+                // Se houve um dragend recentemente (nos últimos 300ms), não cria um novo marcador
+                // Isso evita criar marcador quando o usuário solta o marcador após arrastá-lo
+                const tempoAtual = Date.now();
+                if (tempoAtual - ultimoDragendTime < 300) {
+                    return;
+                }
+                
+                const lat = event.latLng.lat();
+                const lng = event.latLng.lng();
+                const corSelecionada = $('#seletorCor').val() || '#000000';
+                
+                try {
+                    // Importa PinElement
+                    const { PinElement } = await google.maps.importLibrary("marker");
+                    
+                    // Cria PinElement com a cor selecionada
+                    const pinBackground = new PinElement({
+                        background: corSelecionada,
+                        borderColor: corSelecionada,
+                        glyphColor: '#FFFFFF'
+                    });
+                    
+                    // Cria AdvancedMarkerElement
+                    const marker = new google.maps.marker.AdvancedMarkerElement({
+                        position: { lat, lng },
+                        map: MapFramework.map,
+                        content: pinBackground.element,
+                        gmpClickable: true
+                    });
+                    
+                    // Armazena o marcador para adicionar descrição
+                    marcadorAtual = marker;
+                    
+                    // Torna o marcador draggable enquanto está no modo
+                    marker.gmpDraggable = true;
+                    
+                    // Adiciona listener para atualizar coordenadas quando arrastado
+                    marker.addListener('dragstart', function() {
+                        arrastandoMarcador = true;
+                    });
+                    
+                    marker.addListener('dragend', function() {
+                        arrastandoMarcador = false;
+                        ultimoDragendTime = Date.now(); // Registra o timestamp do dragend
+                        
+                        if (marker.infoDesenho) {
+                            const pos = marker.position;
+                            marker.infoDesenho.coordenadas = [{
+                                lat: typeof pos.lat === 'function' ? pos.lat() : pos.lat,
+                                lng: typeof pos.lng === 'function' ? pos.lng() : pos.lng
+                            }];
+                            console.log('Marcador movido. Novas coordenadas:', marker.infoDesenho.coordenadas);
+                            console.log('Objeto atualizado:', marker.infoDesenho);
+                        }
+                    });
+                    
+                    // Adiciona listener de clique IMEDIATAMENTE (mesmo antes de salvar descrição)
+                    const clickListenerMarcador = marker.addListener('click', function() {
+                        mostrarInfoWindowMarcador(marker);
+                    });
+                    
+                    // Armazena o listener
+                    if (!listenersDesenhos.has(marker)) {
+                        listenersDesenhos.set(marker, clickListenerMarcador);
+                    }
+                    
+                    // Abre modal para adicionar descrição
+                    $('#inputDescricaoDesenho').val('');
+                    const modal = new bootstrap.Modal(document.getElementById('modalDescricaoDesenho'));
+                    modal.show();
+                    
+                    // NÃO sai do modo - permite criar mais marcadores
+                } catch (error) {
+                    console.error('Erro ao criar marcador:', error);
+                    alert('Erro ao criar marcador. Verifique o console para mais detalhes.');
+                }
+            });
+            listenersMapa.push(clickListener);
+            
+            console.log('Modo de criar marcador ativado para camada:', camadaSelecionadaDesenho);
+        }
+        
+        // Função para sair do modo de criar marcador
+        function sairModoMarcador() {
+            modoMarcador = false;
+            
+            // Remove listeners
+            listenersMapa.forEach(listener => {
+                google.maps.event.removeListener(listener);
+            });
+            listenersMapa = [];
+            
+            // Torna todos os marcadores não draggable
+            Object.keys(window.desenhosCamadasNovas || {}).forEach(camadaId => {
+                if (window.desenhosCamadasNovas[camadaId]) {
+                    window.desenhosCamadasNovas[camadaId].forEach(desenho => {
+                        if (desenho instanceof google.maps.marker.AdvancedMarkerElement) {
+                            desenho.gmpDraggable = false;
+                        }
+                    });
+                }
+            });
+            
+            // Restaura interatividade
+            restaurarInteratividadeDesenhos();
+            
+            // Torna todos os desenhos das camadas novas clicáveis
+            tornarDesenhosClicaveis();
+            
+            // Adiciona listener para clicar no mapa (deselecionar)
+            if (window.mapClickListenerDeselecionar) {
+                google.maps.event.removeListener(window.mapClickListenerDeselecionar);
+            }
+            window.mapClickListenerDeselecionar = MapFramework.map.addListener('click', function(event) {
+                // Fecha qualquer InfoWindow aberto
+                if (infoWindowMarcador) {
+                    infoWindowMarcador.close();
+                    infoWindowMarcador = null;
+                }
+                
+                if (desenhoSelecionadoAtual && !modoMarcador) {
+                    deselecionarDesenho();
+                }
+            });
+            
+            // Atualiza botão
+            $('#btnCriarMarcador').removeClass('btn-success').addClass('btn-light');
+            
+            camadaSelecionadaDesenho = null;
+            console.log('Modo de criar marcador desativado');
+        }
+        
+        // Event listener para o botão de criar marcador
+        $('#btnCriarMarcador').on('click', function() {
+            // Se estiver no modo de polígono ou polilinha, sai primeiro
+            if (modoPoligonoLivre) {
+                sairModoPoligonoLivre();
+            }
+            if (modoPolilinhaLivre) {
+                sairModoPolilinhaLivre();
+            }
+            
+            if (modoMarcador) {
+                sairModoMarcador();
+            } else {
+                entrarModoMarcador();
+            }
+        });
+        
+        // Event listener para salvar descrição do desenho
+        $('#btnSalvarDescricao').on('click', function() {
+            const descricao = $('#inputDescricaoDesenho').val().trim();
+            
+            if (desenhoAguardandoDescricao) {
+                // Adiciona descrição ao objeto do desenho
+                if (!desenhoAguardandoDescricao.infoDesenho) {
+                    desenhoAguardandoDescricao.infoDesenho = {};
+                }
+                desenhoAguardandoDescricao.infoDesenho.descricao = descricao;
+                
+                console.log('Descrição adicionada ao desenho:', descricao);
+            } else if (marcadorAtual) {
+                // Adiciona descrição ao marcador
+                if (!marcadorAtual.infoDesenho) {
+                    marcadorAtual.infoDesenho = {};
+                }
+                marcadorAtual.infoDesenho.descricao = descricao;
+                
+                // Obtém a camada do select
+                const $select = $('#selectTodasCamadas');
+                const camadaAtual = $select.val();
+                const camadaNomeTexto = $select.find('option:selected').text();
+                const corSelecionada = $('#seletorCor').val() || '#000000';
+                
+                marcadorAtual.infoDesenho.camada = camadaNomeTexto;
+                marcadorAtual.infoDesenho.camadaId = camadaAtual;
+                marcadorAtual.infoDesenho.cor = corSelecionada;
+                marcadorAtual.infoDesenho.tipo = 'marcador';
+                const pos = marcadorAtual.position;
+                marcadorAtual.infoDesenho.coordenadas = [{
+                    lat: typeof pos.lat === 'function' ? pos.lat() : pos.lat,
+                    lng: typeof pos.lng === 'function' ? pos.lng() : pos.lng
+                }];
+                
+                // Adiciona à camada selecionada
+                if (!window.desenhosCamadasNovas[camadaAtual]) {
+                    window.desenhosCamadasNovas[camadaAtual] = [];
+                }
+                window.desenhosCamadasNovas[camadaAtual].push(marcadorAtual);
+                
+                // Adiciona ao arrayCamadas também
+                if (!arrayCamadas[camadaAtual]) {
+                    arrayCamadas[camadaAtual] = [];
+                }
+                arrayCamadas[camadaAtual].push(marcadorAtual);
+                
+                // O listener já foi adicionado quando o marcador foi criado, não precisa adicionar novamente
+                console.log('Marcador criado na camada:', camadaNomeTexto, `(${camadaAtual})`);
+                console.log('Descrição:', descricao);
+                
+                marcadorAtual = null;
+            }
+            
+            // Fecha o modal
+            bootstrap.Modal.getInstance(document.getElementById('modalDescricaoDesenho')).hide();
+            desenhoAguardandoDescricao = null;
+            marcadorAtual = null;
+        });
+        
+        // Event listener para botão "Pular" - fecha modal sem salvar descrição
+        $('#modalDescricaoDesenho').on('hidden.bs.modal', function() {
+            // Se o modal foi fechado sem clicar em "Salvar", verifica se precisa salvar marcador
+            if (marcadorAtual && !marcadorAtual.infoDesenho) {
+                // Se o marcador ainda não foi salvo, salva mesmo sem descrição
+                const $select = $('#selectTodasCamadas');
+                const camadaAtual = $select.val();
+                const camadaNomeTexto = $select.find('option:selected').text();
+                const corSelecionada = $('#seletorCor').val() || '#000000';
+                
+                marcadorAtual.infoDesenho = {
+                    descricao: '',
+                    camada: camadaNomeTexto,
+                    camadaId: camadaAtual,
+                    cor: corSelecionada,
+                    tipo: 'marcador',
+                    coordenadas: [{
+                        lat: typeof marcadorAtual.position.lat === 'function' ? marcadorAtual.position.lat() : marcadorAtual.position.lat,
+                        lng: typeof marcadorAtual.position.lng === 'function' ? marcadorAtual.position.lng() : marcadorAtual.position.lng
+                    }]
+                };
+                
+                // Adiciona à camada selecionada
+                if (!window.desenhosCamadasNovas[camadaAtual]) {
+                    window.desenhosCamadasNovas[camadaAtual] = [];
+                }
+                window.desenhosCamadasNovas[camadaAtual].push(marcadorAtual);
+                
+                // Adiciona ao arrayCamadas também
+                if (!arrayCamadas[camadaAtual]) {
+                    arrayCamadas[camadaAtual] = [];
+                }
+                arrayCamadas[camadaAtual].push(marcadorAtual);
+                
+                // O listener já foi adicionado quando o marcador foi criado, não precisa adicionar novamente
+                console.log('Marcador criado (sem descrição) na camada:', camadaNomeTexto);
+                marcadorAtual = null;
+            }
+            desenhoAguardandoDescricao = null;
+        });
+        
+        // Função para mostrar InfoWindow do marcador com descrição editável
+        function mostrarInfoWindowMarcador(marcador) {
+            if (!marcador) return;
+            
+            // Se o marcador ainda não tem infoDesenho, cria um objeto vazio
+            if (!marcador.infoDesenho) {
+                marcador.infoDesenho = {
+                    descricao: '',
+                    tipo: 'marcador'
+                };
+            }
+            
+            const descricao = marcador.infoDesenho.descricao || '';
+            
+            let conteudoHTML = '';
+            
+            // Se estiver no modo de marcador, permite edição
+            if (modoMarcador) {
+                conteudoHTML = `
+                    <div style="min-width: 200px; padding: 10px;">
+                        <h6 style="margin-bottom: 10px;">Descrição do Marcador</h6>
+                        <textarea id="editDescricaoMarcador" class="form-control" rows="4" style="margin-bottom: 10px;">${descricao}</textarea>
+                        <div style="text-align: right;">
+                            <button id="btnSalvarDescricaoMarcador" class="btn btn-sm btn-primary">Salvar</button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                // Se não estiver no modo, apenas mostra o texto (sem edição)
+                conteudoHTML = `
+                    <div style="min-width: 200px; padding: 10px;">
+                        <h6 style="margin-bottom: 10px;">Descrição do Marcador</h6>
+                        <p style="margin: 0; white-space: pre-wrap;">${descricao || '(Sem descrição)'}</p>
+                    </div>
+                `;
+            }
+            
+            // Fecha InfoWindow anterior se existir
+            if (infoWindowMarcador) {
+                infoWindowMarcador.close();
+            }
+            
+            // Cria novo InfoWindow
+            infoWindowMarcador = new google.maps.InfoWindow({
+                content: conteudoHTML
+            });
+            
+            // Abre InfoWindow
+            infoWindowMarcador.open(MapFramework.map, marcador);
+            
+            // Adiciona listener para salvar descrição apenas se estiver no modo
+            if (modoMarcador) {
+                setTimeout(() => {
+                    $('#btnSalvarDescricaoMarcador').off('click').on('click', function() {
+                        const novaDescricao = $('#editDescricaoMarcador').val().trim();
+                        marcador.infoDesenho.descricao = novaDescricao;
+                        
+                        console.log('Descrição atualizada:', novaDescricao);
+                        console.log('Objeto completo:', marcador.infoDesenho);
+                        
+                        // Fecha InfoWindow
+                        if (infoWindowMarcador) {
+                            infoWindowMarcador.close();
+                        }
+                    });
+                }, 100);
+            }
+        }
+        
+        // Atualiza tornarDesenhosClicaveis para incluir marcadores
+        function tornarDesenhosClicaveis() {
+            Object.keys(window.desenhosCamadasNovas || {}).forEach(camadaId => {
+                if (window.desenhosCamadasNovas[camadaId]) {
+                    window.desenhosCamadasNovas[camadaId].forEach(desenho => {
+                        if (desenho && desenho.setOptions) {
+                            adicionarListenerCliqueDesenho(desenho);
+                        } else if (desenho instanceof google.maps.marker.AdvancedMarkerElement) {
+                            // Para marcadores, adiciona listener de clique
+                            if (!listenersDesenhos.has(desenho)) {
+                                const listener = desenho.addListener('click', function() {
+                                    mostrarInfoWindowMarcador(desenho);
+                                });
+                                listenersDesenhos.set(desenho, listener);
+                            }
+                        }
+                    });
+                }
+            });
+        }
     </script>
 </body>
 
