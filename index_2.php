@@ -1533,6 +1533,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             piscina: [],
             lote: [],
             poligono_lote: [],
+            lote_ortofoto: [],
             quarteirao: [],
             streetview: [],
             semCamadas: []
@@ -2586,7 +2587,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         // Checkbox dos Lotes
         $('#chkPoligono_lote').on('change', function() {
             const visivel = $(this).is(':checked');
-            MapFramework.alternarVisibilidadeCamada('poligono_lote', visivel);
+            MapFramework.alternarVisibilidadeCamada('lote_ortofoto', visivel);
         });
 
         $('#chkPrefeitura').on('change', function() {
@@ -5921,11 +5922,12 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             $('#new_checkLotes').change(function() {
                 const isChecked = $(this).is(':checked');
 
-                // Usa a função do framework para mostrar/ocultar lotes
-                if (MapFramework && MapFramework.toggleLotesGeojson) {
-                    MapFramework.toggleLotesGeojson(isChecked);
+                // Controla a camada poligono_lote
+                if (MapFramework && MapFramework.alternarVisibilidadeCamada) {
+                    MapFramework.alternarVisibilidadeCamada('poligono_lote', isChecked);
                 }
 
+                /*
                 // Mostra/oculta o controle de desenhos da prefeitura
                 const controle = $('#controleDesenhosPrefeitura');
                 if (isChecked) {
@@ -5935,6 +5937,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 } else {
                     controle.removeClass('show');
                 }
+                */
             });
         });
     </script>

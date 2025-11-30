@@ -1272,6 +1272,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                         Lotes Ortofoto
                                     </label>
                                 </div>
+                                <!--
                                 <div class="ms-3 mt-2" id="submenuLotes">
                                     <div class="form-check">
                                         <input class="form-check-input" type="radio" name="tipoLotes" id="radioLote_todos" value="todos" checked>
@@ -1286,6 +1287,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                         </label>
                                     </div>
                                 </div>
+                                -->
                             </li>
                             <li>
                                 <div class="form-check">
@@ -2592,6 +2594,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             lotesPref: [],
             lote: [],
             poligono_lote: [],
+            lote_ortofoto: [],
             quarteirao: [],
             imagens_aereas: [],
             streetview: [],
@@ -2750,7 +2753,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         // Checkbox dos Lotes
         $('#chkPoligono_lote').on('change', function() {
             const visivel = $(this).is(':checked');
-            MapFramework.alternarVisibilidadeCamada('poligono_lote', visivel);
+            MapFramework.alternarVisibilidadeCamada('lote_ortofoto', visivel);
         });
 
         $('#chkPrefeitura').on('change', function() {
@@ -2801,14 +2804,19 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             // Mostra/oculta o botão de filtros
             if (visivel) {
                 $('#btnFiltroCores').fadeIn(200);
-                // Aplica o filtro atual quando ativa os marcadores
-                aplicarFiltroCores();
+                // Mostra TODOS os marcadores quando ativa o checkbox principal
+                // NÃO aplica filtro aqui - os filtros de cores são controlados pelos checkboxes de cores
+                if (MapFramework && MapFramework.alternarVisibilidadeTodosMarcadores) {
+                    MapFramework.alternarVisibilidadeTodosMarcadores(true);
+                }
             } else {
                 $('#btnFiltroCores').fadeOut(200);
                 $('#divFiltroCores').fadeOut(150);
                 $('#btnFiltroCores').removeClass('aberto');
                 // Oculta todos os marcadores quando desativa
-                if (arrayCamadas.marcador_quadra) {
+                if (MapFramework && MapFramework.alternarVisibilidadeTodosMarcadores) {
+                    MapFramework.alternarVisibilidadeTodosMarcadores(false);
+                } else if (arrayCamadas.marcador_quadra) {
                     arrayCamadas.marcador_quadra.forEach(marker => {
                         marker.setMap(null);
                     });
@@ -2895,6 +2903,39 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             aplicarFiltroCores();
         });
 
+        // Função auxiliar para normalizar cor (converte RGB para hex e remove espaços)
+        function normalizarCor(cor) {
+            if (!cor) return '';
+            cor = cor.trim().toLowerCase();
+            
+            // Se já é hexadecimal, retorna em minúsculas
+            if (cor.startsWith('#')) {
+                return cor;
+            }
+            
+            // Se é RGB, converte para hex
+            const rgbMatch = cor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (rgbMatch) {
+                const r = parseInt(rgbMatch[1]).toString(16).padStart(2, '0');
+                const g = parseInt(rgbMatch[2]).toString(16).padStart(2, '0');
+                const b = parseInt(rgbMatch[3]).toString(16).padStart(2, '0');
+                return `#${r}${g}${b}`;
+            }
+            
+            // Se é nome de cor conhecido, converte
+            const coresNomes = {
+                'red': '#e84646',
+                'yellow': '#eddf47',
+                'orange': '#ed7947',
+                'green': '#32cd32',
+                'blue': '#47cced',
+                'gray': '#7c7c7c',
+                'grey': '#7c7c7c'
+            };
+            
+            return coresNomes[cor] || cor;
+        }
+
         // Função para aplicar filtro de cores nos marcadores
         function aplicarFiltroCores() {
             if (!arrayCamadas.marcador_quadra || arrayCamadas.marcador_quadra.length === 0) {
@@ -2912,67 +2953,62 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 return;
             }
 
-            // Verifica se estamos no modo cadastro (quarteirão selecionado)
-            const modoCadastro = quarteiraoAtualSelecionado !== null;
+            // Verifica se TODOS os checkboxes de cores estão marcados
+            const todosCoresMarcados = $('#chkVermelho').is(':checked') && 
+                                       $('#chkAmarelo').is(':checked') && 
+                                       $('#chkLaranja').is(':checked') && 
+                                       $('#chkVerde').is(':checked') && 
+                                       $('#chkAzul').is(':checked') && 
+                                       $('#chkCinza').is(':checked');
 
-            if (modoCadastro) {
-                // No modo cadastro, se checkbox "Imóveis" está marcado, mostra TODOS os marcadores
-                // Senão, mostra apenas os do quarteirão selecionado
-                arrayCamadas.marcador_quadra.forEach(marker => {
-                    const corMarcador = marker.content.style.backgroundColor;
-                    let deveMostrar = false;
-
-                    // Mapeia cores para checkboxes (suporta RGB e hexadecimal)
-                    if (corMarcador.includes('#e84646') || corMarcador.includes('rgb(232, 70, 70)') || corMarcador === 'red') { // Vermelho
-                        deveMostrar = $('#chkVermelho').is(':checked');
-                    } else if (corMarcador.includes('#eddf47') || corMarcador.includes('rgb(237, 223, 71)')) { // Amarelo
-                        deveMostrar = $('#chkAmarelo').is(':checked');
-                    } else if (corMarcador.includes('#ed7947') || corMarcador.includes('rgb(237, 121, 71)')) { // Laranja
-                        deveMostrar = $('#chkLaranja').is(':checked');
-                    } else if (corMarcador.includes('#32CD32') || corMarcador.includes('rgb(50, 205, 50)')) { // Verde
-                        deveMostrar = $('#chkVerde').is(':checked');
-                    } else if (corMarcador.includes('#47cced') || corMarcador.includes('rgb(71, 204, 237)')) { // Azul
-                        deveMostrar = $('#chkAzul').is(':checked');
-                    } else if (corMarcador.includes('#7c7c7c') || corMarcador.includes('rgb(124, 124, 124)')) { // Azul
-                        deveMostrar = $('#chkCinza').is(':checked');
-                    }
-
-                    // Mostra ou oculta o marcador baseado no filtro
-                    if (deveMostrar) {
-                        marker.setMap(MapFramework.map);
-                    } else {
-                        marker.setMap(null);
-                    }
-                });
-            } else {
-                // No modo normal, filtra todos os marcadores
-                arrayCamadas.marcador_quadra.forEach(marker => {
-                    const corMarcador = marker.content.style.backgroundColor;
-                    let deveMostrar = false;
-
-                    // Mapeia cores para checkboxes (suporta RGB e hexadecimal)
-                    if (corMarcador.includes('#e84646') || corMarcador.includes('rgb(232, 70, 70)') || corMarcador === 'red') { // Vermelho
-                        deveMostrar = $('#chkVermelho').is(':checked');
-                    } else if (corMarcador.includes('#eddf47') || corMarcador.includes('rgb(237, 223, 71)')) { // Amarelo
-                        deveMostrar = $('#chkAmarelo').is(':checked');
-                    } else if (corMarcador.includes('#ed7947') || corMarcador.includes('rgb(237, 121, 71)')) { // Laranja
-                        deveMostrar = $('#chkLaranja').is(':checked');
-                    } else if (corMarcador.includes('#32CD32') || corMarcador.includes('rgb(50, 205, 50)')) { // Verde
-                        deveMostrar = $('#chkVerde').is(':checked');
-                    } else if (corMarcador.includes('#47cced') || corMarcador.includes('rgb(71, 204, 237)')) { // Azul
-                        deveMostrar = $('#chkAzul').is(':checked');
-                    } else if (corMarcador.includes('#7c7c7c') || corMarcador.includes('rgb(124, 124, 124)')) { // Azul
-                        deveMostrar = $('#chkCinza').is(':checked');
-                    }
-
-                    // Mostra ou oculta o marcador baseado no filtro
-                    if (deveMostrar) {
-                        marker.setMap(MapFramework.map);
-                    } else {
-                        marker.setMap(null);
-                    }
-                });
+            // Se todos os checkboxes de cores estão marcados, mostra TODOS os marcadores
+            if (todosCoresMarcados) {
+                if (MapFramework && MapFramework.alternarVisibilidadeTodosMarcadores) {
+                    MapFramework.alternarVisibilidadeTodosMarcadores(true);
+                }
+                return; // Não precisa aplicar filtro
             }
+
+            // Mapeamento de cores para checkboxes (em formato normalizado)
+            const coresMap = {
+                '#e84646': 'chkVermelho',      // Vermelho
+                '#eddf47': 'chkAmarelo',      // Amarelo
+                '#ed7947': 'chkLaranja',      // Laranja
+                '#32cd32': 'chkVerde',        // Verde
+                '#47cced': 'chkAzul',         // Azul
+                '#7c7c7c': 'chkCinza'          // Cinza
+            };
+
+            arrayCamadas.marcador_quadra.forEach(marker => {
+                // Tenta obter a cor do marker.corMarcador primeiro (cor original do banco)
+                // Se não existir, tenta obter do style.backgroundColor
+                let corBruta = marker.corMarcador || '';
+                if (!corBruta && marker.content && marker.content.style) {
+                    corBruta = marker.content.style.backgroundColor || marker.content.style.background || '';
+                }
+                
+                // Normaliza a cor para formato hexadecimal
+                const corNormalizada = normalizarCor(corBruta);
+                
+                // Verifica se a cor está no mapeamento
+                const checkboxId = coresMap[corNormalizada];
+                let deveMostrar = false;
+                let corMapeada = false;
+
+                if (checkboxId) {
+                    // Cor está mapeada, verifica o checkbox correspondente
+                    deveMostrar = $('#' + checkboxId).is(':checked');
+                    corMapeada = true;
+                }
+
+                // Se a cor não foi mapeada, sempre mostra (cores desconhecidas aparecem sempre)
+                // Se foi mapeada, mostra baseado no checkbox
+                if (!corMapeada || deveMostrar) {
+                    marker.setMap(MapFramework.map);
+                } else {
+                    marker.setMap(null);
+                }
+            });
         }
 
 
@@ -6564,9 +6600,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             $('#new_checkLotes').change(function() {
                 const isChecked = $(this).is(':checked');
 
-                // Usa a função do framework para mostrar/ocultar lotes
-                if (MapFramework && MapFramework.toggleLotesGeojson) {
-                    MapFramework.toggleLotesGeojson(isChecked);
+                // Controla a camada poligono_lote
+                if (MapFramework && MapFramework.alternarVisibilidadeCamada) {
+                    MapFramework.alternarVisibilidadeCamada('poligono_lote', isChecked);
                 }
 
                 // Mostra/oculta o controle de desenhos da prefeitura

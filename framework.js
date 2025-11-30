@@ -2068,7 +2068,26 @@ const MapFramework = {
 
                         const camadaNome = (desenho.camada || 'semCamadas').toLowerCase();
                         const tipo = desenho.tipo;
-                        const coords = JSON.parse(desenho.coordenadas);
+                        
+                        // Tratamento de erro para JSON truncado ou malformado
+                        let coords;
+                        try {
+                            if (!desenho.coordenadas) {
+                                console.warn('⚠️ Desenho ID', desenho.id, 'sem coordenadas - pulando...');
+                                return; // Pula para o próximo
+                            }
+                            coords = JSON.parse(desenho.coordenadas);
+                        } catch (error) {
+                            const coordLength = desenho.coordenadas ? desenho.coordenadas.length : 0;
+                            const isTruncated = coordLength >= 65530;
+                            
+                            if (isTruncated) {
+                                console.error('❌ Desenho ID', desenho.id, '- JSON TRUNCADO (tamanho:', coordLength, 'bytes). Dados cortados no limite do tipo TEXT (65535 bytes). Pulando este desenho...');
+                            } else {
+                                console.error('❌ Desenho ID', desenho.id, '- Erro ao fazer parse do JSON:', error.message, '- Pulando este desenho...');
+                            }
+                            return; // Pula para o próximo desenho
+                        }
 
                         var cores = "black";
 
@@ -2100,8 +2119,14 @@ const MapFramework = {
                             }else if (camadaNome === 'poligono_lote') {
                                 zIndexValue = 6; 
                                 strokeLine = 2;
+                            }else if (camadaNome === 'lote_ortofoto') {
+                                zIndexValue = 6; 
+                                strokeLine = 2;
                             }
 
+                            // Se for poligono_lote, não adiciona ao mapa inicialmente (checkbox desmarcado por padrão)
+                            const mapaInicial = (camadaNome === 'poligono_lote') ? null : MapFramework.map;
+                            
                             objeto = new google.maps.Polygon({
                                 paths: coords,
                                 strokeColor: strokeColorLine,
@@ -2110,7 +2135,7 @@ const MapFramework = {
                                 fillColor: cores,
                                 fillOpacity: 0.30,
                                 editable: false,
-                                map: MapFramework.map,
+                                map: mapaInicial,
                                 zIndex: zIndexValue
                             });
 
@@ -5613,6 +5638,12 @@ const MapFramework = {
                         if (!coords[0]) return;
                         let lat = coords[0].lat;
                         let lng = coords[0].lng;
+
+                        if(desenho.cor == 'red' || desenho.cor == '#FF0000'){
+                            var colorTextMarcador = 'white';
+                        }else{
+                            var colorTextMarcador = 'black';
+                        }
                         
                         // Cria HTML do marcador
                         let el = document.createElement('div');
@@ -5623,15 +5654,15 @@ const MapFramework = {
                         el.style.display = 'flex';
                         el.style.alignItems = 'center';
                         el.style.justifyContent = 'center';
-                        el.style.color = 'white';
+                        el.style.color = colorTextMarcador;
                         el.style.fontWeight = 'bold';
                         el.style.fontSize = '16px';
-                        el.style.border = '2px solid #fff';
+                        el.style.border = '2px solid ' + colorTextMarcador;
                         el.style.transform = 'translate(0, 10px)'; // Centraliza o marcador no ponto clicado
                         el.style.position = 'relative';
                         el.style.cursor = 'pointer';
                         el.className = 'marcador-personalizado';
-                        el.textContent = numeroMarcador.toString();
+                        el.textContent = numeroMarcador != null ? numeroMarcador.toString() : '';
 
                         // Cria marcador avançado
                         let marker = new google.maps.marker.AdvancedMarkerElement({

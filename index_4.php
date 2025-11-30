@@ -1309,6 +1309,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             piscina: [],
             lote: [],
             poligono_lote: [],
+            lote_ortofoto: [],
             quarteirao: [],
             streetview: [],
             streetview_fotos: [],
@@ -1556,14 +1557,15 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             // Checkbox dos Lotes Ortofoto (Polígono Lote)
             $('#chkPoligono_lote').on('change', function() {
                 const visivel = $(this).is(':checked');
-                MapFramework.alternarVisibilidadeCamada('poligono_lote', visivel);
+                MapFramework.alternarVisibilidadeCamada('lote_ortofoto', visivel);
             });
 
             // Checkbox dos Lotes Prefeitura
             $('#new_checkLotes').on('change', function() {
                 const visivel = $(this).is(':checked');
-                if (MapFramework && MapFramework.toggleLotesGeojson) {
-                    MapFramework.toggleLotesGeojson(visivel);
+                // Controla a camada poligono_lote
+                if (MapFramework && MapFramework.alternarVisibilidadeCamada) {
+                    MapFramework.alternarVisibilidadeCamada('poligono_lote', visivel);
                 }
             });
 
