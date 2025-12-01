@@ -1235,7 +1235,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkQuadras" checked>
+                                    <input class="form-check-input" type="checkbox" id="chkQuadras">
                                     <label class="form-check-label" for="chkQuadras">
                                         Quadras
                                     </label>
@@ -1243,7 +1243,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkUnidades" checked>
+                                    <input class="form-check-input" type="checkbox" id="chkUnidades">
                                     <label class="form-check-label" for="chkUnidades">
                                         Edificações
                                     </label>
@@ -1251,7 +1251,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkPiscinas" checked>
+                                    <input class="form-check-input" type="checkbox" id="chkPiscinas">
                                     <label class="form-check-label" for="chkPiscinas">
                                         Piscinas
                                     </label>
@@ -1259,7 +1259,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="new_checkLotes">
+                                    <input class="form-check-input" type="checkbox" id="new_checkLotes" checked>
                                     <label class="form-check-label" for="new_checkLotes">
                                         Lotes Prefeitura
                                     </label>
@@ -1267,7 +1267,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkPoligono_lote" checked>
+                                    <input class="form-check-input" type="checkbox" id="chkPoligono_lote">
                                     <label class="form-check-label" for="chkPoligono_lote">
                                         Lotes Ortofoto
                                     </label>
@@ -1291,7 +1291,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                             </li>
                             <li>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="chkLotes" checked>
+                                    <input class="form-check-input" type="checkbox" id="chkLotes">
                                     <label class="form-check-label" for="chkLotes">
                                         Cortes dos Lotes
                                     </label>

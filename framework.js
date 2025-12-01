@@ -2124,8 +2124,27 @@ const MapFramework = {
                                 strokeLine = 2;
                             }
 
-                            // Se for poligono_lote, não adiciona ao mapa inicialmente (checkbox desmarcado por padrão)
-                            const mapaInicial = (camadaNome === 'poligono_lote') ? null : MapFramework.map;
+                            // Lista de camadas que devem iniciar ocultas (checkboxes desmarcados por padrão)
+                            const camadasOcultasPorPadrao = [
+                                'quadra',           // chkQuadras
+                                'unidade',          // chkUnidades
+                                'piscina',          // chkPiscinas
+                                'lote_ortofoto',    // chkPoligono_lote
+                                'lote',             // chkLotes
+                                'condominios_verticais',    // chkCondominiosVerticais
+                                'condominios_horizontais',  // chkCondominiosHorizontais
+                                'areas_publicas',   // chkAreasPublicas
+                                'prefeitura',       // chkPrefeitura
+                                'marcador',         // chkMarcadores
+                                'marcador_quadra',  // chkMarcadores
+                                'quarteirao',     // chkQuarteiroes
+                                'imagens_aereas',   // chkImagensAereas
+                                'streetview',       // chkStreetview
+                                'streetview_fotos'  // chkStreetviewFotos
+                            ];
+                            
+                            // Se a camada estiver na lista de ocultas por padrão, não adiciona ao mapa inicialmente
+                            const mapaInicial = camadasOcultasPorPadrao.includes(camadaNome) ? null : MapFramework.map;
                             
                             objeto = new google.maps.Polygon({
                                 paths: coords,
@@ -2148,13 +2167,35 @@ const MapFramework = {
                             objeto.id_quadricula = desenho.quadricula;
 
                         } else if (tipo === 'polilinha') {
+                            // Lista de camadas que devem iniciar ocultas (checkboxes desmarcados por padrão)
+                            const camadasOcultasPorPadrao = [
+                                'quadra',           // chkQuadras
+                                'unidade',          // chkUnidades
+                                'piscina',          // chkPiscinas
+                                'lote_ortofoto',    // chkPoligono_lote
+                                'lote',             // chkLotes
+                                'condominios_verticais',    // chkCondominiosVerticais
+                                'condominios_horizontais',  // chkCondominiosHorizontais
+                                'areas_publicas',   // chkAreasPublicas
+                                'prefeitura',       // chkPrefeitura
+                                'marcador',         // chkMarcadores
+                                'marcador_quadra',  // chkMarcadores
+                                'quarteirao',       // chkQuarteiroes
+                                'imagens_aereas',   // chkImagensAereas
+                                'streetview',       // chkStreetview
+                                'streetview_fotos'  // chkStreetviewFotos
+                            ];
+                            
+                            // Se a camada estiver na lista de ocultas por padrão, não adiciona ao mapa inicialmente
+                            const mapaInicialPolilinha = camadasOcultasPorPadrao.includes(camadaNome) ? null : MapFramework.map;
+                            
                             objeto = new google.maps.Polyline({
                                 path: coords,
                                 strokeColor: cores,
                                 strokeOpacity: 1.0,
                                 strokeWeight: 3,
                                 editable: false,
-                                map: MapFramework.map,
+                                map: mapaInicialPolilinha,
                                 zIndex: 8 // Lotes acima de tudo
                             });
 
@@ -5647,8 +5688,8 @@ const MapFramework = {
                         
                         // Cria HTML do marcador
                         let el = document.createElement('div');
-                        el.style.padding = '0 10px';
-                        el.style.height = '32px';
+                        el.style.padding = '0 5px';
+                        el.style.height = '16px';
                         el.style.background = desenho.cor;
                         el.style.borderRadius = '10px';
                         el.style.display = 'flex';
@@ -5656,7 +5697,7 @@ const MapFramework = {
                         el.style.justifyContent = 'center';
                         el.style.color = colorTextMarcador;
                         el.style.fontWeight = 'bold';
-                        el.style.fontSize = '16px';
+                        el.style.fontSize = '8px';
                         el.style.border = '2px solid ' + colorTextMarcador;
                         el.style.transform = 'translate(0, 10px)'; // Centraliza o marcador no ponto clicado
                         el.style.position = 'relative';
