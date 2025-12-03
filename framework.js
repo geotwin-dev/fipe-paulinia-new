@@ -42,15 +42,15 @@ const MapFramework = {
     modoEdicao: false,
     desenhosEditados: [], // Array para armazenar desenhos que foram editados
 
-        // Modo Crop
-        crop: {
-            ativo: false,
-            poligonoTemporario: null,
-            listenerClick: null,
-            listenerRightClick: null,
-            cliqueEmVertice: false,
-            estadosOriginais: [] // Armazena estados originais dos objetos clicáveis
-        },
+    // Modo Crop
+    crop: {
+        ativo: false,
+        poligonoTemporario: null,
+        listenerClick: null,
+        listenerRightClick: null,
+        cliqueEmVertice: false,
+        estadosOriginais: [] // Armazena estados originais dos objetos clicáveis
+    },
 
     selecionarDesenho: function (objeto) {
         if (this.desenho.temporario) return; // Não selecionar durante desenho
@@ -1053,6 +1053,19 @@ const MapFramework = {
             }
         }
 
+        let optionAlert;
+
+        //⚠️
+        let observacaoAlert = poligono.obs;
+        let idxAlert = observacaoAlert.indexOf("⚠️");
+        let obsFiltrada = idxAlert !== -1 ? observacaoAlert.substring(idxAlert) : observacaoAlert;
+        
+        if (observacaoAlert.includes("⚠️")) {
+            optionAlert = `<span>Observação: <b>${obsFiltrada}</b></span>`;
+        } else {
+            optionAlert = `<button class="btn btn-primary" onclick="alert('${observacaoAlert}')">Observação</button>`;
+        }
+
         // Variáveis fictícias (serão populadas futuramente)
         var area_terr_pref = '0';
         var area_const_pref = '0';
@@ -1065,7 +1078,10 @@ const MapFramework = {
         // Função para criar o conteúdo HTML do InfoWindow
         const criarConteudoHTML = (dadosCadastro) => {
             let conteudoHTML = '<div style="padding: 15px; min-width: 400px; max-width: 500px; font-size: 13px;">';
-            conteudoHTML += '<h6 style="margin: 0px 0 15px 0; color: #333; border-bottom: 2px solid #0066cc; padding-bottom: 8px;">Informações do Imóvel</h6>';
+            conteudoHTML += `<div style="display: flex;margin-bottom: 15px; flex-direction: row; justify-content: space-between; align-items: center; border-bottom: 2px solid #0066cc; ">`;
+            conteudoHTML += `<h6 style="margin: 0; color: #333; padding-bottom: 8px;">Informações do Imóvel</h6>
+                            <span style="font-style: italic; font-size: 12px; color: #666;">${idDesenho}</span>`;
+            conteudoHTML += '</div>';
 
             // textos ditados
             conteudoHTML += `<div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 15px;">
@@ -1080,81 +1096,83 @@ const MapFramework = {
 
             // Criação das abas
             conteudoHTML += '<div style="margin-bottom: 15px;">';
-            conteudoHTML += '<div style="display: flex; border-bottom: 2px solid #ddd; margin-bottom: 15px;">';
+                conteudoHTML += '<div style="display: flex; border-bottom: 2px solid #ddd; margin-bottom: 15px;">';
             
-            // Aba Cadastro
-            conteudoHTML += '<button class="aba-poligono-lote" data-aba="cadastro" style="flex: 1; padding: 10px; border: none; background-color: #0066cc; color: white; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0; margin-right: 2px;">Cadastro</button>';
+                    // Aba Cadastro
+                    conteudoHTML += '<button class="aba-poligono-lote" data-aba="cadastro" style="flex: 1; padding: 10px; border: none; background-color: #0066cc; color: white; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0; margin-right: 2px;">Cadastro</button>';
+                    
+                    // Aba IPTU
+                    conteudoHTML += '<button class="aba-poligono-lote" data-aba="iptu" style="flex: 1; padding: 10px; border: none; background-color: #ccc; color: #666; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0; margin-right: 2px;">IPTU</button>';
+                    
+                    // Aba Situação Atual
+                    conteudoHTML += '<button class="aba-poligono-lote" data-aba="situacao" style="flex: 1; padding: 10px; border: none; background-color: #ccc; color: #666; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0;">Situação Atual</button>';
+                    
+                conteudoHTML += '</div>'; // Fecha div das abas
             
-            // Aba IPTU
-            conteudoHTML += '<button class="aba-poligono-lote" data-aba="iptu" style="flex: 1; padding: 10px; border: none; background-color: #ccc; color: #666; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0; margin-right: 2px;">IPTU</button>';
+                // Conteúdo da aba Cadastro (ativa por padrão)
+                conteudoHTML += '<div id="conteudo-aba-cadastro" class="conteudo-aba-poligono-lote" style="display: block; padding: 10px;">';
+                conteudoHTML += `
+                    <table class="table table-bordered" style="font-size: 12px;">
+                        <thead>
+                            <tr>
+                                <th>Imob_id</th>
+                                <th>Quarteirão</th>
+                                <th>Quadra</th>
+                                <th>Lote</th>
+                                <th>Á.Terreno</th>
+                                <th>Á.Construída</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-cadastro1">
+                        </tbody>
+                    </table>
+                `;
+                conteudoHTML += '</div>';
             
-            // Aba Situação Atual
-            conteudoHTML += '<button class="aba-poligono-lote" data-aba="situacao" style="flex: 1; padding: 10px; border: none; background-color: #ccc; color: #666; cursor: pointer; font-weight: bold; border-radius: 3px 3px 0 0;">Situação Atual</button>';
+                // Conteúdo da aba IPTU
+                conteudoHTML += '<div id="conteudo-aba-iptu" class="conteudo-aba-poligono-lote" style="display: none; padding: 10px;">';
+                conteudoHTML += `
+                    <table class="table table-bordered" style="font-size: 12px;">
+                        <thead>
+                            <tr>
+                                <th>Imob_id</th>
+                                <th>Ident.</th>
+                                <th>Á.Terr.</th>
+                                <th>Á.Constr.</th>
+                                <th>Utilização</th>
+                                <th>Tipo Construção</th>
+                                <th>Classif.</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-cadastro2">
+                        </tbody>
+                    </table>
+                `;
+                conteudoHTML += '</div>';
             
-            conteudoHTML += '</div>'; // Fecha div das abas
+                // Conteúdo da aba Situação Atual
+                conteudoHTML += '<div id="conteudo-aba-situacao" class="conteudo-aba-poligono-lote" style="display: none; padding: 10px;">';
+                conteudoHTML += `
+                    <table class="table table-bordered" style="font-size: 12px;">
+                        <thead>
+                            <tr>
+                                <th>Unidade</th>
+                                <th>Á.Constr.</th>
+                                <th>Utiliz.</th>
+                                <th>Tipo Constr.</th>
+                                <th>Classif.</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-cadastro3">
+                        </tbody>
+                    </table>
+                `;
+                conteudoHTML += '</div>';
             
-            // Conteúdo da aba Cadastro (ativa por padrão)
-            conteudoHTML += '<div id="conteudo-aba-cadastro" class="conteudo-aba-poligono-lote" style="display: block; min-height: 200px; padding: 10px;">';
-            conteudoHTML += `
-                <table class="table table-bordered" style="font-size: 12px;">
-                    <thead>
-                        <tr>
-                            <th>Imob_id</th>
-                            <th>Quarteirão</th>
-                            <th>Quadra</th>
-                            <th>Lote</th>
-                            <th>Á.Terreno</th>
-                            <th>Á.Construída</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-cadastro1">
-                    </tbody>
-                </table>
-            `;
-            conteudoHTML += '</div>';
-            
-            // Conteúdo da aba IPTU
-            conteudoHTML += '<div id="conteudo-aba-iptu" class="conteudo-aba-poligono-lote" style="display: none; min-height: 200px; padding: 10px;">';
-            conteudoHTML += `
-                <table class="table table-bordered" style="font-size: 12px;">
-                    <thead>
-                        <tr>
-                            <th>Imob_id</th>
-                            <th>Ident.</th>
-                            <th>Á.Terr.</th>
-                            <th>Á.Constr.</th>
-                            <th>Utilização</th>
-                            <th>Tipo Construção</th>
-                            <th>Classif.</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-cadastro2">
-                    </tbody>
-                </table>
-            `;
-            conteudoHTML += '</div>';
-            
-            // Conteúdo da aba Situação Atual
-            conteudoHTML += '<div id="conteudo-aba-situacao" class="conteudo-aba-poligono-lote" style="display: none; min-height: 200px; padding: 10px;">';
-            conteudoHTML += `
-                <table class="table table-bordered" style="font-size: 12px;">
-                    <thead>
-                        <tr>
-                            <th>Unidade</th>
-                            <th>Á.Constr.</th>
-                            <th>Utiliz.</th>
-                            <th>Tipo Constr.</th>
-                            <th>Classif.</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-cadastro3">
-                    </tbody>
-                </table>
-            `;
-            conteudoHTML += '</div>';
-            
-            conteudoHTML += '</div>'; // Fecha div do container das abas
-            conteudoHTML += '</div>'; // Fecha div principal
+            conteudoHTML += '</div><hr>'; // Fecha div do container das abas
+
+            conteudoHTML += '<div>' + optionAlert;
+            conteudoHTML += '</div>'; // Fecha div do conteúdo HTML
 
             return conteudoHTML;
         };
@@ -2105,6 +2123,8 @@ const MapFramework = {
 
                         let objeto = null;
 
+                        let observacoes_desenho = desenho.obs;
+
                         if (tipo === 'poligono') {
                             let zIndexValue = 5; // Padrão para quadras
                             let strokeLine = 4;
@@ -2165,6 +2185,7 @@ const MapFramework = {
                             objeto.identificador = desenho.id;
                             objeto.id_desenho = desenho.id_desenho;
                             objeto.id_quadricula = desenho.quadricula;
+                            objeto.obs = observacoes_desenho;
 
                         } else if (tipo === 'polilinha') {
                             // Lista de camadas que devem iniciar ocultas (checkboxes desmarcados por padrão)
@@ -2202,6 +2223,8 @@ const MapFramework = {
                             objeto.identificador = desenho.id;
                             objeto.id_desenho = desenho.id_desenho;
                             objeto.id_quadricula = desenho.quadricula;
+                            objeto.obs = observacoes_desenho;
+
                         }
 
 
@@ -5761,6 +5784,19 @@ const MapFramework = {
                                 </div>
                             `;
 
+                            let optionAlert2 = '';
+                            let observacaoAlert2 = desenho.obs;
+                            let idxAlert2 = observacaoAlert2.indexOf("⚠️");
+                            let obsFiltrada2 = idxAlert2 !== -1 ? observacaoAlert2.substring(idxAlert2) : observacaoAlert2;
+                            
+                            if (observacaoAlert2.includes("⚠️")) {
+                                optionAlert2 = `<span>Observação: <b>${obsFiltrada2}</b></span>`;
+                            } else {
+                                optionAlert2 = `<button class="btn btn-primary" onclick="alert('${observacaoAlert2}')">Observação</button>`;
+                            }
+
+                            const conteudoObservacaoHTML = `<div style="margin-top: 10px;">${optionAlert2}</div>`;
+
                             if (dadosMorador) {
                                 // Se encontrou dados do morador, exibe TODOS os campos dinamicamente
                                 let camposHTML = '';
@@ -5845,6 +5881,7 @@ const MapFramework = {
                                             ${conteudoIptuHTML}
 											${conteudoEnderecosHTML}
                                         </div>
+                                        ${conteudoObservacaoHTML}
                                     </div>
                                 `;
                             } else {
@@ -5859,6 +5896,7 @@ const MapFramework = {
                                                 Dados do cadastro não encontrados
                                             </p>
                                         </div>
+                                        ${conteudoObservacaoHTML}
                                     </div>
                                 `;
                             }
