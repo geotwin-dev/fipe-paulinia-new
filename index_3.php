@@ -36,28 +36,23 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
     <link href="bootstrap.min.css" rel="stylesheet">
 
     <!--Conexão com fonts do Google-->
-    <link href='https://fonts.googleapis.com/css?family=Muli' rel='stylesheet'>
+    <link href='bibliotecas/font_Muli.css' rel='stylesheet'>
 
     <!-- Font Awesome para ícones -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="bibliotecas/all.min.css">
 
     <!--Conexão com biblioteca de BUFFER para poligono-->
-    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    <script src="bibliotecas/turf.min.js" defer></script>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+    <script src="bibliotecas/proj4.js" defer></script>
 
     <!-- Google Maps API -->
     <script src="apiGoogle.js"></script>
 
     <!-- toGeoJSON -->
-    <script src="https://unpkg.com/togeojson@0.16.0/togeojson.js"></script>
-    <!-- TURF.js para operações geoespaciais -->
-    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    <script src="bibliotecas/togeojson.js" defer></script>
     <!-- Nosso framework -->
-    <script src="framework.js"></script>
-
-    <!--CSS GERAL DA PAGINA DE MAPA -->
-    <link href="styleMap.css" rel="stylesheet">
+    <script src="framework.js" defer></script>
 
     <style>
         html,
@@ -3102,6 +3097,88 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             }
         });
 
+        // Função para carregar loteamentos de forma invisível (apenas dados, sem desenhar no mapa)
+        async function carregarLoteamentosInvisiveis(quadricula) {
+            try {
+                console.log('📦 Carregando loteamentos em background para:', quadricula);
+                
+                const response = await fetch(`loteamentos_quadriculas/json/resultados_quadricula_${quadricula}.json`, {
+                    cache: "no-store"
+                });
+                
+                if (!response.ok) {
+                    console.warn('⚠️ Arquivo de loteamentos não encontrado para quadrícula:', quadricula);
+                    return;
+                }
+
+                const dados = await response.json();
+
+                if (!dados || !dados.resultados || !dados.resultados.loteamentos || dados.resultados.loteamentos.length === 0) {
+                    console.warn('⚠️ Nenhum loteamento encontrado na quadrícula:', quadricula);
+                    return;
+                }
+
+                const loteamentos = dados.resultados.loteamentos;
+                const loteamentosInvisiveis = [];
+
+                loteamentos.forEach((loteamento) => {
+                    if (loteamento.coordenadas && loteamento.coordenadas.length > 0) {
+                        const primeiraCoordenada = loteamento.coordenadas[0];
+
+                        if (primeiraCoordenada.type === 'Polygon' && primeiraCoordenada.coordinates) {
+                            try {
+                                const path = primeiraCoordenada.coordinates[0].map(coord => ({
+                                    lat: coord[1],
+                                    lng: coord[0]
+                                }));
+
+                                if (path.length >= 3) {
+                                    // Cria polígono INVISÍVEL (não é adicionado ao mapa)
+                                    const polygon = new google.maps.Polygon({
+                                        paths: path,
+                                        map: null // NÃO desenha no mapa
+                                    });
+                                    polygon.nomeLoteamento = loteamento.nome;
+                                    loteamentosInvisiveis.push(polygon);
+                                }
+                            } catch (error) {
+                                console.error(`Erro ao criar polígono invisível para ${loteamento.nome}:`, error);
+                            }
+
+                        } else if (primeiraCoordenada.type === 'MultiPolygon' && primeiraCoordenada.coordinates) {
+                            try {
+                                primeiraCoordenada.coordinates.forEach((polygonCoords) => {
+                                    const path = polygonCoords[0].map(coord => ({
+                                        lat: coord[1],
+                                        lng: coord[0]
+                                    }));
+
+                                    // Cria polígono INVISÍVEL
+                                    const polygon = new google.maps.Polygon({
+                                        paths: path,
+                                        map: null // NÃO desenha no mapa
+                                    });
+                                    polygon.nomeLoteamento = loteamento.nome;
+                                    loteamentosInvisiveis.push(polygon);
+                                });
+                            } catch (error) {
+                                console.error(`Erro ao criar MultiPolygon invisível para ${loteamento.nome}:`, error);
+                            }
+                        }
+                    }
+                });
+
+                // Salva os loteamentos invisíveis no cache do MapFramework
+                if (loteamentosInvisiveis.length > 0) {
+                    MapFramework.loteamentosCache = loteamentosInvisiveis;
+                    console.log(`✅ ${loteamentosInvisiveis.length} loteamentos carregados em background (invisíveis)`);
+                }
+
+            } catch (error) {
+                console.error('Erro ao carregar loteamentos em background:', error);
+            }
+        }
+
         // Checkbox Modo Cadastro (Loteamentos)
         let processandoModoCadastro = false;
 
@@ -3617,6 +3694,12 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     }
                 } else {}
             });
+            
+            // Salva os loteamentos no cache do MapFramework para uso posterior
+            if (typeof MapFramework !== 'undefined' && typeof MapFramework.cachearLoteamentos === 'function') {
+                MapFramework.cachearLoteamentos();
+            }
+            
             /*
             // Ajusta o zoom para mostrar todos os loteamentos
             if (window.loteamentosLayer.length > 0) {
@@ -3749,6 +3832,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             await MapFramework.carregarPlanilha();
 
             await MapFramework.carregarMarcadoresSalvos(dadosOrto[0]['quadricula']);
+
+            // Carrega loteamentos em background (invisíveis) para consulta
+            await carregarLoteamentosInvisiveis(dadosOrto[0]['quadricula']);
 
             await MapFramework.carregarImagensAereas(dadosOrto[0]['quadricula']);
 
@@ -7072,6 +7158,33 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 });
             });
         });
+
+        // ============================================================================
+        // FUNÇÃO PARA ALTERAR/EDITAR DESENHO - ABRE EM NOVA ABA
+        // ============================================================================
+        function alterarDesenhoNovo(idDesenho, quarteirao, loteamento, idDesenho2, quadricula) {
+            // Decodifica o loteamento (caso tenha caracteres especiais)
+            const loteamentoDecodificado = decodeURIComponent(loteamento);
+            
+            // Constrói a URL com os parâmetros
+            const params = new URLSearchParams({
+                id: idDesenho,
+                quarteirao: quarteirao || '',
+                loteamento: loteamentoDecodificado,
+                id_desenho: idDesenho2 || '',
+                quadricula: quadricula || ''
+            });
+            
+            // Define a página de destino (ALTERE AQUI o nome da página desejada)
+            const paginaDestino = 'index_3_novoEditar.php'; // ← ALTERE para o nome da sua página
+            
+            // Abre em nova aba
+            const url = `${paginaDestino}?${params.toString()}`;
+            window.open(url, '_blank');
+            
+        }
+
+        
     </script>
 
     <!-- Modal para gerenciar arquivos dos quarteirões -->

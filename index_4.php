@@ -38,28 +38,26 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
     <link href="bootstrap.min.css" rel="stylesheet">
 
     <!--Conexão com fonts do Google-->
-    <link href='https://fonts.googleapis.com/css?family=Muli' rel='stylesheet'>
+    <link href='bibliotecas/font_Muli.css' rel='stylesheet'>
 
     <!-- Font Awesome para ícones -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="bibliotecas/all.min.css">
     
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 
     <!--Conexão com biblioteca de BUFFER para poligono-->
-    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    <script src="bibliotecas/turf.min.js" defer></script>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+    <script src="bibliotecas/proj4.js" defer></script>
 
     <!-- Google Maps API -->
     <script src="apiGoogle.js"></script>
 
     <!-- toGeoJSON -->
-    <script src="https://unpkg.com/togeojson@0.16.0/togeojson.js"></script>
-    <!-- TURF.js para operações geoespaciais -->
-    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    <script src="bibliotecas/togeojson.js" defer></script>
     <!-- Nosso framework -->
-    <script src="framework.js"></script>
+    <script src="framework.js" defer></script>
 
     
 

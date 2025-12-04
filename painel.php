@@ -22,18 +22,18 @@ include("connection.php");
     <link href="bootstrap.min.css" rel="stylesheet">
 
     <!--Conexão com fonts do Google-->
-    <link href='https://fonts.googleapis.com/css?family=Muli' rel='stylesheet'>
+    <link href='bibliotecas/font_Muli.css' rel='stylesheet'>
 
     <!-- Font Awesome para ícones -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="bibliotecas/all.min.css">
 
     <!--Conexão com biblioteca de BUFFER para poligono-->
-    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    <script src="bibliotecas/turf.min.js" defer></script>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+    <script src="bibliotecas/proj4.js" defer></script>
     
     <!-- Biblioteca para conversão KML para GeoJSON -->
-    <script src="https://unpkg.com/@mapbox/togeojson@0.16.2/togeojson.js"></script>
+    <script src="bibliotecas/togeojson.js" defer></script>
 
     <!-- Google Maps API -->
     <script src="apiGoogle.js"></script>

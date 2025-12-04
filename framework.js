@@ -20,6 +20,7 @@ const MapFramework = {
     dadosMoradores: [],
     infoWindow: null,
     infoWindow_poligono_lote: null,
+    loteamentosCache: [], // Cache dos loteamentos para consulta mesmo quando não estão visíveis
 
     desenho: {
         modo: null,
@@ -1057,13 +1058,17 @@ const MapFramework = {
 
         //⚠️
         let observacaoAlert = poligono.obs;
-        let idxAlert = observacaoAlert.indexOf("⚠️");
-        let obsFiltrada = idxAlert !== -1 ? observacaoAlert.substring(idxAlert) : observacaoAlert;
-        
-        if (observacaoAlert.includes("⚠️")) {
-            optionAlert = `<span>Observação: <b>${obsFiltrada}</b></span>`;
-        } else {
-            optionAlert = `<button class="btn btn-primary" onclick="alert('${observacaoAlert}')">Observação</button>`;
+
+        if(observacaoAlert){
+
+            let idxAlert = observacaoAlert.indexOf("⚠️");
+            let obsFiltrada = idxAlert !== -1 ? observacaoAlert.substring(idxAlert) : observacaoAlert;
+            
+            if (observacaoAlert.includes("⚠️")) {
+                optionAlert = `<span>Observação: <b>${obsFiltrada}</b></span>`;
+            } else {
+                optionAlert = `<button class="btn btn-primary" onclick="alert('${observacaoAlert}')">Observação</button>`;
+            }
         }
 
         // Variáveis fictícias (serão populadas futuramente)
@@ -5674,6 +5679,92 @@ const MapFramework = {
         //console.log('Saiu do modo marcador e retornou ao estado anterior');
     },
 
+    acharQuarteirao: function(posicao){
+        let quarteiraoEncontrado = null;
+        
+        // Verifica se existe a camada de quarteirão
+        if (!arrayCamadas.quarteirao || arrayCamadas.quarteirao.length === 0) {
+            return null;
+        }
+        
+        // Cria um LatLng do Google Maps se ainda não for
+        let latLng;
+        if (posicao instanceof google.maps.LatLng) {
+            latLng = posicao;
+        } else {
+            latLng = new google.maps.LatLng(posicao.lat, posicao.lng);
+        }
+        
+        // Percorre os quarteirões para encontrar qual contém a posição
+        arrayCamadas.quarteirao.forEach(objQuarteirao => {
+            if (!objQuarteirao.polygon) return;
+            
+            // Verifica se o ponto está dentro do polígono do quarteirão
+            if (google.maps.geometry.poly.containsLocation(latLng, objQuarteirao.polygon)) {
+                // Retorna o nome do quarteirão (impreciso_name) que é o que aparece no mapa
+                quarteiraoEncontrado = objQuarteirao.properties?.impreciso_name || objQuarteirao.nome || objQuarteirao.id;
+            }
+        });
+        
+        return quarteiraoEncontrado;
+    },
+
+    acharLoteamento: function(posicao){
+        let loteamentoEncontrado = null;
+        
+        // Tenta usar primeiro a camada visível, depois o cache
+        let loteamentosParaBuscar = [];
+        
+        if (window.loteamentosLayer && window.loteamentosLayer.length > 0) {
+            loteamentosParaBuscar = window.loteamentosLayer;
+            console.log('📊 Usando loteamentos visíveis:', loteamentosParaBuscar.length);
+        } else if (this.loteamentosCache && this.loteamentosCache.length > 0) {
+            loteamentosParaBuscar = this.loteamentosCache;
+            console.log('📦 Usando loteamentos do cache:', loteamentosParaBuscar.length);
+        } else {
+            console.log('⚠️ Loteamentos não carregados. Marque o checkbox "Loteamentos" primeiro.');
+            return 'N/A';
+        }
+        
+        // Cria um LatLng do Google Maps se ainda não for
+        let latLng;
+        if (posicao instanceof google.maps.LatLng) {
+            latLng = posicao;
+        } else {
+            latLng = new google.maps.LatLng(posicao.lat, posicao.lng);
+        }
+        
+        console.log('🔍 Procurando loteamento para posição:', latLng.lat(), latLng.lng());
+        
+        // Percorre os loteamentos para encontrar qual contém a posição
+        loteamentosParaBuscar.forEach((polygon, index) => {
+            if (!polygon) return;
+            
+            const nomeLote = polygon.nomeLoteamento || 'Sem nome';
+            
+            // Verifica se o ponto está dentro do polígono do loteamento
+            if (google.maps.geometry.poly.containsLocation(latLng, polygon)) {
+                console.log(`✅ Marcador encontrado no loteamento: ${nomeLote}`);
+                loteamentoEncontrado = polygon.nomeLoteamento || null;
+            }
+        });
+        
+        if (!loteamentoEncontrado) {
+            console.log('❌ Marcador não está dentro de nenhum loteamento carregado');
+            return 'N/A';
+        }
+        
+        return loteamentoEncontrado;
+    },
+
+    // Função para cachear os loteamentos
+    cachearLoteamentos: function() {
+        if (window.loteamentosLayer && window.loteamentosLayer.length > 0) {
+            this.loteamentosCache = window.loteamentosLayer.slice(); // Copia o array
+            console.log(`✅ ${this.loteamentosCache.length} loteamentos salvos no cache`);
+        }
+    },
+
     carregarMarcadoresSalvos: function (ortofoto) {
         // Limpa marcadores antigos
         arrayCamadas['marcador_quadra'] = [];
@@ -5735,6 +5826,10 @@ const MapFramework = {
                             gmpClickable: true
                         });
 
+                        if(desenho.quarteirao == null){
+                            desenho.quarteirao = MapFramework.acharQuarteirao(marker.position);
+                        }
+
                         //marker.setMap(MapFramework.map);
                         marker.idQuadra = desenho.id_desenho;
                         marker.numeroMarcador = numeroMarcador;
@@ -5772,13 +5867,33 @@ const MapFramework = {
                                 </div>
                             `;
 
+                            // Descobre o loteamento em que o marcador está
+                            const loteamentoMarcador = MapFramework.acharLoteamento(marker.position) || 'N/A';
+
                             // Primeiro, sempre mostra os dados do desenho
                             let dadosDesenhoHTML = `
                                 <div style="margin-bottom: 15px;">
-                                    <h4 style="margin: 0 0 8px 0; color: #333; font-size: 14px; font-weight: bold;">Desenho</h4>
+                                    <h4 style="margin: 0 0 8px 0; color: #333; font-size: 14px; font-weight: bold;">
+                                        Desenho 
+                                        <span onclick="alterarDesenhoNovo(${desenho.id}, '${desenho.quarteirao}', '${encodeURIComponent(loteamentoMarcador)}', '${desenho.id_desenho}', '${desenho.quadricula}')" 
+                                            style="background-color: #007bff; 
+                                            padding: 2px 6px; 
+                                            border-radius: 3px; 
+                                            font-size: 12px; 
+                                            margin-left: 10px;
+                                            color: #fff; 
+                                            cursor: pointer;">Editar quarteirão
+                                        </span>
+                                    </h4>
                                     <div style="border-bottom: 1px solid #ddd; margin-bottom: 8px;"></div>
                                     <div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">ID:</strong> <span style="color: #666;">${desenho.id}</span></div>
+                                    <div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">Loteamento:</strong> <span style="color: #666;">${loteamentoMarcador}</span></div>
                                     <div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">Quarteirão:</strong> <span style="color: #666;">${desenho.quarteirao}</span></div>
+                                    <div id="documentosQuarteirao_${desenho.id}" style="margin-bottom: 5px;">
+                                        <div style="margin-left: 10px; margin: 5px 0;">
+                                            <span style="color: #999; font-size: 11px;">Carregando...</span>
+                                        </div>
+                                    </div>
                                     <div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">Quadra:</strong> <span style="color: #666;">${desenho.quadra}</span></div>
                                     <div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">Lote:</strong> <span style="color: #666;">${desenho.lote}</span></div>
                                 </div>
@@ -5786,13 +5901,19 @@ const MapFramework = {
 
                             let optionAlert2 = '';
                             let observacaoAlert2 = desenho.obs;
-                            let idxAlert2 = observacaoAlert2.indexOf("⚠️");
-                            let obsFiltrada2 = idxAlert2 !== -1 ? observacaoAlert2.substring(idxAlert2) : observacaoAlert2;
-                            
-                            if (observacaoAlert2.includes("⚠️")) {
-                                optionAlert2 = `<span>Observação: <b>${obsFiltrada2}</b></span>`;
-                            } else {
-                                optionAlert2 = `<button class="btn btn-primary" onclick="alert('${observacaoAlert2}')">Observação</button>`;
+
+                            if(observacaoAlert2){
+                                let idxAlert2 = observacaoAlert2.indexOf("⚠️");
+                                let obsFiltrada2 = idxAlert2 !== -1 ? observacaoAlert2.substring(idxAlert2) : observacaoAlert2;
+                                
+                                if (observacaoAlert2.includes("⚠️")) {
+                                    optionAlert2 = `<div>
+                                        <span>Observação: <b>${obsFiltrada2}</b></span><br>
+                                    </div>`;
+
+                                } else {
+                                    optionAlert2 = `<button class="btn btn-primary" onclick="alert('${observacaoAlert2}')">Observação</button>`;
+                                }
                             }
 
                             const conteudoObservacaoHTML = `<div style="margin-top: 10px;">${optionAlert2}</div>`;
@@ -5917,6 +6038,61 @@ const MapFramework = {
 
                             // Adiciona eventos quando o InfoWindow estiver pronto
                             google.maps.event.addListener(MapFramework.infoWindow, 'domready', function () {
+                                // Carrega os documentos do quarteirão
+                                if (desenho.quarteirao) {
+                                    $.ajax({
+                                        url: 'consultas/listar_arquivos_quarteirao.php',
+                                        method: 'POST',
+                                        data: { quarteirao: desenho.quarteirao },
+                                        dataType: 'json',
+                                        success: function(response) {
+                                            const containerDocs = document.querySelector(`#documentosQuarteirao_${desenho.id}`);
+                                            if (containerDocs) {
+                                                if (response.success && response.arquivos && response.arquivos.length > 0) {
+                                                    // Cria a lista de documentos
+                                                    let listaHTML = '<div style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;">';
+                                                    response.arquivos.forEach(arquivo => {
+                                                        const nomeArquivo = arquivo.length > 25 ? arquivo.substring(0, 25) + '...' : arquivo;
+                                                        const caminho = `loteamentos_quadriculas/pdfs_quarteiroes/${desenho.quarteirao}/${arquivo}`;
+                                                        listaHTML += `
+                                                            <a href="${caminho}" target="_blank" 
+                                                               style="display: inline-block; color: #666; text-decoration: none; padding: 3px 8px; 
+                                                                      font-size: 11px; background-color: #e9ecef; border-radius: 10px; 
+                                                                      transition: background-color 0.2s ease;"
+                                                               onmouseover="this.style.backgroundColor='#007bff'; this.style.color='white';"
+                                                               onmouseout="this.style.backgroundColor='#e9ecef'; this.style.color='#666';"
+                                                               title="${arquivo}">
+                                                                <i class="fas fa-file-pdf" style="margin-right: 3px; font-size: 10px;"></i>${nomeArquivo}
+                                                            </a>
+                                                        `;
+                                                    });
+                                                    listaHTML += '</div>';
+                                                    
+                                                    containerDocs.innerHTML = `
+                                                        ${listaHTML}
+                                                    `;
+                                                } else {
+                                                    containerDocs.innerHTML = `
+                                                        <div style="margin-left: 10px; margin: 5px 0;">
+                                                            <span style="color: #999; font-size: 11px; font-style: italic;">Nenhum documento encontrado</span>
+                                                        </div>
+                                                    `;
+                                                }
+                                            }
+                                        },
+                                        error: function() {
+                                            const containerDocs = document.querySelector(`#documentosQuarteirao_${desenho.id}`);
+                                            if (containerDocs) {
+                                                containerDocs.innerHTML = `
+                                                    <div style="margin-left: 10px; margin: 5px 0;">
+                                                        <span style="color: #dc3545; font-size: 11px;">Erro ao carregar documentos</span>
+                                                    </div>
+                                                `;
+                                            }
+                                        }
+                                    });
+                                }
+                                
                                 // Event listeners para as abas (apenas se houver dados do morador)
                                 if (dadosMorador) {
                                     const currentInfoWindowId = 'iw_' + desenho.id;
