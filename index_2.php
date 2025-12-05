@@ -46,7 +46,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
     <!--Conexão com biblioteca de BUFFER para poligono-->
     <script src="bibliotecas/turf.min.js" defer></script>
 
-    <script src="bibliotecas/proj4.js" defer></script>
+    <script src="bibliotecas/proj4.js"></script>
 
     <!-- Google Maps API -->
     <script src="apiGoogle.js"></script>
@@ -54,10 +54,10 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
     <!-- toGeoJSON -->
     <script src="bibliotecas/togeojson.js" defer></script>
     <!-- Nosso framework -->
-    <script src="framework.js" defer></script>
+    <script src="framework.js"></script>
 
     <!-- PDF.js para o leitor integrado -->
-    <script src="bibliotecas/pdf.min.js" defer></script>
+    <script src="bibliotecas/pdf.min.js"></script>
     <script>
         // Configure PDF.js worker to avoid deprecated warning
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'bibliotecas/pdf.worker.min.js';
