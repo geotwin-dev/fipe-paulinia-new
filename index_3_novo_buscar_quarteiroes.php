@@ -39,7 +39,7 @@ try {
     $quarteirao = $_POST['quarteirao'];
 
     // Preparar a query
-    $sql = "SELECT inscricao, imob_id, cnpj, bairro,nome_loteamento, cara_quarteirao, quadra, lote, logradouro, numero, zona, cat_via, area_terreno, tipo_utilizacao, area_construida_a, utilizacao_area_a
+    $sql = "SELECT id, inscricao, imob_id, cnpj, bairro,nome_loteamento, cara_quarteirao, quadra, lote, logradouro, numero, zona, cat_via, area_terreno, tipo_utilizacao, area_construida_a, utilizacao_area_a
             FROM cadastro 
             WHERE cara_quarteirao = :quarteirao
             ORDER BY quadra, lote";

@@ -1,6 +1,9 @@
 <?php
 session_start();
 
+// colocar o horario correto saopaulo
+date_default_timezone_set('America/Sao_Paulo');
+
 // Verificar se o usuário está logado
 if (!isset($_SESSION['usuario'])) {
     header('Location: login.php');
@@ -19,11 +22,31 @@ if (!$id || !$quarteirao || !$quadricula) {
     die('Parâmetros inválidos. ID, Quarteirão e Quadrícula são obrigatórios.');
 }
 
+// Função para normalizar quarteirão (garantir 4 dígitos com zeros à esquerda)
+function normalizarQuarteiraoParaPasta($quarteirao) {
+    // Remove espaços e converte para string
+    $quarteirao = trim((string)$quarteirao);
+    
+    // Remove zeros à esquerda para obter o número base
+    $numeroBase = ltrim($quarteirao, '0');
+    
+    // Se ficou vazio, significa que era só zeros, retorna '0000'
+    if ($numeroBase === '') {
+        return '0000';
+    }
+    
+    // Preenche com zeros à esquerda até ter 4 dígitos
+    return str_pad($numeroBase, 4, '0', STR_PAD_LEFT);
+}
+
+// Normalizar quarteirão para busca de pasta
+$quarteiraoNormalizado = normalizarQuarteiraoParaPasta($quarteirao);
+
 // ========================================================================
 // BUSCAR DOCUMENTOS DO QUARTEIRÃO
 // ========================================================================
 $documentosQuarteirao = [];
-$pastaQuarteirao = "loteamentos_quadriculas/pdfs_quarteiroes/" . $quarteirao;
+$pastaQuarteirao = "loteamentos_quadriculas/pdfs_quarteiroes/" . $quarteiraoNormalizado;
 
 if (is_dir($pastaQuarteirao)) {
     $arquivos = scandir($pastaQuarteirao);
@@ -109,18 +132,48 @@ $coords = json_decode($coords['coordenadas'], true);
 $lat = $coords[0]['lat'];
 $lng = $coords[0]['lng'];
 
+// Função para verificar se quarteirão contém letras
+function quarteiraoTemLetras($quarteirao) {
+    $quarteirao = trim((string)$quarteirao);
+    // Verifica se contém algum caractere que não seja dígito
+    return preg_match('/[^0-9]/', $quarteirao) === 1;
+}
+
+// Verificar se o quarteirão tem letras
+$temLetras = quarteiraoTemLetras($quarteirao);
+
 //=================================================================
 // Buscar todos os desenhos do quarteirão e quadrícula
 //=================================================================
-$sqlDesenhos = "SELECT d.* 
-                FROM desenhos d
-                WHERE d.quarteirao = $quarteirao
-                AND d.quadricula = '$quadricula'
-                AND (d.camada = 'poligono_lote' OR d.camada = 'marcador_quadra') 
-                ORDER BY d.id";
-
-$stmtDesenhos = $pdo->prepare($sqlDesenhos);
-$stmtDesenhos->execute();
+if ($temLetras) {
+    // Se tem letras, tratar como string (comparação exata)
+    $sqlDesenhos = "SELECT d.* 
+                    FROM desenhos d
+                    WHERE d.quarteirao = :quarteirao
+                    AND d.quadricula = :quadricula
+                    AND (d.camada = 'poligono_lote' OR d.camada = 'marcador_quadra') 
+                    ORDER BY d.id";
+    
+    $stmtDesenhos = $pdo->prepare($sqlDesenhos);
+    $stmtDesenhos->execute([
+        ':quarteirao' => $quarteirao,
+        ':quadricula' => $quadricula
+    ]);
+} else {
+    // Se é só números, tratar como inteiro (normaliza zeros à esquerda)
+    $sqlDesenhos = "SELECT d.* 
+                    FROM desenhos d
+                    WHERE CAST(d.quarteirao AS UNSIGNED) = CAST(:quarteirao AS UNSIGNED)
+                    AND d.quadricula = :quadricula
+                    AND (d.camada = 'poligono_lote' OR d.camada = 'marcador_quadra') 
+                    ORDER BY d.id";
+    
+    $stmtDesenhos = $pdo->prepare($sqlDesenhos);
+    $stmtDesenhos->execute([
+        ':quarteirao' => $quarteirao,
+        ':quadricula' => $quadricula
+    ]);
+}
 
 $todosDesenhos = $stmtDesenhos->fetchAll(PDO::FETCH_ASSOC);
 
@@ -868,6 +921,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                             tabelaHTML += `
                                 <tr class="linha-cadastro ${classeLinha}" 
                                     data-index="${index}"
+                                    data-id="${item.id || ''}"
                                     data-quarteirao="${item.cara_quarteirao || ''}"
                                     data-quadra="${item.quadra || ''}"
                                     data-lote="${item.lote || ''}"
@@ -908,6 +962,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                         $('.linha-cadastro').on('click', function() {
                             const $linha = $(this);
                             const estaNoMapa = $linha.data('esta-no-mapa') === true;
+                            const idCadastro = $linha.data('id');
                             const quarteirao = $linha.data('quarteirao');
                             const quadra = $linha.data('quadra');
                             const lote = $linha.data('lote');
@@ -944,7 +999,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                                 
                                 linhaSelecionadaAssociacao = {
                                     elemento: $linha[0],
-                                    dados: { quarteirao, quadra, lote },
+                                    dados: { id: idCadastro, quarteirao, quadra, lote },
                                     isVermelho: false
                                 };
                             } else {
@@ -953,7 +1008,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                                 
                                 linhaSelecionadaAssociacao = {
                                     elemento: $linha[0],
-                                    dados: { quarteirao, quadra, lote },
+                                    dados: { id: idCadastro, quarteirao, quadra, lote },
                                     isVermelho: true
                                 };
                             }
@@ -1227,10 +1282,27 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             polygon.addListener('click', function(e) {
                 if (modoAtivo) {
                     // Se já está destacado e tem sistema de divisão ativo
-                    if (objetoDestacado.poligono === polygon && pontosDivisao.length < 2) {
-                        // Está no modo de colocar bolinhas
-                        const pontoProximo = encontrarPontoProximoNaAresta(e.latLng, polygon);
-                        fixarPontoDivisao(pontoProximo, polygon);
+                    if (objetoDestacado.poligono === polygon) {
+                        // Verificar se o ponto está na aresta ou dentro do polígono
+                        const estaNaAresta = pontoEstaNaAresta(e.latLng, polygon);
+                        let pontoParaFixar;
+                        
+                        if (estaNaAresta) {
+                            // Se está na aresta, usar o ponto projetado na aresta
+                            pontoParaFixar = encontrarPontoProximoNaAresta(e.latLng, polygon);
+                        } else {
+                            // Se está dentro do polígono, usar o ponto exato
+                            // Mas só permite se já tiver pelo menos um ponto na aresta
+                            if (pontosDivisao.length === 0) {
+                                // Primeiro ponto deve estar na aresta
+                                pontoParaFixar = encontrarPontoProximoNaAresta(e.latLng, polygon);
+                            } else {
+                                // Pontos intermediários podem ser dentro do polígono
+                                pontoParaFixar = e.latLng;
+                            }
+                        }
+                        
+                        fixarPontoDivisao(pontoParaFixar, polygon);
                     } else {
                         // Primeiro clique - destacar o polígono
                         e.stop();
@@ -1322,10 +1394,27 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     polygon.addListener('click', function(e) {
                         if (modoAtivo) {
                             // Se já está destacado e tem sistema de divisão ativo
-                            if (objetoDestacado.poligono === polygon && pontosDivisao.length < 2) {
-                                // Está no modo de colocar bolinhas
-                                const pontoProximo = encontrarPontoProximoNaAresta(e.latLng, polygon);
-                                fixarPontoDivisao(pontoProximo, polygon);
+                            if (objetoDestacado.poligono === polygon) {
+                                // Verificar se o ponto está na aresta ou dentro do polígono
+                                const estaNaAresta = pontoEstaNaAresta(e.latLng, polygon);
+                                let pontoParaFixar;
+                                
+                                if (estaNaAresta) {
+                                    // Se está na aresta, usar o ponto projetado na aresta
+                                    pontoParaFixar = encontrarPontoProximoNaAresta(e.latLng, polygon);
+                                } else {
+                                    // Se está dentro do polígono, usar o ponto exato
+                                    // Mas só permite se já tiver pelo menos um ponto na aresta
+                                    if (pontosDivisao.length === 0) {
+                                        // Primeiro ponto deve estar na aresta
+                                        pontoParaFixar = encontrarPontoProximoNaAresta(e.latLng, polygon);
+                                    } else {
+                                        // Pontos intermediários podem ser dentro do polígono
+                                        pontoParaFixar = e.latLng;
+                                    }
+                                }
+                                
+                                fixarPontoDivisao(pontoParaFixar, polygon);
                             } else {
                                 // Primeiro clique - destacar o polígono
                                 e.stop();
@@ -1442,6 +1531,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     el.style.fontWeight = 'bold';
                     el.style.fontSize = '8px';
                     el.style.border = '2px solid ' + corTexto;
+                    el.style.transform = 'translate(0, 10px)';
                     el.style.cursor = 'pointer';
                     el.textContent = numeroMarcador;
 
@@ -1507,6 +1597,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
 
         // Destacar desenho no modo de associação
         function destacarDesenhoAssociacao(poligono, marcador, isVermelho) {
+            console.log(poligono.idDesenho, marcador.idDesenho);
             if (!poligono) return;
             
             // Lógica de limpeza inteligente
@@ -1647,6 +1738,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             const dadosAssociacao = {
                 id_poligono: poligono.idDesenho,
                 id_marcador: marcador ? marcador.idDesenho : null,
+                id_cadastro: dadosLinha.id,
                 quarteirao: dadosLinha.quarteirao,
                 quadra: dadosLinha.quadra,
                 lote: dadosLinha.lote
@@ -2025,10 +2117,22 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
 
             // Listener de movimento do mouse no polígono
             const listenerMouseMove = poligono.addListener('mousemove', function(e) {
-                // Só mostra bolinha móvel se ainda não fixou 2 pontos
-                if (pontosDivisao.length < 2 && markerMovel.map) {
-                    const pontoProximo = encontrarPontoProximoNaAresta(e.latLng, poligono);
-                    markerMovel.position = pontoProximo;
+                if (markerMovel.map) {
+                    // Se não tem pontos ainda, ou se o último ponto está na aresta, mostrar na aresta
+                    if (pontosDivisao.length === 0) {
+                        const pontoProximo = encontrarPontoProximoNaAresta(e.latLng, poligono);
+                        markerMovel.position = pontoProximo;
+                    } else {
+                        // Se já tem pontos, verificar se está próximo da aresta
+                        const estaNaAresta = pontoEstaNaAresta(e.latLng, poligono);
+                        if (estaNaAresta) {
+                            const pontoProximo = encontrarPontoProximoNaAresta(e.latLng, poligono);
+                            markerMovel.position = pontoProximo;
+                        } else {
+                            // Se não está na aresta, usar o ponto exato (dentro do polígono)
+                            markerMovel.position = e.latLng;
+                        }
+                    }
                 }
             });
 
@@ -2059,16 +2163,25 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                 zIndex: 10000
             });
 
-            // Armazenar ponto
+            // Verificar se o ponto está na aresta
+            const estaNaAresta = pontoEstaNaAresta(ponto, poligono);
+            
+            // Armazenar ponto com informação se está na aresta
             pontosDivisao.push({
                 posicao: ponto,
-                marker: markerFixo
+                marker: markerFixo,
+                naAresta: estaNaAresta
             });
 
             marcadoresDivisao.push(markerFixo);
 
-            // Se já tem 2 pontos, desenhar linha de divisão e áreas
-            if (pontosDivisao.length === 2) {
+            // Verificar se pode finalizar (primeiro e último pontos nas arestas)
+            const primeiroNaAresta = pontosDivisao.length > 0 && pontosDivisao[0].naAresta;
+            const ultimoNaAresta = estaNaAresta;
+            const podeFinalizar = primeiroNaAresta && ultimoNaAresta && pontosDivisao.length >= 2;
+
+            // Se pode finalizar, desenhar linha de divisão e áreas
+            if (podeFinalizar) {
                 // Remove bolinha móvel
                 if (poligono.marcadorMovel) {
                     poligono.marcadorMovel.map = null;
@@ -2078,15 +2191,30 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                 calcularEMostrarAreas(poligono);
 
                 // Adicionar listeners de drag nas bolinhas fixas
-                pontosDivisao.forEach((ponto, idx) => {
-                    ponto.marker.addListener('drag', function(e) {
-                        const novoPonto = encontrarPontoProximoNaAresta(e.latLng, poligono);
-                        ponto.marker.position = novoPonto;
-                        ponto.posicao = novoPonto;
+                pontosDivisao.forEach((pontoItem, idx) => {
+                    pontoItem.marker.addListener('drag', function(e) {
+                        // Se é o primeiro ou último ponto, deve ficar na aresta
+                        const deveEstarNaAresta = (idx === 0 || idx === pontosDivisao.length - 1);
+                        let novoPonto;
+                        
+                        if (deveEstarNaAresta) {
+                            novoPonto = encontrarPontoProximoNaAresta(e.latLng, poligono);
+                            pontoItem.naAresta = true;
+                        } else {
+                            // Pontos intermediários podem ser movidos livremente dentro do polígono
+                            novoPonto = e.latLng;
+                            pontoItem.naAresta = pontoEstaNaAresta(novoPonto, poligono);
+                        }
+                        
+                        pontoItem.marker.position = novoPonto;
+                        pontoItem.posicao = novoPonto;
                         atualizarLinhaDivisao();
                         calcularEMostrarAreas(poligono);
                     });
                 });
+            } else {
+                // Se ainda não pode finalizar, desenhar linha parcial do caminho
+                desenharLinhaDivisao();
             }
         }
 
@@ -2101,6 +2229,58 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             el.style.cursor = 'pointer';
             el.style.boxShadow = '0 0 4px rgba(0,0,0,0.5)';
             return el;
+        }
+
+        // Verificar se um ponto está próximo de uma aresta (dentro de uma tolerância)
+        function pontoEstaNaAresta(latLng, poligono, toleranciaMetros = 5) {
+            const path = poligono.getPath();
+            let menorDistancia = Infinity;
+
+            // Percorrer todas as arestas para encontrar a distância mínima
+            for (let i = 0; i < path.getLength(); i++) {
+                const p1 = path.getAt(i);
+                const p2 = path.getAt((i + 1) % path.getLength());
+
+                // Usar projeção vetorial para encontrar ponto na aresta
+                const lat1 = p1.lat();
+                const lng1 = p1.lng();
+                const lat2 = p2.lat();
+                const lng2 = p2.lng();
+                const lat = latLng.lat();
+                const lng = latLng.lng();
+
+                // Vetor da aresta
+                const dx = lng2 - lng1;
+                const dy = lat2 - lat1;
+
+                // Vetor do ponto p1 ao cursor
+                const px = lng - lng1;
+                const py = lat - lat1;
+
+                // Calcular parâmetro t da projeção
+                const lengthSquared = dx * dx + dy * dy;
+                let t = 0;
+
+                if (lengthSquared > 0) {
+                    t = (px * dx + py * dy) / lengthSquared;
+                    // Limitar entre 0 e 1 (extremidades da aresta)
+                    t = Math.max(0, Math.min(1, t));
+                }
+
+                // Calcular coordenadas do ponto projetado
+                const projLat = lat1 + t * dy;
+                const projLng = lng1 + t * dx;
+                const pontoProjetado = new google.maps.LatLng(projLat, projLng);
+
+                // Calcular distância do cursor ao ponto projetado
+                const dist = google.maps.geometry.spherical.computeDistanceBetween(latLng, pontoProjetado);
+
+                if (dist < menorDistancia) {
+                    menorDistancia = dist;
+                }
+            }
+
+            return menorDistancia <= toleranciaMetros;
         }
 
         // Encontrar ponto mais próximo na aresta do polígono (projeção perpendicular suave)
@@ -2167,12 +2347,15 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             return pontoMaisProximo || path.getAt(0);
         }
 
-        // Desenhar linha de divisão entre os 2 pontos
+        // Desenhar linha de divisão (caminho com múltiplos pontos)
         function desenharLinhaDivisao() {
-            if (pontosDivisao.length !== 2) return;
+            if (pontosDivisao.length < 2) return;
+
+            // Criar array de coordenadas do caminho
+            const caminho = pontosDivisao.map(p => p.posicao);
 
             const linha = new google.maps.Polyline({
-                path: [pontosDivisao[0].posicao, pontosDivisao[1].posicao],
+                path: caminho,
                 strokeColor: '#FF0000',
                 strokeWeight: 3,
                 strokeOpacity: 0.8,
@@ -2194,7 +2377,11 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
 
         // Calcular e mostrar áreas dos dois lados
         async function calcularEMostrarAreas(poligono) {
-            if (pontosDivisao.length !== 2) return;
+            // Verificar se tem pelo menos 2 pontos, sendo o primeiro e último nas arestas
+            if (pontosDivisao.length < 2) return;
+            const primeiroNaAresta = pontosDivisao[0] && pontosDivisao[0].naAresta;
+            const ultimoNaAresta = pontosDivisao[pontosDivisao.length - 1] && pontosDivisao[pontosDivisao.length - 1].naAresta;
+            if (!primeiroNaAresta || !ultimoNaAresta) return;
             if (!window.turf) return;
 
             // Remover rótulos antigos
@@ -2215,9 +2402,9 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     coords.push(path.getAt(i));
                 }
 
-                // Pontos de divisão
+                // Pontos de divisão (primeiro e último do caminho)
                 const p1 = pontosDivisao[0].posicao;
-                const p2 = pontosDivisao[1].posicao;
+                const p2 = pontosDivisao[pontosDivisao.length - 1].posicao;
 
                 // Encontrar arestas mais próximas para cada ponto de corte
                 let arestaP1 = {
@@ -2250,27 +2437,46 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     }
                 }
 
-                // Construir polígonos
-                const parte1Coords = [p1];
-                const parte2Coords = [p2];
-
-                // Parte 1: De p1, seguir sentido horário até p2
-                let idxAtual = (arestaP1.idx + 1) % coords.length;
-                while (idxAtual !== (arestaP2.idx + 1) % coords.length) {
+                // Construir polígonos com caminho completo
+                // O caminho de divisão será a NOVA BORDA entre os dois polígonos
+                
+                // Parte 1: Começa em p1, usa caminho de divisão completo até p2, depois segue perímetro original até fechar
+                const parte1Coords = [];
+                
+                // 1. Começar com p1 (ponto inicial do caminho de divisão)
+                parte1Coords.push(p1);
+                
+                // 2. Adicionar TODO o caminho de divisão (incluindo todos os pontos intermediários) até p2
+                for (let i = 1; i < pontosDivisao.length; i++) {
+                    parte1Coords.push(pontosDivisao[i].posicao);
+                }
+                
+                // 3. Seguir perímetro do polígono original desde p2 até p1 (sentido horário)
+                let idxAtual = (arestaP2.idx + 1) % coords.length;
+                while (idxAtual !== (arestaP1.idx + 1) % coords.length) {
                     parte1Coords.push(coords[idxAtual]);
                     idxAtual = (idxAtual + 1) % coords.length;
-                    if (parte1Coords.length > coords.length) break;
+                    if (parte1Coords.length > coords.length + pontosDivisao.length + 10) break;
                 }
-                parte1Coords.push(p2);
 
-                // Parte 2: De p2, seguir sentido horário até p1
-                idxAtual = (arestaP2.idx + 1) % coords.length;
-                while (idxAtual !== (arestaP1.idx + 1) % coords.length) {
+                // Parte 2: Começa em p2, usa caminho de divisão completo em ordem inversa até p1, depois segue perímetro original até fechar
+                const parte2Coords = [];
+                
+                // 1. Começar com p2 (ponto final do caminho de divisão)
+                parte2Coords.push(p2);
+                
+                // 2. Adicionar TODO o caminho de divisão em ordem inversa (incluindo todos os pontos intermediários) até p1
+                for (let i = pontosDivisao.length - 2; i >= 0; i--) {
+                    parte2Coords.push(pontosDivisao[i].posicao);
+                }
+                
+                // 3. Seguir perímetro do polígono original desde p1 até p2 (sentido horário)
+                idxAtual = (arestaP1.idx + 1) % coords.length;
+                while (idxAtual !== (arestaP2.idx + 1) % coords.length) {
                     parte2Coords.push(coords[idxAtual]);
                     idxAtual = (idxAtual + 1) % coords.length;
-                    if (parte2Coords.length > coords.length) break;
+                    if (parte2Coords.length > coords.length + pontosDivisao.length + 10) break;
                 }
-                parte2Coords.push(p1);
 
                 // Calcular áreas e centroides EXATAMENTE como no teste.html
                 // Parte 1
@@ -2368,7 +2574,17 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
 
         // Dividir polígono
         async function dividirPoligono() {
+            // Verificar se tem pelo menos 2 pontos, sendo o primeiro e último nas arestas
             if (!objetoDestacado.poligono || pontosDivisao.length < 2) {
+                alert('É necessário criar um caminho com pelo menos 2 pontos, sendo o primeiro e último nas arestas do polígono.');
+                return;
+            }
+            
+            const primeiroNaAresta = pontosDivisao[0] && pontosDivisao[0].naAresta;
+            const ultimoNaAresta = pontosDivisao[pontosDivisao.length - 1] && pontosDivisao[pontosDivisao.length - 1].naAresta;
+            
+            if (!primeiroNaAresta || !ultimoNaAresta) {
+                alert('O primeiro e último ponto do caminho devem estar nas arestas do polígono.');
                 return;
             }
 
@@ -2382,9 +2598,9 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     coords.push(path.getAt(i));
                 }
 
-                // Ponto 1 e Ponto 2 da divisão
+                // Ponto 1 e Ponto 2 da divisão (primeiro e último do caminho)
                 const p1 = pontosDivisao[0].posicao;
-                const p2 = pontosDivisao[1].posicao;
+                const p2 = pontosDivisao[pontosDivisao.length - 1].posicao;
 
                 // Encontrar arestas mais próximas para cada ponto de corte
                 let arestaP1 = {
@@ -2419,29 +2635,51 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     }
                 }
 
-                // Construir polígonos com lógica correta
-                const parte1 = [p1]; // Começa com p1
-                const parte2 = [p2]; // Começa com p2
+                // Construir caminho completo de divisão (incluindo todos os pontos intermediários)
+                const caminhoDivisao = pontosDivisao.map(p => p.posicao);
 
-                // Parte 1: De p1, seguir SENTIDO HORÁRIO até p2
-                // Começar do vértice seguinte à aresta de p1
-                let idxAtual = (arestaP1.idx + 1) % coords.length;
-                while (idxAtual !== (arestaP2.idx + 1) % coords.length) {
+                // Construir polígonos com lógica correta
+                // O caminho de divisão será a NOVA BORDA entre os dois polígonos
+                
+                // Parte 1: Começa em p1, usa caminho de divisão completo até p2, depois segue perímetro original até fechar
+                const parte1 = [];
+                
+                // 1. Começar com p1 (ponto inicial do caminho de divisão)
+                parte1.push(p1);
+                
+                // 2. Adicionar TODO o caminho de divisão (incluindo todos os pontos intermediários) até p2
+                for (let i = 1; i < pontosDivisao.length; i++) {
+                    parte1.push(pontosDivisao[i].posicao);
+                }
+                
+                // 3. Seguir perímetro do polígono original desde p2 até p1 (sentido horário)
+                // Começar do vértice seguinte à aresta de p2
+                let idxAtual = (arestaP2.idx + 1) % coords.length;
+                while (idxAtual !== (arestaP1.idx + 1) % coords.length) {
                     parte1.push(coords[idxAtual]);
                     idxAtual = (idxAtual + 1) % coords.length;
-                    if (parte1.length > coords.length) break; // Proteção
+                    if (parte1.length > coords.length + pontosDivisao.length + 10) break; // Proteção
                 }
-                parte1.push(p2); // Fecha com p2
 
-                // Parte 2: De p2, seguir SENTIDO HORÁRIO até p1
-                // Começar do vértice seguinte à aresta de p2
-                idxAtual = (arestaP2.idx + 1) % coords.length;
-                while (idxAtual !== (arestaP1.idx + 1) % coords.length) {
+                // Parte 2: Começa em p2, usa caminho de divisão completo em ordem inversa até p1, depois segue perímetro original até fechar
+                const parte2 = [];
+                
+                // 1. Começar com p2 (ponto final do caminho de divisão)
+                parte2.push(p2);
+                
+                // 2. Adicionar TODO o caminho de divisão em ordem inversa (incluindo todos os pontos intermediários) até p1
+                for (let i = pontosDivisao.length - 2; i >= 0; i--) {
+                    parte2.push(pontosDivisao[i].posicao);
+                }
+                
+                // 3. Seguir perímetro do polígono original desde p1 até p2 (sentido horário)
+                // Começar do vértice seguinte à aresta de p1
+                idxAtual = (arestaP1.idx + 1) % coords.length;
+                while (idxAtual !== (arestaP2.idx + 1) % coords.length) {
                     parte2.push(coords[idxAtual]);
                     idxAtual = (idxAtual + 1) % coords.length;
-                    if (parte2.length > coords.length) break; // Proteção
+                    if (parte2.length > coords.length + pontosDivisao.length + 10) break; // Proteção
                 }
-                parte2.push(p1); // Fecha com p1
 
                 // Criar os 2 novos polígonos VERMELHOS
                 const polygon1 = new google.maps.Polygon({
@@ -2701,7 +2939,9 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             el.style.fontSize = '8px';
             el.style.border = '2px solid white';
             el.style.cursor = 'pointer';
+            el.style.transform = 'translate(0, 10px)';
             el.style.minWidth = '16px';
+
             return el;
         }
 

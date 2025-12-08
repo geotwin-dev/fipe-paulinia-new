@@ -1,5 +1,6 @@
 <?php
 session_start();
+date_default_timezone_set('America/Sao_Paulo');
 
 // Verificar se o usuário está logado
 if (!isset($_SESSION['usuario'])) {
@@ -136,9 +137,9 @@ try {
     // ========================================================================
     
     $sqlInsertDesdobro = "INSERT INTO desdobros_unificacoes 
-                          (tipo, datahora, usuario, quadricula, quarteirao, id_desenho_anterior, id_desenho_posterior)
+                          (tipo, datahora, usuario, quadricula, quarteirao, id_desenho_anterior, id_desenho_posterior, tipo_desenho)
                           VALUES 
-                          (:tipo, :datahora, :usuario, :quadricula, :quarteirao, :id_anterior, :id_posterior)";
+                          (:tipo, :datahora, :usuario, :quadricula, :quarteirao, :id_anterior, :id_posterior, :tipo_desenho)";
     
     $stmtInsertDesdobro = $pdo->prepare($sqlInsertDesdobro);
     
@@ -151,7 +152,8 @@ try {
             'quadricula' => $primeiroPoligono['quadricula'],
             'quarteirao' => $primeiroPoligono['quarteirao'],
             'id_anterior' => $poligono['id'],
-            'id_posterior' => $idNovoPoligono
+            'id_posterior' => $idNovoPoligono,
+            'tipo_desenho' => 'poligono'
         ]);
     }
     
@@ -165,7 +167,8 @@ try {
                 'quadricula' => $primeiroPoligono['quadricula'],
                 'quarteirao' => $primeiroPoligono['quarteirao'],
                 'id_anterior' => $marcador['id'],
-                'id_posterior' => $idNovoMarcador
+                'id_posterior' => $idNovoMarcador,
+                'tipo_desenho' => 'marcador'
             ]);
         }
     }

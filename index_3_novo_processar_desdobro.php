@@ -1,5 +1,6 @@
 <?php
 session_start();
+date_default_timezone_set('America/Sao_Paulo');
 
 // Verificar se o usuário está logado
 if (!isset($_SESSION['usuario'])) {
@@ -140,9 +141,9 @@ try {
     // 5. INSERIR NA TABELA DESDOBROS_UNIFICACOES (4 linhas)
     // ========================================================================
     $sqlInsertDesdobro = "INSERT INTO desdobros_unificacoes 
-                          (tipo, datahora, usuario, quadricula, quarteirao, id_desenho_anterior, id_desenho_posterior)
+                          (tipo, datahora, usuario, quadricula, quarteirao, id_desenho_anterior, id_desenho_posterior, tipo_desenho)
                           VALUES 
-                          (:tipo, :datahora, :usuario, :quadricula, :quarteirao, :id_anterior, :id_posterior)";
+                          (:tipo, :datahora, :usuario, :quadricula, :quarteirao, :id_anterior, :id_posterior, :tipo_desenho)";
     
     $stmtInsertDesdobro = $pdo->prepare($sqlInsertDesdobro);
     
@@ -154,7 +155,8 @@ try {
         'quadricula' => $dados['poligono_original']['quadricula'],
         'quarteirao' => $dados['poligono_original']['quarteirao'],
         'id_anterior' => $dados['poligono_original']['id'],
-        'id_posterior' => $novosPoligonos[0]
+        'id_posterior' => $novosPoligonos[0],
+        'tipo_desenho' => 'poligono'
     ]);
     
     // Linha 2: Polígono antigo → Polígono novo 2
@@ -165,7 +167,8 @@ try {
         'quadricula' => $dados['poligono_original']['quadricula'],
         'quarteirao' => $dados['poligono_original']['quarteirao'],
         'id_anterior' => $dados['poligono_original']['id'],
-        'id_posterior' => $novosPoligonos[1]
+        'id_posterior' => $novosPoligonos[1],
+        'tipo_desenho' => 'poligono'
     ]);
     
     // Linha 3: Marcador antigo → Marcador novo 1
@@ -177,7 +180,8 @@ try {
             'quadricula' => $dados['poligono_original']['quadricula'],
             'quarteirao' => $dados['poligono_original']['quarteirao'],
             'id_anterior' => $dados['marcador_original']['id'],
-            'id_posterior' => $novosMarcadores[0]
+            'id_posterior' => $novosMarcadores[0],
+            'tipo_desenho' => 'marcador'
         ]);
         
         // Linha 4: Marcador antigo → Marcador novo 2
@@ -188,7 +192,8 @@ try {
             'quadricula' => $dados['poligono_original']['quadricula'],
             'quarteirao' => $dados['poligono_original']['quarteirao'],
             'id_anterior' => $dados['marcador_original']['id'],
-            'id_posterior' => $novosMarcadores[1]
+            'id_posterior' => $novosMarcadores[1],
+            'tipo_desenho' => 'marcador'
         ]);
     }
 

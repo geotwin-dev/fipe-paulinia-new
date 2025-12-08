@@ -14,8 +14,28 @@ if (!isset($_POST['quarteirao'])) {
 
 $quarteirao = $_POST['quarteirao'];
 
+// Função para normalizar quarteirão (garantir 4 dígitos com zeros à esquerda)
+function normalizarQuarteiraoParaPasta($quarteirao) {
+    // Remove espaços e converte para string
+    $quarteirao = trim((string)$quarteirao);
+    
+    // Remove zeros à esquerda para obter o número base
+    $numeroBase = ltrim($quarteirao, '0');
+    
+    // Se ficou vazio, significa que era só zeros, retorna '0000'
+    if ($numeroBase === '') {
+        return '0000';
+    }
+    
+    // Preenche com zeros à esquerda até ter 4 dígitos
+    return str_pad($numeroBase, 4, '0', STR_PAD_LEFT);
+}
+
+// Normalizar quarteirão para busca de pasta
+$quarteiraoNormalizado = normalizarQuarteiraoParaPasta($quarteirao);
+
 // Diretório específico do quarteirão
-$diretorioQuarteirao = '../loteamentos_quadriculas/pdfs_quarteiroes/' . $quarteirao . '/';
+$diretorioQuarteirao = '../loteamentos_quadriculas/pdfs_quarteiroes/' . $quarteiraoNormalizado . '/';
 
 // Verifica se o diretório específico do quarteirão existe
 if (!is_dir($diretorioQuarteirao)) {
