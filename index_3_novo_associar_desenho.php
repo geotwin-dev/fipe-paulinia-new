@@ -41,7 +41,8 @@ try {
     $sqlPoligono = "UPDATE desenhos SET 
                     quarteirao = :quarteirao,
                     quadra = :quadra,
-                    lote = :lote
+                    lote = :lote,
+                    cor = :cor
                     WHERE id = :id_poligono";
     
     $stmtPoligono = $pdo->prepare($sqlPoligono);
@@ -49,6 +50,7 @@ try {
         ':quarteirao' => $quarteirao,
         ':quadra' => $quadra,
         ':lote' => $lote,
+        ':cor' => 'lime',
         ':id_poligono' => $id_poligono
     ]);
     
@@ -61,7 +63,8 @@ try {
         $sqlMarcador = "UPDATE desenhos SET 
                         quarteirao = :quarteirao,
                         quadra = :quadra,
-                        lote = :lote
+                        lote = :lote,
+                        cor = :cor
                         WHERE id = :id_marcador";
         
         $stmtMarcador = $pdo->prepare($sqlMarcador);
@@ -69,6 +72,7 @@ try {
             ':quarteirao' => $quarteirao,
             ':quadra' => $quadra,
             ':lote' => $lote,
+            ':cor' => 'lime',
             ':id_marcador' => $id_marcador
         ]);
         

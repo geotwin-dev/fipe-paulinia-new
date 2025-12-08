@@ -149,14 +149,19 @@ foreach ($todosDesenhos as $desenho) {
     // ========================================================================
     // LÓGICA PARA MAPA ANTERIOR (Esquerda)
     // ========================================================================
-    if ($status == 1) {
-        // Status 1: Incluir EXCETO se está em desdobros_unificacoes.id_desenho_posterior
-        $sqlVerificaPosterior = "SELECT id FROM desdobros_unificacoes 
+
+    $sqlVerificaPosterior = "SELECT id FROM desdobros_unificacoes 
                                  WHERE id_desenho_posterior = :id_desenho 
                                  LIMIT 1";
-        $stmtVerificaPosterior = $pdo->prepare($sqlVerificaPosterior);
-        $stmtVerificaPosterior->execute(['id_desenho' => $desenho['id']]);
-        $existeEmPosterior = $stmtVerificaPosterior->fetch(PDO::FETCH_ASSOC);
+    $stmtVerificaPosterior = $pdo->prepare($sqlVerificaPosterior);
+    $stmtVerificaPosterior->execute(['id_desenho' => $desenho['id']]);
+    $existeEmPosterior = $stmtVerificaPosterior->fetch(PDO::FETCH_ASSOC);
+
+
+
+    if ($status == 1) {
+        // Status 1: Incluir EXCETO se está em desdobros_unificacoes.id_desenho_posterior
+        
 
         if (!$existeEmPosterior) {
             // NÃO está em posterior, então adiciona no anterior
@@ -175,7 +180,11 @@ foreach ($todosDesenhos as $desenho) {
         $stmtVerificaAnterior->execute(['id_desenho' => $desenho['id']]);
         $existeEmAnterior = $stmtVerificaAnterior->fetch(PDO::FETCH_ASSOC);
 
-        if ($existeEmAnterior) {
+        if ($existeEmAnterior && $existeEmPosterior) {
+            continue;
+        }
+
+        if ($existeEmAnterior && !$existeEmPosterior) {
             // Está em anterior, então adiciona
             if ($camada === 'poligono_lote') {
                 $poligonoLoteAnterior[] = $desenho;
@@ -719,6 +728,28 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             return str || '0';
         }
 
+        // Função para atualizar linha na tabela quando desenho muda de verde para vermelho
+        function atualizarLinhaTabelaParaVermelho(quarteirao, lote) {
+            if (!quarteirao || !lote) return;
+            
+            const quarteiraoNorm = normalizarQuarteirao(quarteirao);
+            const loteNorm = String(lote || '').trim();
+            
+            // Procurar linha correspondente na tabela
+            $('.linha-cadastro').each(function() {
+                const $linha = $(this);
+                const quarteiraoLinha = normalizarQuarteirao($linha.data('quarteirao'));
+                const loteLinha = String($linha.data('lote') || '').trim();
+                
+                if (quarteiraoLinha === quarteiraoNorm && loteLinha === loteNorm) {
+                    // Encontrou a linha - mudar de verde para vermelho
+                    $linha.removeClass('linha-verde').addClass('linha-vermelha');
+                    $linha.data('esta-no-mapa', false);
+                    return false; // Sair do loop
+                }
+            });
+        }
+
         // Verificar se um registro está no mapa (baseado em quarteirão e lote)
         function registroEstaNoMapa(registro) {
             const quarteiraoRegistro = normalizarQuarteirao(registro.cara_quarteirao);
@@ -1180,6 +1211,81 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
         // Arrays para armazenar objetos do mapa posterior (para destaque)
         let poligonosPosteriorArray = [];
         let marcadoresPosteriorArray = [];
+
+        // Função auxiliar para adicionar novo polígono aos arrays e configurar event listeners
+        function adicionarPoligonoAoArray(polygon, desenhoCompleto) {
+            // Armazenar dados no polígono
+            polygon.idDesenho = desenhoCompleto.id;
+            polygon.lote = desenhoCompleto.lote;
+            polygon.corOriginal = '#FF0000'; // Vermelho por padrão (sem lote)
+            polygon.desenhoCompleto = desenhoCompleto;
+
+            // Adicionar ao array
+            poligonosPosteriorArray.push(polygon);
+
+            // Adicionar evento de clique unificado
+            polygon.addListener('click', function(e) {
+                if (modoAtivo) {
+                    // Se já está destacado e tem sistema de divisão ativo
+                    if (objetoDestacado.poligono === polygon && pontosDivisao.length < 2) {
+                        // Está no modo de colocar bolinhas
+                        const pontoProximo = encontrarPontoProximoNaAresta(e.latLng, polygon);
+                        fixarPontoDivisao(pontoProximo, polygon);
+                    } else {
+                        // Primeiro clique - destacar o polígono
+                        e.stop();
+                        destacarDesenho(desenhoCompleto.id, desenhoCompleto.lote);
+                    }
+                } else {
+                    // Sem modo ativo - modo de associação
+                    e.stop();
+                    // Encontrar marcador correspondente (por lote ou por coordenada)
+                    let marcador = null;
+                    if (desenhoCompleto.lote && desenhoCompleto.lote.toString().trim() !== '') {
+                        marcador = marcadoresPosteriorArray.find(m => m.lote === desenhoCompleto.lote);
+                    } else {
+                        // Se não tem lote, tentar encontrar por coordenada
+                        marcador = encontrarMarcadorPorPoligono(polygon);
+                    }
+                    const isVermelho = !desenhoCompleto.lote || desenhoCompleto.lote.toString().trim() === '';
+                    destacarDesenhoAssociacao(polygon, marcador, isVermelho);
+                }
+            });
+        }
+
+        // Função auxiliar para adicionar novo marcador aos arrays e configurar event listeners
+        function adicionarMarcadorAoArray(marker, elementoHTML, desenhoCompleto) {
+            // Armazenar dados no marcador
+            marker.idDesenho = desenhoCompleto.id;
+            marker.lote = desenhoCompleto.lote;
+            marker.corOriginal = '#FF0000'; // Vermelho por padrão
+            marker.corTextoOriginal = 'white';
+            marker.elementoHTML = elementoHTML;
+            marker.desenhoCompleto = desenhoCompleto;
+
+            // Adicionar ao array
+            marcadoresPosteriorArray.push(marker);
+
+            // Event listener de clique
+            elementoHTML.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (modoAtivo) {
+                    destacarDesenho(desenhoCompleto.id, desenhoCompleto.lote);
+                } else {
+                    // Sem modo ativo - modo de associação
+                    // Encontrar polígono correspondente (por lote ou por coordenada)
+                    let poligono = null;
+                    if (desenhoCompleto.lote && desenhoCompleto.lote.toString().trim() !== '') {
+                        poligono = poligonosPosteriorArray.find(p => p.lote === desenhoCompleto.lote);
+                    } else {
+                        // Se não tem lote, tentar encontrar por coordenada
+                        poligono = encontrarPoligonoPorCoordenada(marker);
+                    }
+                    const isVermelho = !desenhoCompleto.lote || desenhoCompleto.lote.toString().trim() === '';
+                    destacarDesenhoAssociacao(poligono, marker, isVermelho);
+                }
+            });
+        }
 
         // Desenhar polígonos no MAPA POSTERIOR (direita) - EDITÁVEL
         function desenharPoligonosPosterior(mapa) {
@@ -2359,6 +2465,10 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     clickable: true,
                     map: map2Instance
                 });
+                
+                // Variáveis para armazenar os novos marcadores
+                let novoMarcador1 = null;
+                let novoMarcador2 = null;
 
                 // Calcular centroides 
                 // Calcular centroide com Turf
@@ -2382,7 +2492,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                 } = await google.maps.importLibrary("marker");
 
                 const marcador1 = criarMarcadorVazio();
-                new AdvancedMarkerElement({
+                novoMarcador1 = new AdvancedMarkerElement({
                     position: {
                         lat: lat1,
                         lng: lng1
@@ -2392,7 +2502,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                 });
 
                 const marcador2 = criarMarcadorVazio();
-                new AdvancedMarkerElement({
+                novoMarcador2 = new AdvancedMarkerElement({
                     position: {
                         lat: lat2,
                         lng: lng2
@@ -2448,12 +2558,104 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                         if (response.success) {
                             console.log('Desdobro salvo no banco com sucesso!');
 
-                            // Remover polígono original
+                            // Verificar se o desenho original tinha lote (era verde) para atualizar tabela
+                            const desenhoOriginal = poligonoOriginal.desenhoCompleto || {};
+                            if (desenhoOriginal.lote && desenhoOriginal.lote.toString().trim() !== '') {
+                                // Era verde, agora ficou vermelho - atualizar tabela
+                                atualizarLinhaTabelaParaVermelho(desenhoOriginal.quarteirao, desenhoOriginal.lote);
+                            }
+
+                            // Remover polígono original dos arrays e do mapa
+                            const indexPoligono = poligonosPosteriorArray.indexOf(poligonoOriginal);
+                            if (indexPoligono > -1) {
+                                poligonosPosteriorArray.splice(indexPoligono, 1);
+                            }
                             poligonoOriginal.setMap(null);
 
-                            // Remover marcador original se houver
+                            // Remover marcador original dos arrays e do mapa se houver
                             if (objetoDestacado.marcador) {
+                                const indexMarcador = marcadoresPosteriorArray.indexOf(objetoDestacado.marcador);
+                                if (indexMarcador > -1) {
+                                    marcadoresPosteriorArray.splice(indexMarcador, 1);
+                                }
                                 objetoDestacado.marcador.map = null;
+                            }
+
+                            // Adicionar novos desenhos aos arrays
+                            const desenhoBase = poligonoOriginal.desenhoCompleto || {};
+                            
+                            // O servidor retorna arrays de IDs: novos_poligonos e novos_marcadores
+                            const idPoligono1 = response.novos_poligonos?.[0] || null;
+                            const idPoligono2 = response.novos_poligonos?.[1] || null;
+                            const idMarcador1 = response.novos_marcadores?.[0] || null;
+                            const idMarcador2 = response.novos_marcadores?.[1] || null;
+                            
+                            // Adicionar primeiro polígono
+                            if (polygon1 && idPoligono1) {
+                                const desenho1 = {
+                                    id: idPoligono1,
+                                    lote: null,
+                                    quarteirao: desenhoBase.quarteirao || null,
+                                    quadricula: desenhoBase.quadricula || null,
+                                    quadra: desenhoBase.quadra || null,
+                                    camada: 'poligono_lote',
+                                    tipo: desenhoBase.tipo || 'poligono',
+                                    cor: '#FF0000',
+                                    status: 1,
+                                    coordenadas: JSON.stringify(polygon1.getPath().getArray().map(p => ({lat: p.lat(), lng: p.lng()})))
+                                };
+                                adicionarPoligonoAoArray(polygon1, desenho1);
+                            }
+                            
+                            // Adicionar segundo polígono
+                            if (polygon2 && idPoligono2) {
+                                const desenho2 = {
+                                    id: idPoligono2,
+                                    lote: null,
+                                    quarteirao: desenhoBase.quarteirao || null,
+                                    quadricula: desenhoBase.quadricula || null,
+                                    quadra: desenhoBase.quadra || null,
+                                    camada: 'poligono_lote',
+                                    tipo: desenhoBase.tipo || 'poligono',
+                                    cor: '#FF0000',
+                                    status: 1,
+                                    coordenadas: JSON.stringify(polygon2.getPath().getArray().map(p => ({lat: p.lat(), lng: p.lng()})))
+                                };
+                                adicionarPoligonoAoArray(polygon2, desenho2);
+                            }
+                            
+                            // Adicionar primeiro marcador
+                            if (novoMarcador1 && marcador1 && idMarcador1) {
+                                const desenhoMarcador1 = {
+                                    id: idMarcador1,
+                                    lote: null,
+                                    quarteirao: desenhoBase.quarteirao || null,
+                                    quadricula: desenhoBase.quadricula || null,
+                                    quadra: desenhoBase.quadra || null,
+                                    camada: 'marcador_quadra',
+                                    tipo: desenhoBase.tipo || 'marcador',
+                                    cor: '#FF0000',
+                                    status: 1,
+                                    coordenadas: JSON.stringify([{lat: lat1, lng: lng1}])
+                                };
+                                adicionarMarcadorAoArray(novoMarcador1, marcador1, desenhoMarcador1);
+                            }
+                            
+                            // Adicionar segundo marcador
+                            if (novoMarcador2 && marcador2 && idMarcador2) {
+                                const desenhoMarcador2 = {
+                                    id: idMarcador2,
+                                    lote: null,
+                                    quarteirao: desenhoBase.quarteirao || null,
+                                    quadricula: desenhoBase.quadricula || null,
+                                    quadra: desenhoBase.quadra || null,
+                                    camada: 'marcador_quadra',
+                                    tipo: desenhoBase.tipo || 'marcador',
+                                    cor: '#FF0000',
+                                    status: 1,
+                                    coordenadas: JSON.stringify([{lat: lat2, lng: lng2}])
+                                };
+                                adicionarMarcadorAoArray(novoMarcador2, marcador2, desenhoMarcador2);
                             }
 
                             // Limpar sistema
@@ -2779,7 +2981,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                             lng: parseFloat(c[0])
                         }));
 
-                        new google.maps.Polygon({
+                        const polyMulti = new google.maps.Polygon({
                             paths: coords,
                             strokeColor: '#FF0000',
                             strokeOpacity: 0.8,
@@ -2789,6 +2991,11 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                             clickable: true,
                             map: map2Instance
                         });
+                        
+                        // Adicionar ao array (usar dados temporários, serão atualizados na resposta do servidor)
+                        if (idx === 0) {
+                            novoPoligono = polyMulti; // Usar o primeiro como principal
+                        }
                     });
 
                     exterior = poligonoUnido.geometry.coordinates[0][0];
@@ -2797,6 +3004,9 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     return;
                 }
 
+                // Variável para armazenar o novo polígono criado
+                let novoPoligono = null;
+                
                 // Se não é MultiPolygon, criar o polígono único
                 if (poligonoUnido.geometry.type === 'Polygon') {
                     const coordsFinais = exterior.map(c => ({
@@ -2804,7 +3014,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                         lng: parseFloat(c[0])
                     }));
 
-                    const novoPoligono = new google.maps.Polygon({
+                    novoPoligono = new google.maps.Polygon({
                         paths: coordsFinais,
                         strokeColor: '#FF0000',
                         strokeOpacity: 0.8,
@@ -2831,7 +3041,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     AdvancedMarkerElement
                 } = await google.maps.importLibrary("marker");
                 const marcadorVazio = criarMarcadorVazio();
-                new AdvancedMarkerElement({
+                const novoMarcador = new AdvancedMarkerElement({
                     position: {
                         lat,
                         lng
@@ -2903,13 +3113,69 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                         if (response.success) {
                             console.log('Unificação salva com sucesso! Removendo itens do mapa...');
                             
-                            // Remover polígonos originais do mapa (usar apenas os que foram unificados)
-                            poligonosParaUnificar.forEach(p => p.setMap(null));
+                            // Verificar se algum desenho original tinha lote (era verde) para atualizar tabela
+                            poligonosParaUnificar.forEach(p => {
+                                const desenho = p.desenhoCompleto || {};
+                                if (desenho.lote && desenho.lote.toString().trim() !== '') {
+                                    // Era verde, agora ficou vermelho - atualizar tabela
+                                    atualizarLinhaTabelaParaVermelho(desenho.quarteirao, desenho.lote);
+                                }
+                            });
 
-                            // Remover marcadores originais do mapa (usar apenas os que foram unificados)
+                            // Remover polígonos originais dos arrays e do mapa
+                            poligonosParaUnificar.forEach(p => {
+                                const index = poligonosPosteriorArray.indexOf(p);
+                                if (index > -1) {
+                                    poligonosPosteriorArray.splice(index, 1);
+                                }
+                                p.setMap(null);
+                            });
+
+                            // Remover marcadores originais dos arrays e do mapa
                             marcadoresParaUnificar.forEach(m => {
+                                const index = marcadoresPosteriorArray.indexOf(m);
+                                if (index > -1) {
+                                    marcadoresPosteriorArray.splice(index, 1);
+                                }
                                 if (m.map) m.map = null;
                             });
+
+                            // Adicionar novos desenhos aos arrays se foram criados
+                            // O servidor retorna: novo_poligono (ID) e novo_marcador (ID)
+                            const desenhoBase = poligonosParaUnificar[0]?.desenhoCompleto || {};
+                            const desenhoMarcadorBase = marcadoresParaUnificar[0]?.desenhoCompleto || desenhoBase;
+                            
+                            if (novoPoligono && response.novo_poligono) {
+                                const desenhoPoligono = {
+                                    id: response.novo_poligono,
+                                    lote: null,
+                                    quarteirao: desenhoBase.quarteirao || null,
+                                    quadricula: desenhoBase.quadricula || null,
+                                    quadra: desenhoBase.quadra || null,
+                                    camada: 'poligono_lote',
+                                    tipo: desenhoBase.tipo || 'poligono',
+                                    cor: '#FF0000',
+                                    status: 1,
+                                    coordenadas: JSON.stringify(novoPoligono.getPath().getArray().map(p => ({lat: p.lat(), lng: p.lng()})))
+                                };
+                                adicionarPoligonoAoArray(novoPoligono, desenhoPoligono);
+                            }
+
+                            if (novoMarcador && marcadorVazio && response.novo_marcador) {
+                                const desenhoMarcador = {
+                                    id: response.novo_marcador,
+                                    lote: null,
+                                    quarteirao: desenhoMarcadorBase.quarteirao || desenhoBase.quarteirao || null,
+                                    quadricula: desenhoMarcadorBase.quadricula || desenhoBase.quadricula || null,
+                                    quadra: desenhoMarcadorBase.quadra || desenhoBase.quadra || null,
+                                    camada: 'marcador_quadra',
+                                    tipo: desenhoMarcadorBase.tipo || desenhoBase.tipo || 'marcador',
+                                    cor: '#FF0000',
+                                    status: 1,
+                                    coordenadas: JSON.stringify([{lat: lat, lng: lng}])
+                                };
+                                adicionarMarcadorAoArray(novoMarcador, marcadorVazio, desenhoMarcador);
+                            }
 
                             // Limpar seleção
                             limparSelecaoUnificacao();
@@ -2994,8 +3260,13 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             setTimeout(function() {
                 if (map2Instance) {
                     map2Instance.addListener('click', function(e) {
-                        // Verificar se clicou diretamente no mapa (não em um elemento)
-                        if (modoAtivo && !objetoDestacado.poligono) {
+                        // Se não estiver em nenhum modo, limpar seleções de associação
+                        if (!modoAtivo) {
+                            limparSelecaoAssociacaoMapa();
+                            limparSelecaoAssociacaoTabela();
+                            verificarBotaoAssociar();
+                        } else if (modoAtivo && !objetoDestacado.poligono) {
+                            // Se estiver em modo ativo, remover destaque
                             removerDestaque();
                         }
                     });

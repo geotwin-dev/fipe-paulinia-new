@@ -2185,7 +2185,7 @@ const MapFramework = {
 
                             const coordsGeo = coords.map(p => [p.lng, p.lat]);
                             coordsGeo.push(coordsGeo[0]); // fecha o polígono
-
+                            
                             objeto.coordenadasGeoJSON = turf.polygon([coordsGeo]);
                             objeto.identificador = desenho.id;
                             objeto.id_desenho = desenho.id_desenho;

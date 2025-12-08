@@ -95,8 +95,8 @@ try {
         'quadricula' => $primeiroPoligono['quadricula'],
         'camada' => 'poligono_lote',
         'quarteirao' => $primeiroPoligono['quarteirao'],
-        'tipo' => $primeiroPoligono['tipo'],
-        'cor' => '#FF0000',
+        'tipo' => 'poligono',
+        'cor' => 'red',
         'coordenadas' => json_encode($dados['novo_poligono']['coordenadas']),
         'ult_modificacao' => $dataHoraAtual,
         'user' => $usuario
@@ -122,8 +122,8 @@ try {
         'quadricula' => $primeiroPoligono['quadricula'],
         'camada' => 'marcador_quadra',
         'quarteirao' => $primeiroPoligono['quarteirao'],
-        'tipo' => $primeiroMarcador['tipo'] ?? 'marcador',
-        'cor' => '#FF0000',
+        'tipo' => 'marcador',
+        'cor' => 'red',
         'coordenadas' => json_encode($dados['novo_marcador']['coordenadas']),
         'ult_modificacao' => $dataHoraAtual,
         'user' => $usuario
