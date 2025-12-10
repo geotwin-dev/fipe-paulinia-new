@@ -1448,6 +1448,16 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         <i class="fas fa-external-link-alt"></i> Consultas
                     </button>
 
+                    <!-- Botão Pesquisa (TEMPORÁRIO) 
+                    <button class="btn btn-info" id="btnPesquisa">
+                        <i class="fas fa-search"></i> Pesquisa
+                    </button>-->
+                    
+                    <!-- Botão Sair do Modo Pesquisa (TEMPORÁRIO - aparece quando em modo pesquisa) 
+                    <button class="btn btn-secondary d-none" id="btnSairModoPesquisa">
+                        <i class="fas fa-times"></i> Sair do Modo Pesquisa
+                    </button>-->
+
                     <!-- Botão para editar trajetos de Streetview Fotos 
                     <button class="btn btn-info d-none" id="btnEditarStreetviewFotos">
                         <i class="fas fa-edit"></i> Corrigir Trajeto
@@ -2601,17 +2611,42 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             $('#tooltipMarcador').hide();
         });
 
-        // Aguarda o MapFramework estar disponível antes de usar
-        if (typeof MapFramework !== 'undefined' && dadosOrto && dadosOrto.length > 0 && dadosOrto[0]['quadricula']) {
-            MapFramework.carregarControleNavegacaoQuadriculas(dadosOrto[0]['quadricula']);
-        } else {
-            // Tenta novamente após um pequeno delay se o framework ainda não estiver carregado
-            setTimeout(function() {
-                if (typeof MapFramework !== 'undefined' && dadosOrto && dadosOrto.length > 0 && dadosOrto[0]['quadricula']) {
-                    MapFramework.carregarControleNavegacaoQuadriculas(dadosOrto[0]['quadricula']);
-                }
-            }, 100);
+        // Função para carregar o controle de navegação de quadrículas
+        function tentarCarregarControleQuadriculas() {
+            
+            if (typeof MapFramework !== 'undefined' && 
+                MapFramework.carregarControleNavegacaoQuadriculas &&
+                dadosOrto && 
+                dadosOrto.length > 0 && 
+                dadosOrto[0]['quadricula']) {
+                MapFramework.carregarControleNavegacaoQuadriculas(dadosOrto[0]['quadricula']);
+                return true;
+            }
+            return false;
         }
+
+        // Aguarda o carregamento completo da página (incluindo scripts com defer)
+        window.addEventListener('load', function() {
+            console.log('Página carregada completamente');
+            
+            // Tenta carregar imediatamente
+            if (!tentarCarregarControleQuadriculas()) {
+                // Se não funcionou, tenta novamente com um pequeno delay
+                let tentativas = 0;
+                const maxTentativas = 10;
+                const intervalo = setInterval(function() {
+                    tentativas++;
+                    console.log(`Tentativa ${tentativas} de carregar controle...`);
+                    
+                    if (tentarCarregarControleQuadriculas() || tentativas >= maxTentativas) {
+                        clearInterval(intervalo);
+                        if (tentativas >= maxTentativas) {
+                            console.error('Não foi possível carregar o controle de navegação após', maxTentativas, 'tentativas');
+                        }
+                    }
+                }, 200);
+            }
+        });
 
 
         function adicionarObjetoNaCamada(nome, objeto) {
@@ -7261,6 +7296,355 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             </div>
         </div>
     </div>
+
+    <!-- Modal de Pesquisa (TEMPORÁRIO) -->
+    <div class="modal fade" id="modalPesquisa" tabindex="-1" aria-labelledby="modalPesquisaLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalPesquisaLabel">Pesquisa de Imóveis</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="selectTipoPesquisa" class="form-label">Tipo de Pesquisa</label>
+                        <select class="form-select" id="selectTipoPesquisa">
+                            <option value="idLote">ID Lote</option>
+                            <option value="idMarcador">ID Marcador</option>
+                            <option value="loteamento">Loteamento</option>
+                            <option value="quarteirao">Quarteirão</option>
+                            <option value="quadra">Quadra</option>
+                            <option value="lote">Lote</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="inputPesquisa" class="form-label">Valor</label>
+                        <input type="text" class="form-control" id="inputPesquisa" placeholder="Digite o valor para pesquisar">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-primary" id="btnExecutarPesquisa">Pesquisar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- FUNCIONALIDADE DE PESQUISA (TEMPORÁRIA) -->
+    <!-- ============================================ -->
+    <script>
+        // Variável para controlar se está em modo pesquisa
+        let modoPesquisaAtivo = false;
+        let estadoOriginalMarcadores = null;
+        let estadoOriginalPoligonos = null;
+
+        // Abrir modal de pesquisa
+        $('#btnPesquisa').on('click', function() {
+            $('#modalPesquisa').modal('show');
+        });
+
+        // Executar pesquisa
+        $('#btnExecutarPesquisa').on('click', function() {
+            const tipoPesquisa = $('#selectTipoPesquisa').val();
+            const valorPesquisa = $('#inputPesquisa').val().trim();
+
+            if (!valorPesquisa) {
+                alert('Por favor, digite um valor para pesquisar.');
+                return;
+            }
+
+            // Ativa o modo pesquisa
+            modoPesquisaAtivo = true;
+
+            // Salva o estado original (se ainda não foi salvo)
+            if (estadoOriginalMarcadores === null) {
+                salvarEstadoOriginal();
+            }
+
+            // Executa a pesquisa
+            executarPesquisa(tipoPesquisa, valorPesquisa);
+
+            // Fecha o modal
+            $('#modalPesquisa').modal('hide');
+
+            // Mostra o botão de sair do modo pesquisa
+            $('#btnSairModoPesquisa').removeClass('d-none');
+            $('#btnPesquisa').addClass('d-none');
+        });
+
+        // Sair do modo pesquisa
+        $('#btnSairModoPesquisa').on('click', function() {
+            sairModoPesquisa();
+        });
+
+        // Função para salvar o estado original
+        function salvarEstadoOriginal() {
+            estadoOriginalMarcadores = [];
+            estadoOriginalPoligonos = [];
+
+            // Salva estado dos marcadores
+            if (arrayCamadas.marcador_quadra) {
+                arrayCamadas.marcador_quadra.forEach(marker => {
+                    estadoOriginalMarcadores.push({
+                        marker: marker,
+                        visivel: marker.map !== null
+                    });
+                });
+            }
+
+            // Salva estado dos polígonos
+            if (arrayCamadas.poligono_lote) {
+                arrayCamadas.poligono_lote.forEach(poligono => {
+                    estadoOriginalPoligonos.push({
+                        poligono: poligono,
+                        visivel: poligono.map !== null
+                    });
+                });
+            }
+        }
+
+        // Função para executar a pesquisa
+        function executarPesquisa(tipoPesquisa, valorPesquisa) {
+            // Primeiro, oculta todos os marcadores e polígonos
+            if (arrayCamadas.marcador_quadra) {
+                arrayCamadas.marcador_quadra.forEach(marker => {
+                    marker.setMap(null);
+                });
+            }
+
+            if (arrayCamadas.poligono_lote) {
+                arrayCamadas.poligono_lote.forEach(poligono => {
+                    if (poligono.setMap) {
+                        poligono.setMap(null);
+                    }
+                });
+            }
+
+            // Array para armazenar os marcadores encontrados
+            const marcadoresEncontrados = [];
+            const poligonosEncontrados = [];
+
+            // Pesquisa nos marcadores
+            if (arrayCamadas.marcador_quadra) {
+                arrayCamadas.marcador_quadra.forEach(marker => {
+                    let corresponde = false;
+
+                    switch(tipoPesquisa) {
+                        case 'idLote':
+                            // ID Lote = idQuadra (ID do desenho)
+                            if (marker.idQuadra && marker.idQuadra.toString() === valorPesquisa) {
+                                corresponde = true;
+                            }
+                            break;
+
+                        case 'idMarcador':
+                            // ID Marcador = identificadorBanco (ID do banco)
+                            if (marker.identificadorBanco && marker.identificadorBanco.toString() === valorPesquisa) {
+                                corresponde = true;
+                            }
+                            break;
+
+                        case 'loteamento':
+                            // Loteamento - precisa buscar do polígono relacionado
+                            // Por enquanto, vamos procurar nos polígonos primeiro
+                            break;
+
+                        case 'quarteirao':
+                            if (marker.quarteirao && marker.quarteirao.toString().toLowerCase() === valorPesquisa.toLowerCase()) {
+                                corresponde = true;
+                            }
+                            break;
+
+                        case 'quadra':
+                            if (marker.quadra && marker.quadra.toString().toLowerCase() === valorPesquisa.toLowerCase()) {
+                                corresponde = true;
+                            }
+                            break;
+
+                        case 'lote':
+                            if (marker.numeroMarcador && marker.numeroMarcador.toString().toLowerCase() === valorPesquisa.toLowerCase()) {
+                                corresponde = true;
+                            }
+                            break;
+                    }
+
+                    if (corresponde) {
+                        marcadoresEncontrados.push(marker);
+                    }
+                });
+            }
+
+            // Pesquisa nos polígonos (para loteamento e para encontrar polígonos relacionados aos marcadores)
+            if (arrayCamadas.poligono_lote) {
+                arrayCamadas.poligono_lote.forEach(poligono => {
+                    let corresponde = false;
+                    let mostrarPoligono = false;
+
+                    // Busca direta nos polígonos por quarteirão, quadra ou lote
+                    if (tipoPesquisa === 'quarteirao') {
+                        // Tenta diferentes formas de acessar quarteirao
+                        const quarteiraoPoligono = poligono.quarteirao || poligono.dados_completos_desenho?.quarteirao;
+                        if (quarteiraoPoligono && quarteiraoPoligono.toString().toLowerCase() === valorPesquisa.toLowerCase()) {
+                            corresponde = true;
+                            mostrarPoligono = true;
+                        }
+                    } else if (tipoPesquisa === 'quadra') {
+                        const quadraPoligono = poligono.quadra || poligono.dados_completos_desenho?.quadra;
+                        if (quadraPoligono && quadraPoligono.toString().toLowerCase() === valorPesquisa.toLowerCase()) {
+                            corresponde = true;
+                            mostrarPoligono = true;
+                        }
+                    } else if (tipoPesquisa === 'lote') {
+                        const lotePoligono = poligono.lote || poligono.dados_completos_desenho?.lote;
+                        if (lotePoligono && lotePoligono.toString().toLowerCase() === valorPesquisa.toLowerCase()) {
+                            corresponde = true;
+                            mostrarPoligono = true;
+                        }
+                    } else if (tipoPesquisa === 'loteamento') {
+                        // Para loteamento, tenta obter usando a função acharLoteamento do MapFramework
+                        // ou busca na propriedade do polígono
+                        const loteamentoPoligono = poligono.loteamento || poligono.dados_completos_desenho?.loteamento;
+                        if (loteamentoPoligono && loteamentoPoligono.toString().toLowerCase() === valorPesquisa.toLowerCase()) {
+                            corresponde = true;
+                            mostrarPoligono = true;
+                        } else if (poligono.getPath && poligono.getPath().getLength() > 0) {
+                            // Tenta obter o loteamento pela posição do polígono
+                            const path = poligono.getPath();
+                            const primeiroPonto = path.getAt(0);
+                            if (primeiroPonto && MapFramework && MapFramework.acharLoteamento) {
+                                const loteamentoEncontrado = MapFramework.acharLoteamento(primeiroPonto);
+                                if (loteamentoEncontrado && loteamentoEncontrado.toString().toLowerCase() === valorPesquisa.toLowerCase()) {
+                                    corresponde = true;
+                                    mostrarPoligono = true;
+                                }
+                            }
+                        }
+                    } else if (tipoPesquisa === 'idLote') {
+                        // ID Lote = id_desenho do polígono
+                        if (poligono.id_desenho && poligono.id_desenho.toString() === valorPesquisa) {
+                            corresponde = true;
+                            mostrarPoligono = true;
+                        }
+                    }
+
+                    // Se encontrou marcadores, busca os polígonos relacionados (para ID Marcador)
+                    if (marcadoresEncontrados.length > 0 && tipoPesquisa === 'idMarcador') {
+                        marcadoresEncontrados.forEach(marker => {
+                            // Para ID Marcador, mostra o polígono relacionado ao marcador
+                            if (poligono.id_desenho && marker.idQuadra && 
+                                poligono.id_desenho.toString() === marker.idQuadra.toString()) {
+                                mostrarPoligono = true;
+                            }
+                        });
+                    }
+
+                    if (corresponde || mostrarPoligono) {
+                        poligonosEncontrados.push(poligono);
+                    }
+                });
+            }
+
+            // Se encontrou polígonos por quarteirão/quadra/lote, também busca marcadores relacionados
+            if (poligonosEncontrados.length > 0 && (tipoPesquisa === 'quarteirao' || tipoPesquisa === 'quadra' || tipoPesquisa === 'lote')) {
+                poligonosEncontrados.forEach(poligono => {
+                    const quarteiraoPoligono = poligono.quarteirao || poligono.dados_completos_desenho?.quarteirao;
+                    const quadraPoligono = poligono.quadra || poligono.dados_completos_desenho?.quadra;
+                    const lotePoligono = poligono.lote || poligono.dados_completos_desenho?.lote;
+
+                    // Busca marcadores relacionados a este polígono
+                    if (arrayCamadas.marcador_quadra) {
+                        arrayCamadas.marcador_quadra.forEach(marker => {
+                            let corresponde = false;
+
+                            if (tipoPesquisa === 'quarteirao' && quarteiraoPoligono && marker.quarteirao) {
+                                corresponde = quarteiraoPoligono.toString().toLowerCase() === marker.quarteirao.toString().toLowerCase();
+                            } else if (tipoPesquisa === 'quadra' && quadraPoligono && marker.quadra) {
+                                corresponde = quadraPoligono.toString().toLowerCase() === marker.quadra.toString().toLowerCase();
+                            } else if (tipoPesquisa === 'lote' && lotePoligono && marker.numeroMarcador) {
+                                corresponde = lotePoligono.toString().toLowerCase() === marker.numeroMarcador.toString().toLowerCase();
+                            }
+
+                            if (corresponde && !marcadoresEncontrados.includes(marker)) {
+                                marcadoresEncontrados.push(marker);
+                            }
+                        });
+                    }
+                });
+            }
+
+            // Mostra os marcadores encontrados
+            marcadoresEncontrados.forEach(marker => {
+                marker.setMap(MapFramework.map);
+            });
+
+            // Mostra os polígonos encontrados
+            poligonosEncontrados.forEach(poligono => {
+                if (poligono.setMap) {
+                    poligono.setMap(MapFramework.map);
+                }
+            });
+
+            // Se não encontrou nada, mostra mensagem
+            if (marcadoresEncontrados.length === 0 && poligonosEncontrados.length === 0) {
+                alert('Nenhum resultado encontrado para: ' + valorPesquisa);
+            } else {
+                // Ajusta o zoom para mostrar os resultados
+                if (marcadoresEncontrados.length > 0) {
+                    const bounds = new google.maps.LatLngBounds();
+                    marcadoresEncontrados.forEach(marker => {
+                        if (marker.position) {
+                            bounds.extend(marker.position);
+                        }
+                    });
+                    if (!bounds.isEmpty()) {
+                        MapFramework.map.fitBounds(bounds);
+                    }
+                }
+            }
+        }
+
+        // Função para sair do modo pesquisa
+        function sairModoPesquisa() {
+            modoPesquisaAtivo = false;
+
+            // Restaura o estado original dos marcadores
+            if (estadoOriginalMarcadores) {
+                estadoOriginalMarcadores.forEach(item => {
+                    if (item.visivel) {
+                        item.marker.setMap(MapFramework.map);
+                    } else {
+                        item.marker.setMap(null);
+                    }
+                });
+            }
+
+            // Restaura o estado original dos polígonos
+            if (estadoOriginalPoligonos) {
+                estadoOriginalPoligonos.forEach(item => {
+                    if (item.visivel && item.poligono.setMap) {
+                        item.poligono.setMap(MapFramework.map);
+                    } else if (item.poligono.setMap) {
+                        item.poligono.setMap(null);
+                    }
+                });
+            }
+
+            // Esconde o botão de sair do modo pesquisa
+            $('#btnSairModoPesquisa').addClass('d-none');
+            $('#btnPesquisa').removeClass('d-none');
+
+            // Limpa os campos do modal
+            $('#inputPesquisa').val('');
+        }
+
+        // Permite pesquisar pressionando Enter no input
+        $('#inputPesquisa').on('keypress', function(e) {
+            if (e.which === 13) {
+                $('#btnExecutarPesquisa').click();
+            }
+        });
+    </script>
 
 </body>
 

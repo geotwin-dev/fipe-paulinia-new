@@ -1276,6 +1276,10 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                         Marcadores
                                     </label>
                                 </div>
+                                <!-- Botão Editar Marcadores (aparece quando checkbox está marcado) -->
+                                <button id="btnEditarMarcadores" class="btn btn-sm btn-warning d-none" style="margin-top: 5px; width: 100%;">
+                                    <i class="fas fa-edit"></i> Editar marcadores
+                                </button>
                             </li>
                             <li>
                                 <div class="form-check">
@@ -1332,6 +1336,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
                     <!-- Botão Sair da Edição (aparece quando está em modo de edição) -->
                     <button id="btnSairEdicao" class="btn btn-secondary d-none">Sair da Edição</button>
+
+                    <!-- Botão Sair do Modo Edição de Marcadores (aparece quando está em modo de edição de marcadores) -->
+                    <button id="btnSairModoEdicaoMarcadores" class="btn btn-secondary d-none">Sair do modo edição de marcadores</button>
 
                     <div class="divControle">
                         <div class="range-control">
@@ -2630,11 +2637,19 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             MapFramework.alternarVisibilidadeCamada('quadriculas', visivel);
         });
 
+        // Variável para controlar o modo de edição de marcadores
+        let modoEdicaoMarcadores = false;
+        let marcadoresAlterados = []; // Array para armazenar marcadores que foram movidos
+
         $('#chkMarcadores').on('change', function() {
             const visivel = $(this).is(':checked');
             if (visivel) {
                 // Checkbox marcado = mostra TODOS os marcadores do mapa
                 MapFramework.alternarVisibilidadeTodosMarcadores(true);
+                // Mostra o botão "Editar marcadores" se não estiver em modo edição
+                if (!modoEdicaoMarcadores) {
+                    $('#btnEditarMarcadores').removeClass('d-none');
+                }
             } else {
                 // Checkbox desmarcado = volta a mostrar apenas os do quarteirão selecionado (se houver)
                 if (quarteiraoAtualSelecionado) {
@@ -2643,6 +2658,262 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     // Se não há quarteirão selecionado, oculta todos
                     MapFramework.alternarVisibilidadeTodosMarcadores(false);
                 }
+                // Oculta o botão "Editar marcadores" e sai do modo edição se estiver ativo
+                $('#btnEditarMarcadores').addClass('d-none');
+                if (modoEdicaoMarcadores) {
+                    sairModoEdicaoMarcadores();
+                }
+            }
+        });
+
+        // Evento para entrar no modo de edição de marcadores
+        $('#btnEditarMarcadores').on('click', function() {
+            entrarModoEdicaoMarcadores();
+        });
+
+        // Evento para sair do modo de edição de marcadores
+        $('#btnSairModoEdicaoMarcadores').on('click', function() {
+            sairModoEdicaoMarcadores();
+        });
+
+        // Função para entrar no modo de edição de marcadores
+        function entrarModoEdicaoMarcadores() {
+            modoEdicaoMarcadores = true;
+            marcadoresAlterados = [];
+
+            // Esconde o botão "Editar marcadores"
+            $('#btnEditarMarcadores').addClass('d-none');
+            // Mostra o botão "Sair do modo edição"
+            $('#btnSairModoEdicaoMarcadores').removeClass('d-none');
+
+            // Esconde todos os botões de desenho e controles
+            $('#btnIncluirPoligono, #btnIncluirUnidade, #btnIncluirPiscina, #btnIncluirLinha, #btnFinalizarDesenho, #btnSairModoMarcador, #btnEditar, #btnExcluir, #btnSairEdicao, #btnLerPDF, #btnIncluirMarcador').addClass('d-none');
+            
+            // Esconde controles de opacidade e espessura
+            $('.divControle').addClass('d-none');
+            
+            // Esconde botão régua (seleciona o btn-group que contém o botão com texto "Régua")
+            $('.btn-group').each(function() {
+                if ($(this).find('button:contains("Régua")').length > 0) {
+                    $(this).addClass('d-none');
+                }
+            });
+
+            // Torna todos os marcadores draggable e desabilita o clique
+            if (arrayCamadas && arrayCamadas.marcador_quadra) {
+                arrayCamadas.marcador_quadra.forEach(function(marker) {
+                    if (marker && marker.setMap) {
+                        // Salva o estado original do clickable (se ainda não foi salvo)
+                        if (marker.gmpClickableOriginal === undefined) {
+                            marker.gmpClickableOriginal = marker.gmpClickable !== false;
+                        }
+                        
+                        // Torna o marcador draggable
+                        marker.gmpDraggable = true;
+                        // Desabilita o clique para evitar abrir infowindows
+                        marker.gmpClickable = false;
+                        
+                        // Desabilita pointer-events no elemento HTML do marcador para evitar cliques
+                        if (marker.content && marker.content.style) {
+                            // Salva o estado original do pointer-events
+                            if (marker.pointerEventsOriginal === undefined) {
+                                marker.pointerEventsOriginal = marker.content.style.pointerEvents || 'auto';
+                            }
+                            marker.content.style.pointerEvents = 'none';
+                        }
+                        
+                        // Adiciona listener para quando o marcador for arrastado
+                        // Remove listeners anteriores se existirem
+                        if (marker.dragEndListener) {
+                            google.maps.event.removeListener(marker.dragEndListener);
+                        }
+                        
+                        // Adiciona listener para quando o arrasto terminar
+                        marker.dragEndListener = marker.addListener('dragend', function() {
+                            const pos = marker.position;
+                            const lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
+                            const lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
+                            
+                            // Verifica se o marcador tem ID do banco
+                            const idBanco = marker.identificadorBanco || marker.identificador || marker.id;
+                            
+                            if (idBanco) {
+                                // Verifica se o marcador já está no array de alterados
+                                const index = marcadoresAlterados.findIndex(m => m.id === idBanco);
+                                
+                                if (index >= 0) {
+                                    // Atualiza a posição existente
+                                    marcadoresAlterados[index].lat = lat;
+                                    marcadoresAlterados[index].lng = lng;
+                                } else {
+                                    // Adiciona novo marcador alterado
+                                    marcadoresAlterados.push({
+                                        id: idBanco,
+                                        lat: lat,
+                                        lng: lng
+                                    });
+                                }
+                                
+                                console.log('Marcador movido - ID:', idBanco, 'Nova posição:', lat, lng);
+                            }
+                        });
+                    }
+                });
+            }
+
+            // Desabilita o clique dos polígonos da camada poligono_lote (Lotes Prefeitura)
+            if (arrayCamadas && arrayCamadas.poligono_lote) {
+                arrayCamadas.poligono_lote.forEach(function(polygon) {
+                    if (polygon && polygon.setOptions) {
+                        // Salva o estado original do clickable (se ainda não foi salvo)
+                        if (polygon.clickableOriginal === undefined) {
+                            // Verifica o estado atual do clickable
+                            let currentClickable = true; // Valor padrão
+                            if (typeof polygon.get === 'function') {
+                                try {
+                                    const clickableValue = polygon.get('clickable');
+                                    currentClickable = clickableValue !== undefined ? clickableValue : true;
+                                } catch (e) {
+                                    console.warn('Erro ao obter clickable do polígono:', e);
+                                }
+                            }
+                            polygon.clickableOriginal = currentClickable;
+                        }
+                        
+                        // Desabilita o clique do polígono
+                        polygon.setOptions({ clickable: false });
+                    }
+                });
+            }
+
+            console.log('Modo de edição de marcadores ativado');
+        }
+
+        // Função para sair do modo de edição de marcadores
+        function sairModoEdicaoMarcadores() {
+            modoEdicaoMarcadores = false;
+
+            // Mostra o botão "Editar marcadores"
+            $('#btnEditarMarcadores').removeClass('d-none');
+            // Esconde o botão "Sair do modo edição"
+            $('#btnSairModoEdicaoMarcadores').addClass('d-none');
+
+            // Restaura todos os botões de desenho e controles
+            $('#btnIncluirPoligono, #btnIncluirUnidade, #btnIncluirPiscina, #btnIncluirLinha').removeClass('d-none');
+            $('.divControle').removeClass('d-none');
+            
+            // Restaura botão régua
+            $('.btn-group').each(function() {
+                if ($(this).find('button:contains("Régua")').length > 0) {
+                    $(this).removeClass('d-none');
+                }
+            });
+
+            // Remove o draggable de todos os marcadores, reabilita o clique e remove os listeners
+            if (arrayCamadas && arrayCamadas.marcador_quadra) {
+                arrayCamadas.marcador_quadra.forEach(function(marker) {
+                    if (marker) {
+                        marker.gmpDraggable = false;
+                        
+                        // Reabilita o clique (restaura o estado original)
+                        if (marker.gmpClickableOriginal !== undefined) {
+                            marker.gmpClickable = marker.gmpClickableOriginal;
+                            marker.gmpClickableOriginal = undefined; // Limpa a propriedade temporária
+                        } else {
+                            // Se não tinha estado salvo, assume que era clicável
+                            marker.gmpClickable = true;
+                        }
+                        
+                        // Reabilita pointer-events no elemento HTML do marcador
+                        if (marker.content && marker.content.style) {
+                            if (marker.pointerEventsOriginal !== undefined) {
+                                marker.content.style.pointerEvents = marker.pointerEventsOriginal;
+                                marker.pointerEventsOriginal = undefined; // Limpa a propriedade temporária
+                            } else {
+                                marker.content.style.pointerEvents = 'auto';
+                            }
+                        }
+                        
+                        // Remove o listener de dragend
+                        if (marker.dragEndListener) {
+                            google.maps.event.removeListener(marker.dragEndListener);
+                            marker.dragEndListener = null;
+                        }
+                    }
+                });
+            }
+
+            // Reabilita o clique dos polígonos da camada poligono_lote (Lotes Prefeitura)
+            if (arrayCamadas && arrayCamadas.poligono_lote) {
+                arrayCamadas.poligono_lote.forEach(function(polygon) {
+                    if (polygon && polygon.setOptions) {
+                        // Reabilita o clique (restaura o estado original)
+                        if (polygon.clickableOriginal !== undefined) {
+                            polygon.setOptions({ clickable: polygon.clickableOriginal });
+                            polygon.clickableOriginal = undefined; // Limpa a propriedade temporária
+                        } else {
+                            // Se não tinha estado salvo, assume que era clicável
+                            polygon.setOptions({ clickable: true });
+                        }
+                    }
+                });
+            }
+
+            // Salva as alterações no banco de dados se houver marcadores alterados
+            if (marcadoresAlterados.length > 0) {
+                salvarMarcadoresAlterados();
+            } else {
+                console.log('Nenhum marcador foi alterado');
+            }
+
+            console.log('Modo de edição de marcadores desativado');
+        }
+
+        // Função para salvar os marcadores alterados no banco de dados
+        function salvarMarcadoresAlterados() {
+            console.log('Salvando', marcadoresAlterados.length, 'marcador(es) alterado(s)...');
+
+            $.ajax({
+                url: 'atualizar_marcadores_posicao.php',
+                method: 'POST',
+                data: {
+                    marcadores: JSON.stringify(marcadoresAlterados)
+                },
+                success: function(response) {
+                    try {
+                        let resultado = response;
+                        if (typeof response === 'string') {
+                            resultado = JSON.parse(response);
+                        }
+
+                        if (resultado.status === 'sucesso') {
+                            console.log('Marcadores atualizados com sucesso:', resultado.total);
+                            alert('Marcadores atualizados com sucesso!');
+                            marcadoresAlterados = []; // Limpa o array
+                        } else if (resultado.status === 'parcial') {
+                            console.warn('Alguns marcadores não foram atualizados:', resultado.erros);
+                            alert('Atenção: ' + resultado.mensagem + '\nTotal atualizado: ' + resultado.atualizados);
+                            marcadoresAlterados = []; // Limpa o array mesmo assim
+                        } else {
+                            console.error('Erro ao salvar marcadores:', resultado.mensagem);
+                            alert('Erro ao salvar marcadores: ' + (resultado.mensagem || 'Erro desconhecido'));
+                        }
+                    } catch (e) {
+                        console.error('Erro ao processar resposta:', e);
+                        alert('Erro ao processar resposta do servidor');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Erro na requisição:', error);
+                    alert('Erro ao salvar marcadores. Tente novamente.');
+                }
+            });
+        }
+
+        // Verifica o estado inicial do checkbox ao carregar a página
+        $(document).ready(function() {
+            if ($('#chkMarcadores').is(':checked') && !modoEdicaoMarcadores) {
+                $('#btnEditarMarcadores').removeClass('d-none');
             }
         });
 
@@ -4243,6 +4514,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
         // Função para mostrar InfoWindow do marcador
         function mostrarTooltipMarcador(marker, event) {
+            // Se estiver no modo de edição de marcadores, não abre o infowindow
+            if (modoEdicaoMarcadores) {
+                return;
+            }
+
             marcadorAtualTooltip = marker;
             marcadorIdAtual = marker.identificadorBanco; // ID no banco
 

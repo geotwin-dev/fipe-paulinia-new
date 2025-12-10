@@ -5206,17 +5206,23 @@ const MapFramework = {
             });
         });
 
-        arrayCamadas['unidade'].forEach(pol => {
-            pol.setOptions({
-                fillOpacity: value
+        //testar primeiro para ver se o arrayCamadas['unidade'] existe
+        if (arrayCamadas['unidade'] && arrayCamadas['unidade'].length > 0) {
+            arrayCamadas['unidade'].forEach(pol => {
+                pol.setOptions({
+                    fillOpacity: value
+                });
             });
-        });
+        }
 
-        arrayCamadas['piscina'].forEach(pol => {
-            pol.setOptions({
-                fillOpacity: value
+        //teste para ver se o arrayCamadas['piscina'] existe
+        if (arrayCamadas['piscina'] && arrayCamadas['piscina'].length > 0) {
+            arrayCamadas['piscina'].forEach(pol => {
+                pol.setOptions({
+                    fillOpacity: value
+                });
             });
-        });
+        }
 
         arrayCamadas['poligono_lote'].forEach(pol => {
             pol.setOptions({
@@ -5361,6 +5367,8 @@ const MapFramework = {
     },
 
     carregarPlanilha: function () {
+
+        console.log('Carregamentos dos quarteirões:', this.quarteiroesNumeros);
         const self = this; // Salva referência ao MapFramework
         $.ajax({
             url: 'carregarPlanilha.php',
@@ -5849,13 +5857,15 @@ const MapFramework = {
                                     identificador: desenho.id
                                 });
                             }
-
+                            
                             // Busca dados do morador baseado em lote, quadra e quarteirão
                             const dadosMorador = MapFramework.dadosMoradores.find(morador =>
                                 morador.lote == desenho.lote &&
                                 morador.quadra == desenho.quadra &&
                                 morador.cara_quarteirao == desenho.quarteirao
                             );
+
+                            console.log(MapFramework.dadosMoradores, dadosMorador);
 
                             // Cria conteúdo do infowindow
                             let conteudoInfoWindow = '';
@@ -6047,6 +6057,13 @@ const MapFramework = {
                                         dataType: 'json',
                                         success: function(response) {
                                             const containerDocs = document.querySelector(`#documentosQuarteirao_${desenho.id}`);
+
+                                            //condição para caso o quarteirão tenha menos de 4 digitos
+                                            //colocar um zero a esquerda
+                                            if (desenho.quarteirao.length < 4) {
+                                                desenho.quarteirao = '0' + desenho.quarteirao;
+                                            }
+
                                             if (containerDocs) {
                                                 if (response.success && response.arquivos && response.arquivos.length > 0) {
                                                     // Cria a lista de documentos
