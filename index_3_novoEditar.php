@@ -595,6 +595,11 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             <div class="mapa-wrapper">
                 <div class="mapa-titulo">
                     <i class="fas fa-map-marked-alt"></i> Situação atual
+                    <!--
+                    <button id="btnVertices" class="btn btn-primary" style="margin-left: 10px;">
+                        <i class="fas fa-edit"></i> Vértices
+                    </button>
+                    -->
                 </div>
                 <div id="map1" class="mapa"></div>
 
@@ -1248,8 +1253,22 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                         fillColor: cor,
                         fillOpacity: 0.35,
                         clickable: true,
+                        editable: false, // Inicialmente não editável
                         map: mapa
                     });
+
+                    // Armazenar dados no polígono
+                    polygon.idDesenho = desenho.id;
+                    polygon.lote = desenho.lote;
+                    polygon.corOriginal = cor;
+                    polygon.desenhoCompleto = desenho;
+                    polygon.editableOriginal = false; // Guardar estado original
+                    
+                    // Armazenar coordenadas originais para restaurar depois
+                    polygon.coordenadasOriginais = JSON.parse(JSON.stringify(coordenadas)); // Deep copy
+
+                    // Adicionar ao array
+                    poligonosAnteriorArray.push(polygon);
 
                     // SEMPRE mostra ID no console (independente de modo)
                     polygon.addListener('click', function(e) {
@@ -1266,6 +1285,10 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
         // Arrays para armazenar objetos do mapa posterior (para destaque)
         let poligonosPosteriorArray = [];
         let marcadoresPosteriorArray = [];
+        
+        // Arrays para armazenar objetos do mapa anterior (para edição de vértices)
+        let poligonosAnteriorArray = [];
+        let marcadoresAnteriorArray = [];
 
         // Função auxiliar para adicionar novo polígono aos arrays e configurar event listeners
         function adicionarPoligonoAoArray(polygon, desenhoCompleto) {
@@ -1484,8 +1507,27 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                         },
                         content: el,
                         gmpClickable: true,
+                        gmpDraggable: false, // Inicialmente não arrastável
                         map: mapa
                     });
+
+                    // Armazenar dados no marcador
+                    marker.idDesenho = desenho.id;
+                    marker.lote = desenho.lote;
+                    marker.corOriginal = cor;
+                    marker.corTextoOriginal = corTexto;
+                    marker.elementoHTML = el;
+                    marker.desenhoCompleto = desenho;
+                    marker.draggableOriginal = false; // Guardar estado original
+                    
+                    // Armazenar posição original para restaurar depois
+                    marker.posicaoOriginal = {
+                        lat: parseFloat(lat),
+                        lng: parseFloat(lng)
+                    };
+
+                    // Adicionar ao array
+                    marcadoresAnteriorArray.push(marker);
 
                     // SEMPRE mostra ID no console (independente de modo)
                     el.addEventListener('click', function(e) {
@@ -1590,6 +1632,9 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             poligono: null,
             marcador: null
         };
+        
+        // Variável para controlar modo de edição de vértices do mapa anterior
+        let modoVerticesAtivo = false;
 
         // ============================================================================
         // FUNÇÕES DE SELEÇÃO PARA ASSOCIAÇÃO
@@ -3469,6 +3514,76 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
         }
 
         // ============================================================================
+        // FUNÇÃO PARA ALTERNAR MODO DE EDIÇÃO DE VÉRTICES (MAP1)
+        // ============================================================================
+        function alternarModoVertices() {
+            modoVerticesAtivo = !modoVerticesAtivo;
+            const btnVertices = document.getElementById('btnVertices');
+            
+            if (modoVerticesAtivo) {
+                // Ativar modo de edição: tornar polígonos editáveis e marcadores draggable
+                poligonosAnteriorArray.forEach(polygon => {
+                    polygon.setOptions({
+                        editable: true
+                    });
+                });
+                
+                marcadoresAnteriorArray.forEach(marker => {
+                    if (marker.setOptions) {
+                        marker.setOptions({ gmpDraggable: true });
+                    } else {
+                        marker.gmpDraggable = true;
+                    }
+                });
+                
+                // Mudar texto do botão
+                btnVertices.innerHTML = '<i class="fas fa-undo"></i> Resetar';
+                btnVertices.classList.remove('btn-outline-light');
+                btnVertices.classList.add('btn-warning');
+                
+            } else {
+                // Desativar modo de edição e restaurar coordenadas originais
+                poligonosAnteriorArray.forEach(polygon => {
+                    // Restaurar coordenadas originais do polígono
+                    if (polygon.coordenadasOriginais) {
+                        polygon.setPath(polygon.coordenadasOriginais);
+                    }
+                    // Desativar edição
+                    polygon.setOptions({
+                        editable: false
+                    });
+                });
+                
+                marcadoresAnteriorArray.forEach(marker => {
+                    // Restaurar posição original do marcador
+                    if (marker.posicaoOriginal) {
+                        // Atualizar posição diretamente (funciona com AdvancedMarkerElement)
+                        marker.position = marker.posicaoOriginal;
+                        // Desativar draggable
+                        if (marker.setOptions) {
+                            marker.setOptions({ gmpDraggable: false });
+                        } else {
+                            marker.gmpDraggable = false;
+                        }
+                    } else {
+                        // Apenas desativar draggable se não houver posição original
+                        if (marker.setOptions) {
+                            marker.setOptions({ gmpDraggable: false });
+                        } else {
+                            marker.gmpDraggable = false;
+                        }
+                    }
+                });
+                
+                // Mudar texto do botão
+                btnVertices.innerHTML = '<i class="fas fa-edit"></i> Vértices';
+                btnVertices.classList.remove('btn-warning');
+                btnVertices.classList.remove('btn-primary');
+                btnVertices.classList.add('btn-primary');
+            }
+        }
+
+        // ============================================================================
         // INICIALIZAÇÃO
         // ============================================================================
 
@@ -3481,6 +3596,12 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             document.getElementById('btnDividir').addEventListener('click', dividirPoligono);
             document.getElementById('btnUnir').addEventListener('click', unirPoligonos);
             document.getElementById('btnCancelar').addEventListener('click', cancelarDivisao);
+            
+            // Event listener do botão Vértices
+            const btnVertices = document.getElementById('btnVertices');
+            if (btnVertices) {
+                btnVertices.addEventListener('click', alternarModoVertices);
+            }
 
             // Event listener do checkbox da ortofoto
             const chkOrtofoto = document.getElementById('chkOrtofoto');

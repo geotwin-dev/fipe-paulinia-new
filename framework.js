@@ -5368,7 +5368,7 @@ const MapFramework = {
 
     carregarPlanilha: function () {
 
-        console.log('Carregamentos dos quarteirões:', this.quarteiroesNumeros);
+        //console.log('Carregamentos dos quarteirões:', this.quarteiroesNumeros);
         const self = this; // Salva referência ao MapFramework
         $.ajax({
             url: 'carregarPlanilha.php',

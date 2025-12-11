@@ -4,6 +4,317 @@ session_start();
 include("verifica_login.php");
 include("connection.php");
 
+// Endpoint para buscar IDs dos desenhos filtrados pela pesquisa salva
+if (isset($_GET['buscarDesenhosFiltrados'])) {
+    header('Content-Type: application/json');
+    
+    try {
+        // Verificar se quadrícula foi fornecida
+        if (!isset($_GET['quadricula']) || empty($_GET['quadricula'])) {
+            echo json_encode(['error' => 'Quadrícula não fornecida']);
+            exit;
+        }
+        
+        $quadricula = $_GET['quadricula'];
+        
+        // Buscar pesquisa salva (mesmo sistema do painel)
+        $userId = null;
+        if (isset($_SESSION['usuario']) && is_array($_SESSION['usuario']) && isset($_SESSION['usuario'][1])) {
+            $userId = md5($_SESSION['usuario'][1]);
+        } else {
+            $userId = md5(session_id());
+        }
+        
+        $dir = __DIR__ . '/jsonPesquisa';
+        $file = $dir . '/' . $userId . '.json';
+        
+        if (!file_exists($file)) {
+            echo json_encode(['ids' => []]);
+            exit;
+        }
+        
+        $pesquisaData = json_decode(file_get_contents($file), true);
+        if (!is_array($pesquisaData) || !isset($pesquisaData['type']) || !isset($pesquisaData['values'])) {
+            echo json_encode(['ids' => []]);
+            exit;
+        }
+        
+        $type = $pesquisaData['type'];
+        $values = $pesquisaData['values'];
+        
+        // Construir query SQL baseada no tipo de pesquisa (igual ao painel.php)
+        $sql = "SELECT * FROM cadastro WHERE 1=1";
+        $params = [];
+        
+        switch ($type) {
+            case 'endereco_numero':
+                if (!empty($values['endereco'])) {
+                    $sql .= " AND logradouro LIKE :endereco";
+                    $params[':endereco'] = '%' . $values['endereco'] . '%';
+                }
+                if (!empty($values['numero'])) {
+                    $sql .= " AND numero = :numero";
+                    $params[':numero'] = $values['numero'];
+                }
+                break;
+            case 'quarteirao':
+                if (!empty($values['quarteirao'])) {
+                    $sql .= " AND cara_quarteirao = :quarteirao";
+                    $params[':quarteirao'] = $values['quarteirao'];
+                }
+                break;
+            case 'quarteirao_quadra':
+                if (!empty($values['quarteirao'])) {
+                    $sql .= " AND cara_quarteirao = :quarteirao";
+                    $params[':quarteirao'] = $values['quarteirao'];
+                }
+                if (!empty($values['quadra'])) {
+                    $sql .= " AND quadra = :quadra";
+                    $params[':quadra'] = $values['quadra'];
+                }
+                break;
+            case 'quarteirao_quadra_lote':
+                if (!empty($values['quarteirao'])) {
+                    $sql .= " AND cara_quarteirao = :quarteirao";
+                    $params[':quarteirao'] = $values['quarteirao'];
+                }
+                if (!empty($values['quadra'])) {
+                    $sql .= " AND quadra = :quadra";
+                    $params[':quadra'] = $values['quadra'];
+                }
+                if (!empty($values['lote'])) {
+                    $sql .= " AND lote = :lote";
+                    $params[':lote'] = $values['lote'];
+                }
+                break;
+            case 'loteamento':
+                if (!empty($values['loteamento'])) {
+                    $sql .= " AND nome_loteamento LIKE :loteamento";
+                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                }
+                break;
+            case 'loteamento_quadra':
+                if (!empty($values['loteamento'])) {
+                    $sql .= " AND nome_loteamento LIKE :loteamento";
+                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                }
+                if (!empty($values['quadra'])) {
+                    $sql .= " AND quadra = :quadra";
+                    $params[':quadra'] = $values['quadra'];
+                }
+                break;
+            case 'loteamento_quadra_lote':
+                if (!empty($values['loteamento'])) {
+                    $sql .= " AND nome_loteamento LIKE :loteamento";
+                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                }
+                if (!empty($values['quadra'])) {
+                    $sql .= " AND quadra = :quadra";
+                    $params[':quadra'] = $values['quadra'];
+                }
+                if (!empty($values['lote'])) {
+                    $sql .= " AND lote = :lote";
+                    $params[':lote'] = $values['lote'];
+                }
+                break;
+            case 'cnpj':
+                if (!empty($values['cnpj'])) {
+                    $sql .= " AND cnpj = :cnpj";
+                    $params[':cnpj'] = $values['cnpj'];
+                }
+                break;
+            case 'uso_imovel':
+                if (!empty($values['uso_imovel'])) {
+                    $sql .= " AND uso_imovel LIKE :uso_imovel";
+                    $params[':uso_imovel'] = '%' . $values['uso_imovel'] . '%';
+                }
+                break;
+            case 'bairro':
+                if (!empty($values['bairro'])) {
+                    $sql .= " AND bairro LIKE :bairro";
+                    $params[':bairro'] = '%' . $values['bairro'] . '%';
+                }
+                break;
+            case 'inscricao':
+                if (!empty($values['inscricao'])) {
+                    $sql .= " AND inscricao = :inscricao";
+                    $params[':inscricao'] = $values['inscricao'];
+                }
+                break;
+            case 'imob_id':
+                if (!empty($values['imob_id'])) {
+                    $sql .= " AND imob_id = :imob_id";
+                    $params[':imob_id'] = $values['imob_id'];
+                }
+                break;
+            case 'zona':
+                if (!empty($values['zona'])) {
+                    $sql .= " AND zona = :zona";
+                    $params[':zona'] = $values['zona'];
+                }
+                break;
+            case 'cat_via':
+                if (!empty($values['cat_via'])) {
+                    $sql .= " AND cat_via LIKE :cat_via";
+                    $params[':cat_via'] = '%' . $values['cat_via'] . '%';
+                }
+                break;
+            case 'tipo_edificacao':
+                if (!empty($values['tipo_edificacao'])) {
+                    $sql .= " AND tipo_edificacao LIKE :tipo_edificacao";
+                    $params[':tipo_edificacao'] = '%' . $values['tipo_edificacao'] . '%';
+                }
+                break;
+            case 'tipo_utilizacao':
+                if (!empty($values['tipo_utilizacao'])) {
+                    $sql .= " AND tipo_utilizacao LIKE :tipo_utilizacao";
+                    $params[':tipo_utilizacao'] = '%' . $values['tipo_utilizacao'] . '%';
+                }
+                break;
+            case 'area_construida':
+                if (!empty($values['area_construida_min'])) {
+                    $sql .= " AND total_construido >= :area_construida_min";
+                    $params[':area_construida_min'] = floatval($values['area_construida_min']);
+                }
+                if (!empty($values['area_construida_max'])) {
+                    $sql .= " AND total_construido <= :area_construida_max";
+                    $params[':area_construida_max'] = floatval($values['area_construida_max']);
+                }
+                break;
+            case 'area_terreno':
+                if (!empty($values['area_terreno_min'])) {
+                    $sql .= " AND area_terreno >= :area_terreno_min";
+                    $params[':area_terreno_min'] = floatval($values['area_terreno_min']);
+                }
+                if (!empty($values['area_terreno_max'])) {
+                    $sql .= " AND area_terreno <= :area_terreno_max";
+                    $params[':area_terreno_max'] = floatval($values['area_terreno_max']);
+                }
+                break;
+            default:
+                echo json_encode(['ids' => []]);
+                exit;
+        }
+        
+        // Executar pesquisa (SEM paginação - todos os resultados)
+        $stmt = $pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->execute();
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Coletar combinações únicas de (quarteirao, quadra, lote)
+        $combinacoesComLetras = [];
+        $combinacoesSemLetras = [];
+        
+        foreach ($results as $resultado) {
+            $cara_quarteirao = isset($resultado['cara_quarteirao']) ? $resultado['cara_quarteirao'] : null;
+            $quadra = isset($resultado['quadra']) ? $resultado['quadra'] : null;
+            $lote = isset($resultado['lote']) ? $resultado['lote'] : null;
+            
+            if ($cara_quarteirao && $quadra && $lote) {
+                $temLetras = preg_match('/[^0-9]/', (string)$cara_quarteirao) === 1;
+                $key = $cara_quarteirao . '|' . $quadra . '|' . $lote;
+                
+                if ($temLetras) {
+                    if (!isset($combinacoesComLetras[$key])) {
+                        $combinacoesComLetras[$key] = [
+                            'quarteirao' => $cara_quarteirao,
+                            'quadra' => $quadra,
+                            'lote' => $lote
+                        ];
+                    }
+                } else {
+                    if (!isset($combinacoesSemLetras[$key])) {
+                        $combinacoesSemLetras[$key] = [
+                            'quarteirao' => $cara_quarteirao,
+                            'quadra' => $quadra,
+                            'lote' => $lote
+                        ];
+                    }
+                }
+            }
+        }
+        
+        // Buscar IDs dos desenhos FILTRADOS pela quadrícula
+        $idsDesenhos = [];
+        
+        // Desenhos com letras
+        if (!empty($combinacoesComLetras)) {
+            $conditions = [];
+            $paramsDesenhos = [':quadricula' => $quadricula];
+            $paramIndex = 0;
+            
+            foreach ($combinacoesComLetras as $comb) {
+                $conditions[] = "(quarteirao = :q{$paramIndex} AND quadra = :quad{$paramIndex} AND lote = :lot{$paramIndex})";
+                $paramsDesenhos[":q{$paramIndex}"] = $comb['quarteirao'];
+                $paramsDesenhos[":quad{$paramIndex}"] = $comb['quadra'];
+                $paramsDesenhos[":lot{$paramIndex}"] = $comb['lote'];
+                $paramIndex++;
+            }
+            
+            if (!empty($conditions)) {
+                $sqlDesenhos = "SELECT id FROM desenhos 
+                                WHERE quadricula = :quadricula
+                                AND (" . implode(' OR ', $conditions) . ")
+                                AND (camada = 'poligono lote' OR camada = 'poligono_lote')
+                                AND status > 0";
+                
+                $stmtDesenhos = $pdo->prepare($sqlDesenhos);
+                $stmtDesenhos->execute($paramsDesenhos);
+                $poligonos = $stmtDesenhos->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($poligonos as $p) {
+                    $idsDesenhos[] = intval($p['id']);
+                }
+            }
+        }
+        
+        // Desenhos sem letras
+        if (!empty($combinacoesSemLetras)) {
+            $conditions = [];
+            $paramsDesenhos = [':quadricula' => $quadricula];
+            $paramIndex = 0;
+            
+            foreach ($combinacoesSemLetras as $comb) {
+                $conditions[] = "(CAST(quarteirao AS UNSIGNED) = CAST(:q{$paramIndex} AS UNSIGNED) AND quadra = :quad{$paramIndex} AND lote = :lot{$paramIndex})";
+                $paramsDesenhos[":q{$paramIndex}"] = $comb['quarteirao'];
+                $paramsDesenhos[":quad{$paramIndex}"] = $comb['quadra'];
+                $paramsDesenhos[":lot{$paramIndex}"] = $comb['lote'];
+                $paramIndex++;
+            }
+            
+            if (!empty($conditions)) {
+                $sqlDesenhos = "SELECT id FROM desenhos 
+                                WHERE quadricula = :quadricula
+                                AND (" . implode(' OR ', $conditions) . ")
+                                AND (camada = 'poligono lote' OR camada = 'poligono_lote')
+                                AND status > 0";
+                
+                $stmtDesenhos = $pdo->prepare($sqlDesenhos);
+                $stmtDesenhos->execute($paramsDesenhos);
+                $poligonos = $stmtDesenhos->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($poligonos as $p) {
+                    $id = intval($p['id']);
+                    if (!in_array($id, $idsDesenhos)) {
+                        $idsDesenhos[] = $id;
+                    }
+                }
+            }
+        }
+        
+        // Buscar também marcadores (se houver na pesquisa)
+        // Por enquanto, retornar apenas IDs de polígonos
+        
+        echo json_encode(['ids' => $idsDesenhos]);
+        exit;
+        
+    } catch (Exception $e) {
+        echo json_encode(['error' => $e->getMessage()]);
+        exit;
+    }
+}
+
 if (isset($_GET['quadricula'])) {
     try {
         $stmt = $pdo->prepare("SELECT * FROM ortofotos WHERE quadricula = :a");
@@ -1220,6 +1531,18 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         </button>
                         <ul id="dropCamadas" class="dropdown-menu p-2">
                             <!-- Checkbox da Ortofoto fixo -->
+                            
+                            <li id="liFiltradoCheckbox" style="display: none;">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="chkFiltrado">
+                                    <label class="form-check-label" for="chkFiltrado">
+                                        Filtrado
+                                    </label>
+                                </div>
+                            </li>
+                            <li id="liFiltrado" style="display: none;">
+                                <hr class="dropdown-divider">
+                            </li>
                             <li>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="chkOrtofoto" checked>
@@ -3884,6 +4207,165 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             // Inicializa o modo normal (mostra botões principais)
             controlarVisibilidadeBotoes('normal');
+
+            // ========== FUNCIONALIDADE DE FILTRO POR PESQUISA ==========
+            let idsDesenhosFiltrados = [];
+            let temPesquisaSalva = false;
+            let estadoOriginalVisibilidade = new Map(); // Mapa para armazenar estado original: obj => boolean
+
+            // Buscar pesquisa salva e IDs dos desenhos filtrados
+            async function carregarDesenhosFiltrados() {
+                try {
+                    if (!dadosOrto || dadosOrto.length === 0) return;
+                    
+                    const quadricula = dadosOrto[0]['quadricula'];
+                    const response = await fetch(`index_3.php?buscarDesenhosFiltrados=1&quadricula=${quadricula}`);
+                    
+                    if (!response.ok) return;
+                    
+                    const data = await response.json();
+                    
+                    if (data.ids && Array.isArray(data.ids) && data.ids.length > 0) {
+                        idsDesenhosFiltrados = data.ids.map(id => parseInt(id));
+                        temPesquisaSalva = true;
+                        console.log('Desenhos filtrados encontrados:', idsDesenhosFiltrados.length);
+                        // Mostrar checkbox se houver pesquisa
+                        $('#liFiltrado').show();
+                        $('#liFiltradoCheckbox').show();
+                    } else {
+                        idsDesenhosFiltrados = [];
+                        temPesquisaSalva = false;
+                        // Ocultar checkbox se não houver pesquisa
+                        $('#liFiltrado').hide();
+                        $('#liFiltradoCheckbox').hide();
+                    }
+                } catch (err) {
+                    console.error('Erro ao carregar desenhos filtrados:', err);
+                    $('#liFiltrado').hide();
+                    $('#liFiltradoCheckbox').hide();
+                }
+            }
+
+            // Salvar estado original de visibilidade de todos os objetos
+            function salvarEstadoOriginal() {
+                estadoOriginalVisibilidade.clear();
+                Object.keys(arrayCamadas).forEach(camada => {
+                    if (arrayCamadas[camada] && Array.isArray(arrayCamadas[camada])) {
+                        arrayCamadas[camada].forEach(obj => {
+                            if (obj && typeof obj.setMap === 'function') {
+                                // Verificar se o objeto está visível
+                                let estaVisivel = false;
+                                if (typeof obj.getMap === 'function') {
+                                    estaVisivel = obj.getMap() !== null;
+                                } else if (obj.map !== undefined) {
+                                    estaVisivel = obj.map !== null;
+                                } else {
+                                    // Se não tem método getMap nem propriedade map, assumir que está visível
+                                    // (será tratado na restauração)
+                                    estaVisivel = true;
+                                }
+                                estadoOriginalVisibilidade.set(obj, estaVisivel);
+                            }
+                        });
+                    }
+                });
+            }
+
+            // Aplicar visibilidade baseada nos checkboxes atuais
+            function aplicarVisibilidadePorCheckboxes() {
+                // Mapear checkboxes para camadas
+                const mapeamentoCheckboxes = {
+                    'chkQuadras': 'quadra',
+                    'chkUnidades': 'unidade',
+                    'chkPiscinas': 'piscina',
+                    'chkPoligono_lote': 'lote_ortofoto', // Corrigido: chkPoligono_lote controla lote_ortofoto
+                    'new_checkLotes': 'poligono_lote', // Adicionado: new_checkLotes controla poligono_lote
+                    'chkLotes': 'lote',
+                    'chkLimite': 'limite',
+                    'chkQuadriculas': 'quadriculas',
+                    'chkCondominiosVerticais': 'condominios_verticais',
+                    'chkCondominiosHorizontais': 'condominios_horizontais',
+                    'chkAreasPublicas': 'areas_publicas',
+                    'chkPrefeitura': 'prefeitura',
+                    'chkQuarteiroes': 'quarteirao',
+                    'chkImagensAereas': 'imagens_aereas',
+                    'chkStreetview': 'streetview',
+                    'chkStreetviewFotos': 'streetview_fotos'
+                };
+                
+                // Aplicar visibilidade para cada camada baseado no checkbox
+                Object.keys(mapeamentoCheckboxes).forEach(checkboxId => {
+                    const camada = mapeamentoCheckboxes[checkboxId];
+                    const checkbox = $(`#${checkboxId}`);
+                    if (checkbox.length > 0) {
+                        const visivel = checkbox.is(':checked');
+                        if (MapFramework && MapFramework.alternarVisibilidadeCamada) {
+                            MapFramework.alternarVisibilidadeCamada(camada, visivel);
+                        }
+                    }
+                });
+                
+                // Tratamento especial para marcadores
+                const chkMarcadores = $('#chkMarcadores');
+                if (chkMarcadores.length > 0) {
+                    const visivel = chkMarcadores.is(':checked');
+                    if (visivel && MapFramework && MapFramework.alternarVisibilidadeTodosMarcadores) {
+                        MapFramework.alternarVisibilidadeTodosMarcadores(true);
+                    } else if (!visivel && MapFramework && MapFramework.alternarVisibilidadeTodosMarcadores) {
+                        MapFramework.alternarVisibilidadeTodosMarcadores(false);
+                    } else if (arrayCamadas.marcador_quadra) {
+                        arrayCamadas.marcador_quadra.forEach(marker => {
+                            marker.setMap(visivel ? MapFramework.map : null);
+                        });
+                    }
+                }
+            }
+
+            // Controlar visibilidade baseado no filtro
+            function toggleFiltrado(mostrarFiltrado) {
+                if (!mostrarFiltrado) {
+                    // Aplicar visibilidade baseada nos checkboxes atuais
+                    aplicarVisibilidadePorCheckboxes();
+                } else {
+                    // Salvar estado atual antes de aplicar filtro
+                    salvarEstadoOriginal();
+                    
+                    // Mostrar apenas desenhos filtrados
+                    Object.keys(arrayCamadas).forEach(camada => {
+                        if (arrayCamadas[camada] && Array.isArray(arrayCamadas[camada])) {
+                            arrayCamadas[camada].forEach(obj => {
+                                if (obj && typeof obj.setMap === 'function') {
+                                    // Verificar se o identificador está na lista
+                                    // Para polígonos: obj.identificador ou obj.id
+                                    // Para marcadores: obj.identificadorBanco
+                                    const identificador = obj.identificador || obj.id || obj.identificadorBanco;
+                                    const estaNaLista = identificador && idsDesenhosFiltrados.includes(parseInt(identificador));
+                                    
+                                    if (estaNaLista) {
+                                        // Mostrar
+                                        const mapaParaUsar = obj.mapaRef || MapFramework.map;
+                                        obj.setMap(mapaParaUsar);
+                                    } else {
+                                        // Ocultar
+                                        obj.setMap(null);
+                                    }
+                                }
+                            });
+                        }
+                    });
+                }
+            }
+
+            // Event listener para checkbox Filtrado
+            $('#chkFiltrado').on('change', function() {
+                const mostrarFiltrado = $(this).is(':checked');
+                toggleFiltrado(mostrarFiltrado);
+            });
+
+            // Carregar desenhos filtrados após carregar todos os desenhos
+            setTimeout(() => {
+                carregarDesenhosFiltrados();
+            }, 2000); // Aguardar 2 segundos para garantir que todos os desenhos foram carregados
 
             // Agora que o mapa foi criado, pode adicionar o listener
             MapFramework.map.getDiv().addEventListener('contextmenu', function(event) {
