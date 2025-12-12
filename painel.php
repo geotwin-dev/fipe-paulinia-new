@@ -38,6 +38,10 @@ if (isset($_GET['searchApi'])) {
         }
         $input['usuario_email'] = $userEmail;
 
+        // Se vier com resultados, salvar também (cache)
+        // Os resultados podem vir em: input.results ou input.resultados
+        // Não salvar se não vier resultados (apenas salvar pesquisa)
+        
         file_put_contents($file, json_encode($input, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         echo json_encode(['status' => 'ok']);
         exit;
@@ -64,163 +68,237 @@ if (isset($_GET['pesquisar'])) {
 
         $type = $input['type'];
         $values = $input['values'];
+        
+        // Verificar se há cache de resultados salvos
+        $userId = null;
+        if (isset($_SESSION['usuario']) && is_array($_SESSION['usuario']) && isset($_SESSION['usuario'][1])) {
+            $userId = md5($_SESSION['usuario'][1]);
+        } else {
+            $userId = md5(session_id());
+        }
+        
+        $dir = __DIR__ . '/jsonPesquisa';
+        $file = $dir . '/' . $userId . '.json';
+        
+        $usarCache = false;
+        $cacheData = null;
+        $allResults = null;
+        $allDesenhosPorImobId = null;
+        
+        if (file_exists($file)) {
+            $cacheData = json_decode(file_get_contents($file), true);
+            // Verificar se o cache corresponde à pesquisa atual
+            if (is_array($cacheData) && 
+                isset($cacheData['type']) && $cacheData['type'] === $type &&
+                isset($cacheData['values']) && is_array($cacheData['values']) &&
+                is_array($values)) {
+                
+                // Comparar valores de forma mais robusta
+                $cacheValuesNormalized = $cacheData['values'];
+                $currentValuesNormalized = $values;
+                
+                // Normalizar arrays para comparação (ordenar chaves e converter tipos)
+                ksort($cacheValuesNormalized);
+                ksort($currentValuesNormalized);
+                
+                // Converter valores para string para comparação
+                $cacheValuesStr = json_encode($cacheValuesNormalized, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK);
+                $currentValuesStr = json_encode($currentValuesNormalized, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK);
+                
+                if ($cacheValuesStr === $currentValuesStr &&
+                    isset($cacheData['results']) && 
+                    is_array($cacheData['results']) &&
+                    isset($cacheData['results']['allResults']) &&
+                    is_array($cacheData['results']['allResults']) &&
+                    count($cacheData['results']['allResults']) > 0 &&
+                    isset($cacheData['results']['allDesenhosPorImobId']) &&
+                    is_array($cacheData['results']['allDesenhosPorImobId'])) {
+                    // Cache válido encontrado - mesma pesquisa com resultados
+                    $usarCache = true;
+                    $allResults = $cacheData['results']['allResults'];
+                    $allDesenhosPorImobId = $cacheData['results']['allDesenhosPorImobId'];
+                }
+            }
+        }
+        
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        
+        // Só construir query SQL se não usar cache (pesquisa diferente ou sem cache)
+        if (!$usarCache) {
+            // Construir query SQL baseada no tipo de pesquisa usando JOIN otimizado
+            // Selecionar todas as colunas do cadastro e colunas necessárias do desenhos
+            $sql = "SELECT cad.*, 
+                           des.id as desenho_id, 
+                           des.tipo as desenho_tipo, 
+                           des.coordenadas as desenho_coordenadas, 
+                           des.quarteirao as desenho_quarteirao, 
+                           des.quadra as desenho_quadra, 
+                           des.lote as desenho_lote, 
+                           des.cor_usuario as desenho_cor_usuario, 
+                           des.cor as desenho_cor
+                    FROM cadastro cad 
+                    LEFT JOIN desenhos des ON (des.camada = 'poligono lote' OR des.camada = 'poligono_lote') 
+                                          AND des.status > 0 
+                                          AND des.quarteirao = cad.cara_quarteirao 
+                                          AND des.quadra = cad.quadra 
+                                          AND des.lote = cad.lote
+                    WHERE cad.imob_id = cad.imob_id_principal";
+            $params = [];
 
-        // Construir query SQL baseada no tipo de pesquisa
-        $sql = "SELECT * FROM cadastro WHERE 1=1";
-        $params = [];
-
-        switch ($type) {
+            switch ($type) {
             case 'endereco_numero':
                 if (!empty($values['endereco'])) {
-                    $sql .= " AND logradouro LIKE :endereco";
+                    $sql .= " AND cad.logradouro LIKE :endereco";
                     $params[':endereco'] = '%' . $values['endereco'] . '%';
                 }
                 if (!empty($values['numero'])) {
-                    $sql .= " AND numero = :numero";
+                    $sql .= " AND cad.numero = :numero";
                     $params[':numero'] = $values['numero'];
                 }
                 break;
 
             case 'quarteirao':
                 if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cara_quarteirao = :quarteirao";
+                    $sql .= " AND cad.cara_quarteirao = :quarteirao";
                     $params[':quarteirao'] = $values['quarteirao'];
                 }
                 break;
 
             case 'quarteirao_quadra':
                 if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cara_quarteirao = :quarteirao";
+                    $sql .= " AND cad.cara_quarteirao = :quarteirao";
                     $params[':quarteirao'] = $values['quarteirao'];
                 }
                 if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
+                    $sql .= " AND cad.quadra = :quadra";
                     $params[':quadra'] = $values['quadra'];
                 }
                 break;
 
             case 'quarteirao_quadra_lote':
                 if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cara_quarteirao = :quarteirao";
+                    $sql .= " AND cad.cara_quarteirao = :quarteirao";
                     $params[':quarteirao'] = $values['quarteirao'];
                 }
                 if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
+                    $sql .= " AND cad.quadra = :quadra";
                     $params[':quadra'] = $values['quadra'];
                 }
                 if (!empty($values['lote'])) {
-                    $sql .= " AND lote = :lote";
+                    $sql .= " AND cad.lote = :lote";
                     $params[':lote'] = $values['lote'];
                 }
                 break;
 
             case 'loteamento':
                 if (!empty($values['loteamento'])) {
-                    $sql .= " AND nome_loteamento LIKE :loteamento";
+                    $sql .= " AND cad.nome_loteamento LIKE :loteamento";
                     $params[':loteamento'] = '%' . $values['loteamento'] . '%';
                 }
                 break;
 
             case 'loteamento_quadra':
                 if (!empty($values['loteamento'])) {
-                    $sql .= " AND nome_loteamento LIKE :loteamento";
+                    $sql .= " AND cad.nome_loteamento LIKE :loteamento";
                     $params[':loteamento'] = '%' . $values['loteamento'] . '%';
                 }
                 if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
+                    $sql .= " AND cad.quadra = :quadra";
                     $params[':quadra'] = $values['quadra'];
                 }
                 break;
 
             case 'loteamento_quadra_lote':
                 if (!empty($values['loteamento'])) {
-                    $sql .= " AND nome_loteamento LIKE :loteamento";
+                    $sql .= " AND cad.nome_loteamento LIKE :loteamento";
                     $params[':loteamento'] = '%' . $values['loteamento'] . '%';
                 }
                 if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
+                    $sql .= " AND cad.quadra = :quadra";
                     $params[':quadra'] = $values['quadra'];
                 }
                 if (!empty($values['lote'])) {
-                    $sql .= " AND lote = :lote";
+                    $sql .= " AND cad.lote = :lote";
                     $params[':lote'] = $values['lote'];
                 }
                 break;
 
             case 'cnpj':
                 if (!empty($values['cnpj'])) {
-                    $sql .= " AND cnpj = :cnpj";
+                    $sql .= " AND cad.cnpj = :cnpj";
                     $params[':cnpj'] = $values['cnpj'];
                 }
                 break;
 
             case 'uso_imovel':
                 if (!empty($values['uso_imovel'])) {
-                    $sql .= " AND uso_imovel LIKE :uso_imovel";
+                    $sql .= " AND cad.uso_imovel LIKE :uso_imovel";
                     $params[':uso_imovel'] = '%' . $values['uso_imovel'] . '%';
                 }
                 break;
 
             case 'bairro':
                 if (!empty($values['bairro'])) {
-                    $sql .= " AND bairro LIKE :bairro";
+                    $sql .= " AND cad.bairro LIKE :bairro";
                     $params[':bairro'] = '%' . $values['bairro'] . '%';
                 }
                 break;
 
             case 'inscricao':
                 if (!empty($values['inscricao'])) {
-                    $sql .= " AND inscricao = :inscricao";
+                    $sql .= " AND cad.inscricao = :inscricao";
                     $params[':inscricao'] = $values['inscricao'];
                 }
                 break;
 
             case 'imob_id':
                 if (!empty($values['imob_id'])) {
-                    $sql .= " AND imob_id = :imob_id";
+                    $sql .= " AND cad.imob_id = :imob_id";
                     $params[':imob_id'] = $values['imob_id'];
                 }
                 break;
 
             case 'zona':
                 if (!empty($values['zona'])) {
-                    $sql .= " AND zona = :zona";
+                    $sql .= " AND cad.zona = :zona";
                     $params[':zona'] = $values['zona'];
                 }
                 break;
 
             case 'cat_via':
                 if (!empty($values['cat_via'])) {
-                    $sql .= " AND cat_via LIKE :cat_via";
+                    $sql .= " AND cad.cat_via LIKE :cat_via";
                     $params[':cat_via'] = '%' . $values['cat_via'] . '%';
                 }
                 break;
 
             case 'tipo_edificacao':
                 if (!empty($values['tipo_edificacao'])) {
-                    $sql .= " AND tipo_edificacao LIKE :tipo_edificacao";
+                    $sql .= " AND cad.tipo_edificacao LIKE :tipo_edificacao";
                     $params[':tipo_edificacao'] = '%' . $values['tipo_edificacao'] . '%';
                 }
                 break;
 
             case 'area_construida':
                 if (!empty($values['area_construida_min'])) {
-                    $sql .= " AND total_construido >= :area_construida_min";
+                    $sql .= " AND cad.total_construido >= :area_construida_min";
                     $params[':area_construida_min'] = floatval($values['area_construida_min']);
                 }
                 if (!empty($values['area_construida_max'])) {
-                    $sql .= " AND total_construido <= :area_construida_max";
+                    $sql .= " AND cad.total_construido <= :area_construida_max";
                     $params[':area_construida_max'] = floatval($values['area_construida_max']);
                 }
                 break;
 
             case 'area_terreno':
                 if (!empty($values['area_terreno_min'])) {
-                    $sql .= " AND area_terreno >= :area_terreno_min";
+                    $sql .= " AND cad.area_terreno >= :area_terreno_min";
                     $params[':area_terreno_min'] = floatval($values['area_terreno_min']);
                 }
                 if (!empty($values['area_terreno_max'])) {
-                    $sql .= " AND area_terreno <= :area_terreno_max";
+                    $sql .= " AND cad.area_terreno <= :area_terreno_max";
                     $params[':area_terreno_max'] = floatval($values['area_terreno_max']);
                 }
                 break;
@@ -228,6 +306,7 @@ if (isset($_GET['pesquisar'])) {
             default:
                 echo json_encode(['error' => 'Tipo de pesquisa não implementado']);
                 exit;
+            }
         }
 
         // Paginação
@@ -235,188 +314,143 @@ if (isset($_GET['pesquisar'])) {
         $limit = isset($input['limit']) && is_numeric($input['limit']) ? max(1, min(1000, intval($input['limit']))) : 50;
         $offset = ($page - 1) * $limit;
 
-        // Primeiro, contar o total de resultados (sem LIMIT)
-        // Extrair apenas a parte WHERE da query original
-        $whereClause = str_replace("SELECT * FROM cadastro ", "", $sql);
-        $countSql = "SELECT COUNT(*) as total FROM cadastro " . $whereClause;
-        $countStmt = $pdo->prepare($countSql);
-        foreach ($params as $key => $value) {
-            $countStmt->bindValue($key, $value);
-        }
-        $countStmt->execute();
-        $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
-
-        // Executar query com paginação
-        $sql .= " LIMIT :limit OFFSET :offset";
-        $stmt = $pdo->prepare($sql);
-        foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value);
-        }
-        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // Buscar desenhos apenas dos resultados da página atual (otimizado com query única)
-        $desenhos = [];
-        $desenhosPorImobId = []; // Mapa de imob_id => array de desenhos
-        
-        // Coletar todas as combinações únicas de (quarteirao, quadra, lote) dos resultados da página atual
-        $combinacoesComLetras = []; // Array de arrays [quarteirao, quadra, lote, imob_id]
-        $combinacoesSemLetras = []; // Array de arrays [quarteirao, quadra, lote, imob_id]
-        
-        foreach ($results as $resultado) {
-            $imob_id = isset($resultado['imob_id']) ? $resultado['imob_id'] : null;
-            $cara_quarteirao = isset($resultado['cara_quarteirao']) ? $resultado['cara_quarteirao'] : null;
-            $quadra = isset($resultado['quadra']) ? $resultado['quadra'] : null;
-            $lote = isset($resultado['lote']) ? $resultado['lote'] : null;
+        // Se usar cache, buscar do cache
+        if ($usarCache && $allResults !== null) {
+            // Usar o totalCount salvo no cache (total real do banco)
+            $totalCount = isset($cacheData['totalCount']) ? intval($cacheData['totalCount']) : count($allResults);
             
-            if ($cara_quarteirao && $quadra && $lote) {
-                // Verificar se quarteirão contém letras
-                $temLetras = preg_match('/[^0-9]/', (string)$cara_quarteirao) === 1;
+            // Aplicar paginação APENAS na exibição dos dados da tabela
+            $results = array_slice($allResults, $offset, $limit);
+            
+            // IMPORTANTE: Retornar TODOS os desenhos, não apenas os da página atual
+            // Os desenhos devem aparecer todos no mapa, independente da paginação
+            $desenhosPorImobId = $allDesenhosPorImobId; // TODOS os desenhos de TODOS os resultados
+            
+            // Coletar TODOS os desenhos (não apenas da página atual)
+            $desenhos = [];
+            foreach ($allDesenhosPorImobId as $imobDesenhos) {
+                $desenhos = array_merge($desenhos, $imobDesenhos);
+            }
+        } else {
+            // Fazer pesquisa no banco usando JOIN otimizado
+            // Primeiro, contar o total de resultados (sem JOIN, apenas cadastro com mesmos filtros)
+            // Extrair a parte WHERE da query (tudo após WHERE até o fim, removendo possíveis ORDER BY)
+            $wherePart = '';
+            if (preg_match('/WHERE\s+(.+?)(?:\s+ORDER\s+BY|$)/is', $sql, $matches)) {
+                $wherePart = trim($matches[1]);
+            } else if (preg_match('/WHERE\s+(.+)$/is', $sql, $matches)) {
+                $wherePart = trim($matches[1]);
+            }
+            
+            if (empty($wherePart)) {
+                $wherePart = '1=1';
+            }
+            
+            $countSql = "SELECT COUNT(*) as total FROM cadastro cad WHERE " . $wherePart;
+            
+            $countStmt = $pdo->prepare($countSql);
+            foreach ($params as $key => $value) {
+                $countStmt->bindValue($key, $value);
+            }
+            $countStmt->execute();
+            $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+            // Buscar TODOS os resultados com JOIN (sem paginação) para cache
+            $stmtTodos = $pdo->prepare($sql);
+            foreach ($params as $key => $value) {
+                $stmtTodos->bindValue($key, $value);
+            }
+            $stmtTodos->execute();
+            $allRowsWithDesenhos = $stmtTodos->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Processar resultados do JOIN: separar dados do cadastro dos desenhos
+            $allResults = []; // Array de registros únicos do cadastro
+            $allDesenhosPorImobId = []; // Mapa de imob_id => array de desenhos (TODOS)
+            $seenImobIds = []; // Para rastrear quais imob_ids já foram processados
+            
+            foreach ($allRowsWithDesenhos as $row) {
+                $imob_id = isset($row['imob_id']) ? $row['imob_id'] : null;
                 
-                // Criar chave única para evitar duplicatas
-                $key = $cara_quarteirao . '|' . $quadra . '|' . $lote;
-                
-                if ($temLetras) {
-                    if (!isset($combinacoesComLetras[$key])) {
-                        $combinacoesComLetras[$key] = [
-                            'quarteirao' => $cara_quarteirao,
-                            'quadra' => $quadra,
-                            'lote' => $lote,
-                            'imob_ids' => []
-                        ];
+                // Se é a primeira vez que vemos este imob_id, adicionar aos resultados
+                if ($imob_id && !isset($seenImobIds[$imob_id])) {
+                    // Separar colunas do cadastro (remover prefixo desenho_)
+                    $cadastroRow = [];
+                    foreach ($row as $key => $value) {
+                        if (strpos($key, 'desenho_') !== 0) {
+                            $cadastroRow[$key] = $value;
+                        }
                     }
-                    if ($imob_id && !in_array($imob_id, $combinacoesComLetras[$key]['imob_ids'])) {
-                        $combinacoesComLetras[$key]['imob_ids'][] = $imob_id;
-                    }
-                } else {
-                    if (!isset($combinacoesSemLetras[$key])) {
-                        $combinacoesSemLetras[$key] = [
-                            'quarteirao' => $cara_quarteirao,
-                            'quadra' => $quadra,
-                            'lote' => $lote,
-                            'imob_ids' => []
-                        ];
-                    }
-                    if ($imob_id && !in_array($imob_id, $combinacoesSemLetras[$key]['imob_ids'])) {
-                        $combinacoesSemLetras[$key]['imob_ids'][] = $imob_id;
-                    }
+                    $allResults[] = $cadastroRow;
+                    $seenImobIds[$imob_id] = true;
+                    $allDesenhosPorImobId[$imob_id] = [];
                 }
-            }
-        }
-        
-        // Buscar desenhos com letras (uma única query com múltiplas condições OR)
-        if (!empty($combinacoesComLetras)) {
-            $conditions = [];
-            $paramsDesenhos = [];
-            $paramIndex = 0;
-            
-            foreach ($combinacoesComLetras as $comb) {
-                $conditions[] = "(quarteirao = :q{$paramIndex} AND quadra = :quad{$paramIndex} AND lote = :lot{$paramIndex})";
-                $paramsDesenhos[":q{$paramIndex}"] = $comb['quarteirao'];
-                $paramsDesenhos[":quad{$paramIndex}"] = $comb['quadra'];
-                $paramsDesenhos[":lot{$paramIndex}"] = $comb['lote'];
-                $paramIndex++;
-            }
-            
-            if (!empty($conditions)) {
-                $sqlDesenhos = "SELECT id, coordenadas, cor_usuario, quarteirao, quadra, lote 
-                                FROM desenhos 
-                                WHERE (" . implode(' OR ', $conditions) . ")
-                                AND (camada = 'poligono lote' OR camada = 'poligono_lote')
-                                AND status > 0";
                 
-                try {
-                    $stmtDesenhos = $pdo->prepare($sqlDesenhos);
-                    $stmtDesenhos->execute($paramsDesenhos);
-                    $poligonos = $stmtDesenhos->fetchAll(PDO::FETCH_ASSOC);
+                // Se há um desenho associado (desenho_id não é NULL)
+                if ($imob_id && isset($row['desenho_id']) && $row['desenho_id'] !== null) {
+                    // Construir objeto do desenho no formato esperado
+                    $desenho = [
+                        'id' => $row['desenho_id'],
+                        'tipo' => $row['desenho_tipo'],
+                        'coordenadas' => $row['desenho_coordenadas'],
+                        'quarteirao' => $row['desenho_quarteirao'],
+                        'quadra' => $row['desenho_quadra'],
+                        'lote' => $row['desenho_lote'],
+                        'cor_usuario' => $row['desenho_cor_usuario'],
+                        'cor' => $row['desenho_cor']
+                    ];
                     
-                    // Criar mapa de lookup para associação rápida
-                    $lookupMap = [];
-                    foreach ($combinacoesComLetras as $comb) {
-                        $key = $comb['quarteirao'] . '|' . $comb['quadra'] . '|' . $comb['lote'];
-                        $lookupMap[$key] = $comb['imob_ids'];
-                    }
-                    
-                    // Associar polígonos aos imob_ids correspondentes
-                    foreach ($poligonos as $poligono) {
-                        $desenhos[] = $poligono;
-                        
-                        // Encontrar quais imob_ids correspondem a este polígono usando o mapa
-                        $key = $poligono['quarteirao'] . '|' . $poligono['quadra'] . '|' . $poligono['lote'];
-                        if (isset($lookupMap[$key])) {
-                            foreach ($lookupMap[$key] as $imob_id) {
-                                if (!isset($desenhosPorImobId[$imob_id])) {
-                                    $desenhosPorImobId[$imob_id] = [];
-                                }
-                                $desenhosPorImobId[$imob_id][] = $poligono;
+                    // Adicionar desenho ao imob_id correspondente
+                    // Verificar se já não existe (para evitar duplicatas)
+                    $desenhoExists = false;
+                    if (isset($allDesenhosPorImobId[$imob_id])) {
+                        foreach ($allDesenhosPorImobId[$imob_id] as $existingDesenho) {
+                            if ($existingDesenho['id'] == $desenho['id']) {
+                                $desenhoExists = true;
+                                break;
                             }
                         }
                     }
-                } catch (PDOException $e) {
-                    error_log("Erro ao buscar desenhos (com letras): " . $e->getMessage());
+                    
+                    if (!$desenhoExists) {
+                        $allDesenhosPorImobId[$imob_id][] = $desenho;
+                    }
                 }
             }
-        }
-        
-        // Buscar desenhos sem letras (uma única query com múltiplas condições OR)
-        if (!empty($combinacoesSemLetras)) {
-            $conditions = [];
-            $paramsDesenhos = [];
-            $paramIndex = 0;
             
-            foreach ($combinacoesSemLetras as $comb) {
-                $conditions[] = "(CAST(quarteirao AS UNSIGNED) = CAST(:q{$paramIndex} AS UNSIGNED) AND quadra = :quad{$paramIndex} AND lote = :lot{$paramIndex})";
-                $paramsDesenhos[":q{$paramIndex}"] = $comb['quarteirao'];
-                $paramsDesenhos[":quad{$paramIndex}"] = $comb['quadra'];
-                $paramsDesenhos[":lot{$paramIndex}"] = $comb['lote'];
-                $paramIndex++;
-            }
+            // Aplicar paginação APENAS na exibição dos dados da tabela
+            $results = array_slice($allResults, $offset, $limit);
             
-            if (!empty($conditions)) {
-                $sqlDesenhos = "SELECT id, coordenadas, cor_usuario, quarteirao, quadra, lote 
-                                FROM desenhos 
-                                WHERE (" . implode(' OR ', $conditions) . ")
-                                AND (camada = 'poligono lote' OR camada = 'poligono_lote')
-                                AND status > 0";
-                
-                try {
-                    $stmtDesenhos = $pdo->prepare($sqlDesenhos);
-                    $stmtDesenhos->execute($paramsDesenhos);
-                    $poligonos = $stmtDesenhos->fetchAll(PDO::FETCH_ASSOC);
-                    
-                    // Criar mapa de lookup para associação rápida (usando valores numéricos normalizados)
-                    $lookupMap = [];
-                    foreach ($combinacoesSemLetras as $comb) {
-                        $key = intval($comb['quarteirao']) . '|' . $comb['quadra'] . '|' . $comb['lote'];
-                        $lookupMap[$key] = $comb['imob_ids'];
-                    }
-                    
-                    // Associar polígonos aos imob_ids correspondentes
-                    foreach ($poligonos as $poligono) {
-                        $desenhos[] = $poligono;
-                        
-                        // Encontrar quais imob_ids correspondem a este polígono usando o mapa
-                        $key = intval($poligono['quarteirao']) . '|' . $poligono['quadra'] . '|' . $poligono['lote'];
-                        if (isset($lookupMap[$key])) {
-                            foreach ($lookupMap[$key] as $imob_id) {
-                                if (!isset($desenhosPorImobId[$imob_id])) {
-                                    $desenhosPorImobId[$imob_id] = [];
-                                }
-                                $desenhosPorImobId[$imob_id][] = $poligono;
-                            }
-                        }
-                    }
-                } catch (PDOException $e) {
-                    error_log("Erro ao buscar desenhos (sem letras): " . $e->getMessage());
-                }
+            // IMPORTANTE: Retornar TODOS os desenhos, não apenas os da página atual
+            // Os desenhos devem aparecer todos no mapa, independente da paginação
+            $desenhosPorImobId = $allDesenhosPorImobId; // TODOS os desenhos de TODOS os resultados
+            
+            // Coletar TODOS os desenhos (não apenas da página atual)
+            $desenhos = [];
+            foreach ($allDesenhosPorImobId as $imobDesenhos) {
+                $desenhos = array_merge($desenhos, $imobDesenhos);
             }
         }
 
         // Calcular informações de paginação
         $totalPages = ceil($totalCount / $limit);
 
+        // Salvar pesquisa apenas se não usou cache (nova pesquisa)
+        if (!$usarCache) {
+            // Salvar pesquisa e resultados no JSON (apenas quando faz nova pesquisa)
+            // Salvar TODOS os resultados e TODOS os desenhos
+            $cacheData = [
+                'type' => $type,
+                'values' => $values,
+                'totalCount' => $totalCount, // Salvar o total real do banco
+                'usuario_email' => isset($_SESSION['usuario']) && is_array($_SESSION['usuario']) && isset($_SESSION['usuario'][1]) ? $_SESSION['usuario'][1] : null,
+                'results' => [
+                    'allResults' => $allResults, // TODOS os resultados
+                    'allDesenhosPorImobId' => $allDesenhosPorImobId // TODOS os desenhos
+                ]
+            ];
+            file_put_contents($file, json_encode($cacheData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        }
+        
         // Retornar resultados com os desenhos encontrados
         echo json_encode([
             'success' => true,
@@ -812,6 +846,29 @@ if (isset($_GET['pesquisar'])) {
         #searchResultsBody table #selectAllCheckbox {
             cursor: pointer;
         }
+
+        /* Estilo para linhas sem desenho */
+        #searchResultsBody table tbody tr.no-drawing {
+            background-color: #ffe6e6 !important; /* Vermelho bem clarinho */
+        }
+
+        #searchResultsBody table tbody tr.no-drawing td {
+            color: #dc3545; /* Texto vermelho */
+            text-decoration: line-through; /* Texto tachado */
+        }
+
+        #searchResultsBody table tbody tr.no-drawing .row-checkbox {
+            cursor: not-allowed;
+        }
+
+        /* Estilo para linhas clicáveis */
+        #searchResultsBody table tbody tr.row-clickable {
+            cursor: pointer;
+        }
+        #searchResultsBody table tbody tr.row-clickable:hover {
+            background-color: #f8f9fa;
+            transition: background-color 0.2s;
+        }
     </style>
 
 <body>
@@ -896,7 +953,9 @@ if (isset($_GET['pesquisar'])) {
             <div id="searchResultsHeader">
                 <span id="searchResultsTitle">
                     <i class="fas fa-table"></i> Resultados da Pesquisa
-                    <span id="resultsCount" class="badge bg-primary ms-2">0</span>
+                    <span id="resultsCount" class="badge bg-primary ms-2">0 registros</span>
+                    <span id="desenhosEncontrados" class="badge bg-success ms-2">0 com desenho</span>
+                    <span id="desenhosNaoEncontrados" class="badge bg-danger ms-2">0 sem desenho</span>
                 </span>
             </div>
             <div id="searchResultsBody">
@@ -913,7 +972,20 @@ if (isset($_GET['pesquisar'])) {
                     </table>
                 </div>
                 <div id="searchResultsPaginationBottom" style="display: none;">
-                    <div id="paginationInfoBottom" class="text-muted small"></div>
+                    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                        <div id="paginationInfoBottom" class="text-muted small"></div>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <label for="resultsPerPage" class="text-muted small" style="margin: 0; white-space: nowrap;">Resultados por página:</label>
+                            <select id="resultsPerPage" class="form-select form-select-sm" style="width: auto; min-width: 80px;">
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="250">250</option>
+                                <option value="500">500</option>
+                                <option value="1000">1000</option>
+                            </select>
+                        </div>
+                    </div>
                     <nav aria-label="Paginação">
                         <ul id="paginationControlsBottom" class="pagination pagination-sm mb-0">
                             <!-- Controles de paginação serão preenchidos dinamicamente -->
@@ -1629,6 +1701,28 @@ if (isset($_GET['pesquisar'])) {
         let totalResults = 0;
         let currentSearchPayload = null;
 
+        // Event listener para o seletor de resultados por página
+        document.addEventListener('DOMContentLoaded', function() {
+            const resultsPerPageSelect = document.getElementById('resultsPerPage');
+            if (resultsPerPageSelect) {
+                resultsPerPageSelect.addEventListener('change', function() {
+                    const newLimit = parseInt(this.value);
+                    if (newLimit !== currentLimit) {
+                        currentLimit = newLimit;
+                        // Recalcular página atual baseado no novo limite
+                        // Manter o primeiro item visível na mesma posição relativa
+                        const startItem = (currentPage - 1) * currentLimit + 1;
+                        const newPage = Math.max(1, Math.ceil(startItem / currentLimit));
+                        currentPage = newPage;
+                        // Recarregar a página
+                        if (currentSearchPayload) {
+                            loadPage(currentPage);
+                        }
+                    }
+                });
+            }
+        });
+
         // Função para carregar página
         async function loadPage(page) {
             if (!currentSearchPayload) return;
@@ -1727,8 +1821,8 @@ if (isset($_GET['pesquisar'])) {
                 btnPesquisar.classList.add('loading');
                 btnPesquisar.disabled = true;
 
-                // Salvar última pesquisa
-                await saveLastSearch(payload);
+                // NÃO salvar pesquisa aqui - será salva apenas após pesquisa bem-sucedida no backend
+                // O backend verifica o cache e só salva se for nova pesquisa
 
                 // Adicionar paginação ao payload
                 payload.page = currentPage;
@@ -1924,8 +2018,23 @@ if (isset($_GET['pesquisar'])) {
                             return;
                         }
 
-                        // Usar cor_usuario do banco ou preto como padrão
-                        const cor = desenho.cor_usuario || '#000000';
+                        // Usar cor_usuario, depois cor, depois preto como padrão
+                        let cor = '#000000'; // Padrão: preto
+                        
+                        // Verificar se cor_usuario é válida (não vazia, não null)
+                        if (desenho.cor_usuario && 
+                            desenho.cor_usuario !== null && 
+                            desenho.cor_usuario !== 'null' && 
+                            String(desenho.cor_usuario).trim() !== '') {
+                            cor = String(desenho.cor_usuario).trim();
+                        }
+                        // Se cor_usuario não for válida, tentar usar cor
+                        else if (desenho.cor && 
+                                 desenho.cor !== null && 
+                                 desenho.cor !== 'null' && 
+                                 String(desenho.cor).trim() !== '') {
+                            cor = String(desenho.cor).trim();
+                        }
 
                         // Criar polígono
                         const polygon = new google.maps.Polygon({
@@ -1975,11 +2084,51 @@ if (isset($_GET['pesquisar'])) {
             }
         }
 
+        // Função para fazer pan/zoom no desenho de um imob_id específico
+        function zoomToDesenho(imobId) {
+            if (!map || !imobId) {
+                return false;
+            }
+
+            // Verificar se existem polígonos para este imob_id
+            if (!polygonsByImobId[imobId] || polygonsByImobId[imobId].length === 0) {
+                return false;
+            }
+
+            // Criar bounds para todos os polígonos deste imob_id
+            const bounds = new google.maps.LatLngBounds();
+            let hasValidBounds = false;
+
+            polygonsByImobId[imobId].forEach(polygon => {
+                if (polygon && polygon.getPaths) {
+                    const paths = polygon.getPaths();
+                    paths.forEach(path => {
+                        path.getArray().forEach(point => {
+                            bounds.extend(point);
+                            hasValidBounds = true;
+                        });
+                    });
+                }
+            });
+
+            // Se há bounds válidos, fazer zoom
+            if (hasValidBounds && !bounds.isEmpty()) {
+                map.fitBounds(bounds, {
+                    padding: 50 // Padding em pixels
+                });
+                return true;
+            }
+
+            return false;
+        }
+
         // Função para exibir resultados da pesquisa
         function displaySearchResults(dados, total, page = 1, totalPages = 1, desenhos = [], desenhosPorImobId = {}) {
             const resultsTableHead = document.getElementById('resultsTableHead');
             const resultsTableBody = document.getElementById('resultsTableBody');
             const resultsCount = document.getElementById('resultsCount');
+            const desenhosEncontrados = document.getElementById('desenhosEncontrados');
+            const desenhosNaoEncontrados = document.getElementById('desenhosNaoEncontrados');
             const searchResultsBox = document.getElementById('searchResultsBox');
             const searchBox = document.getElementById('searchBox');
             const searchControls = document.getElementById('searchControls');
@@ -2000,22 +2149,31 @@ if (isset($_GET['pesquisar'])) {
             }
 
             if (!dados || dados.length === 0) {
+                // Criar cabeçalho da tabela vazia
                 if (resultsTableHead) {
                     resultsTableHead.innerHTML = '<tr><th colspan="100%" class="text-center">Nenhum resultado encontrado</th></tr>';
                 }
+                // Manter corpo vazio
                 if (resultsTableBody) {
                     resultsTableBody.innerHTML = '';
                 }
+                // Atualizar contadores para zero com textos descritivos
                 if (resultsCount) {
-                    resultsCount.textContent = '0';
+                    resultsCount.textContent = '0 registros';
                 }
-                // Ocultar paginação e scroll se não houver resultados
+                if (desenhosEncontrados) {
+                    desenhosEncontrados.textContent = '0 com desenho';
+                }
+                if (desenhosNaoEncontrados) {
+                    desenhosNaoEncontrados.textContent = '0 sem desenho';
+                }
+                // Ocultar paginação se não houver resultados
                 if (searchResultsPaginationBottom) {
                     searchResultsPaginationBottom.style.display = 'none';
                 }
-                // Não mostrar o quadro se não houver resultados
+                // MOSTRAR a tabela mesmo vazia
                 if (searchResultsBox) {
-                    searchResultsBox.classList.remove('visible');
+                    searchResultsBox.classList.add('visible');
                 }
                 return;
             }
@@ -2043,6 +2201,29 @@ if (isset($_GET['pesquisar'])) {
                 'uso_imovel'
             ];
 
+            // Mapeamento de nomes de colunas para nomes bonitos
+            const columnNames = {
+                'inscricao': 'Inscrição',
+                'imob_id': 'Imob ID',
+                'logradouro': 'Logradouro',
+                'numero': 'Número',
+                'bairro': 'Bairro',
+                'nome_loteamento': 'Loteamento',
+                'cara_quarteirao': 'Quarteirão',
+                'quadra': 'Quadra',
+                'lote': 'Lote',
+                'total_construido': 'Área Construída',
+                'nome_pessoa': 'Nome',
+                'cnpj': 'CNPJ',
+                'area_terreno': 'Área Terreno',
+                'tipo_edificacao': 'Tipo Edificação',
+                'tipo_utilizacao': 'Tipo Utilização',
+                'zona': 'Zona',
+                'cat_via': 'Cat. Via',
+                'multiplo': 'Cadastros',
+                'uso_imovel': 'Uso Imóvel'
+            };
+
             // Filtrar apenas as colunas que existem nos dados
             const columnArray = columnsOrder.filter(col => {
                 return dados.some(row => row.hasOwnProperty(col));
@@ -2052,7 +2233,8 @@ if (isset($_GET['pesquisar'])) {
             let headerHTML = '<tr>';
             headerHTML += '<th style="width: 50px; text-align: center;"><input type="checkbox" id="selectAllCheckbox" title="Selecionar todos"></th>';
             columnArray.forEach(col => {
-                headerHTML += `<th>${col}</th>`;
+                const headerName = columnNames[col] || col;
+                headerHTML += `<th>${headerName}</th>`;
             });
             headerHTML += '</tr>';
             resultsTableHead.innerHTML = headerHTML;
@@ -2063,12 +2245,16 @@ if (isset($_GET['pesquisar'])) {
                 const imobId = row.imob_id || '';
                 const temDesenho = imobId && desenhosPorImobId[imobId] && desenhosPorImobId[imobId].length > 0;
                 
-                bodyHTML += '<tr>';
+                // Adicionar classe 'no-drawing' se não tiver desenho
+                const rowClass = temDesenho ? 'row-clickable' : 'no-drawing row-clickable';
+                // Adicionar atributo data-imob-id para facilitar o clique
+                bodyHTML += `<tr class="${rowClass}" data-imob-id="${imobId}">`;
+                
                 // Primeira coluna: checkbox (desabilitado se não tiver desenho)
                 if (temDesenho) {
                     bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="row-checkbox" data-index="${index}" data-imob-id="${imobId}" checked></td>`;
                 } else {
-                    bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="row-checkbox" data-index="${index}" data-imob-id="${imobId}" disabled></td>`;
+                    bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="row-checkbox" data-index="${index}" data-imob-id="${imobId}" disabled title="Desenho não foi encontrado"></td>`;
                 }
                 // Demais colunas
                 columnArray.forEach(col => {
@@ -2096,7 +2282,8 @@ if (isset($_GET['pesquisar'])) {
 
             // Adicionar event listeners aos checkboxes individuais
             document.querySelectorAll('.row-checkbox:not(:disabled)').forEach(checkbox => {
-                checkbox.addEventListener('change', function() {
+                checkbox.addEventListener('change', function(e) {
+                    e.stopPropagation(); // Evitar que o clique no checkbox também dispare o clique na linha
                     const imobId = this.getAttribute('data-imob-id');
                     if (imobId) {
                         togglePolygonVisibility(imobId, this.checked);
@@ -2104,8 +2291,63 @@ if (isset($_GET['pesquisar'])) {
                 });
             });
 
-            // Atualizar contador
-            resultsCount.textContent = total.toLocaleString('pt-BR');
+            // Adicionar event listeners aos checkboxes desabilitados (para mostrar alerta)
+            document.querySelectorAll('.row-checkbox:disabled').forEach(checkbox => {
+                checkbox.addEventListener('click', function(e) {
+                    e.stopPropagation(); // Evitar que o clique no checkbox também dispare o clique na linha
+                    alert('Desenho não foi encontrado');
+                });
+            });
+
+            // Adicionar event listener de clique nas linhas da tabela
+            document.querySelectorAll('#resultsTableBody tr').forEach(row => {
+                row.addEventListener('click', function(e) {
+                    // Não fazer nada se o clique foi no checkbox
+                    if (e.target.type === 'checkbox') {
+                        return;
+                    }
+
+                    const imobId = this.getAttribute('data-imob-id');
+                    if (!imobId) {
+                        return;
+                    }
+
+                    // Verificar se a linha tem desenho (não tem classe 'no-drawing' ou tem polígonos)
+                    const temDesenho = polygonsByImobId[imobId] && polygonsByImobId[imobId].length > 0;
+                    
+                    if (temDesenho) {
+                        // Fazer zoom no desenho
+                        zoomToDesenho(imobId);
+                    } else {
+                        // Mostrar alerta se não tiver desenho
+                        alert('Desenho não foi encontrado');
+                    }
+                });
+            });
+
+            // Calcular quantidades de desenhos encontrados e não encontrados
+            // desenhosPorImobId contém TODOS os desenhos de TODOS os resultados (não apenas da página atual)
+            // Então podemos contar quantos imob_ids únicos têm desenho
+            let qtdEncontrados = 0;
+            if (desenhosPorImobId && typeof desenhosPorImobId === 'object') {
+                qtdEncontrados = Object.keys(desenhosPorImobId).filter(imobId => {
+                    return desenhosPorImobId[imobId] && desenhosPorImobId[imobId].length > 0;
+                }).length;
+            }
+            
+            // Total de não encontrados = total de resultados - total de encontrados
+            let qtdNaoEncontrados = Math.max(0, total - qtdEncontrados);
+
+            // Atualizar contadores com textos descritivos
+            if (resultsCount) {
+                resultsCount.textContent = total.toLocaleString('pt-BR') + ' registros';
+            }
+            if (desenhosEncontrados) {
+                desenhosEncontrados.textContent = qtdEncontrados.toLocaleString('pt-BR') + ' com desenho';
+            }
+            if (desenhosNaoEncontrados) {
+                desenhosNaoEncontrados.textContent = qtdNaoEncontrados.toLocaleString('pt-BR') + ' sem desenho';
+            }
 
             // Atualizar informações de paginação (apenas na parte inferior)
             const start = (page - 1) * currentLimit + 1;
@@ -2162,6 +2404,13 @@ if (isset($_GET['pesquisar'])) {
             if (searchResultsPaginationBottom && paginationInfoBottom && paginationControlsBottom) {
                 searchResultsPaginationBottom.style.display = 'flex';
                 paginationInfoBottom.textContent = paginationText;
+                
+                // Atualizar o valor do select de resultados por página
+                const resultsPerPageSelect = document.getElementById('resultsPerPage');
+                if (resultsPerPageSelect) {
+                    resultsPerPageSelect.value = currentLimit;
+                }
+                
                 paginationControlsBottom.innerHTML = paginationHTML;
                 
                 // Adicionar event listeners para os botões de paginação

@@ -1323,6 +1323,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     <button id="btnIncluirUnidade" class="btn" style="background-color: #ff00ff; color: white;">Edificação</button>
                     <button id="btnIncluirPiscina" class="btn" style="background-color: #00ffff; color: black;">Piscina</button>
                     <button id="btnIncluirLinha" class="btn btn-success">Lote</button>
+                    <button id="btnIncluirPoligonoLote" class="btn" style="background-color:rgb(167, 40, 40); color: white;">Poligono</button>
 
                     <!-- Botão para finalizar desenho (aparece quando está em modo de desenho) -->
                     <button id="btnFinalizarDesenho" class="btn btn-secondary d-none">Sair do modo desenho</button>
@@ -2498,6 +2499,11 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             controlarVisibilidadeBotoes('lote');
         });
 
+        $('#btnIncluirPoligonoLote').on('click', function() {
+            MapFramework.iniciarDesenhoPoligonoLote();
+            controlarVisibilidadeBotoes('poligono_lote');
+        });
+
         $('#btnIncluirMarcador').on('click', function() {
             MapFramework.iniciarDesenhoMarcador();
             controlarVisibilidadeBotoes('marcador');
@@ -2687,7 +2693,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             $('#btnSairModoEdicaoMarcadores').removeClass('d-none');
 
             // Esconde todos os botões de desenho e controles
-            $('#btnIncluirPoligono, #btnIncluirUnidade, #btnIncluirPiscina, #btnIncluirLinha, #btnFinalizarDesenho, #btnSairModoMarcador, #btnEditar, #btnExcluir, #btnSairEdicao, #btnLerPDF, #btnIncluirMarcador').addClass('d-none');
+            $('#btnIncluirPoligono, #btnIncluirUnidade, #btnIncluirPiscina, #btnIncluirLinha, #btnIncluirPoligonoLote, #btnFinalizarDesenho, #btnSairModoMarcador, #btnEditar, #btnExcluir, #btnSairEdicao, #btnLerPDF, #btnIncluirMarcador').addClass('d-none');
             
             // Esconde controles de opacidade e espessura
             $('.divControle').addClass('d-none');
@@ -2799,7 +2805,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             $('#btnSairModoEdicaoMarcadores').addClass('d-none');
 
             // Restaura todos os botões de desenho e controles
-            $('#btnIncluirPoligono, #btnIncluirUnidade, #btnIncluirPiscina, #btnIncluirLinha').removeClass('d-none');
+            $('#btnIncluirPoligono, #btnIncluirUnidade, #btnIncluirPiscina, #btnIncluirLinha, #btnIncluirPoligonoLote').removeClass('d-none');
             $('.divControle').removeClass('d-none');
             
             // Restaura botão régua
@@ -4769,6 +4775,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 'btnIncluirUnidade', // Modo Unidade
                 'btnIncluirPiscina', // Modo Piscina
                 'btnIncluirLinha', // Modo Lote
+                'btnIncluirPoligonoLote', // Modo Poligono Lote
                 'btnIncluirMarcador', // Modo Marcador
                 'btnLerPDF', // Modo PDF
                 'btnFinalizarDesenho', // Botão de sair do desenho
@@ -4801,6 +4808,10 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     $('#btnFinalizarDesenho').removeClass('d-none');
                     break;
 
+                case 'poligono_lote':
+                    $('#btnFinalizarDesenho').removeClass('d-none');
+                    break;
+
                 case 'marcador':
                     // Modo marcador é um submodo do cadastro
                     $('#btnSairModoMarcador').removeClass('d-none');
@@ -4822,6 +4833,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     $('#btnIncluirUnidade').removeClass('d-none');
                     $('#btnIncluirPiscina').removeClass('d-none');
                     $('#btnIncluirLinha').removeClass('d-none');
+                    $('#btnIncluirPoligonoLote').removeClass('d-none');
                     // btnCadastro foi removido - agora é checkbox
                     // Botões de editar/excluir só aparecem se há quadra selecionada
                     // (serão controlados pelo framework.js)

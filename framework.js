@@ -2112,12 +2112,22 @@ const MapFramework = {
                             return; // Pula para o próximo desenho
                         }
 
-                        var cores = "black";
-
-                        if (desenho.cor_usuario) {
-                            cores = desenho.cor_usuario;
-                        } else {
-                            cores = desenho.cor;
+                        // Usar cor_usuario, depois cor, depois preto como padrão
+                        var cores = "black"; // Padrão: preto
+                        
+                        // Verificar se cor_usuario é válida (não vazia, não null)
+                        if (desenho.cor_usuario && 
+                            desenho.cor_usuario !== null && 
+                            desenho.cor_usuario !== 'null' && 
+                            String(desenho.cor_usuario).trim() !== '') {
+                            cores = String(desenho.cor_usuario).trim();
+                        }
+                        // Se cor_usuario não for válida, tentar usar cor
+                        else if (desenho.cor && 
+                                 desenho.cor !== null && 
+                                 desenho.cor !== 'null' && 
+                                 String(desenho.cor).trim() !== '') {
+                            cores = String(desenho.cor).trim();
                         }
 
                         //console.log(coords)
@@ -2805,6 +2815,77 @@ const MapFramework = {
             console.log("Salvando...");
             // Salva o desenho
             this.salvarDesenho("lote");
+        });
+    },
+
+    iniciarDesenhoPoligonoLote: function () {
+        if (this.listenerGlobalClick) { this.listenerGlobalClick.remove(); this.listenerGlobalClick = null; }
+        // Limpa seleção antes de começar novo desenho
+        this.desselecionarDesenho();
+
+        this.atualizarInteratividadeObjetos(false);
+
+        this.desenho.modo = 'poligono';
+        this.desenho.tipoAtual = 'poligono';
+        this.map.setOptions({ draggableCursor: 'crosshair' });
+
+        // Mostra o botão de finalizar desenho
+        $('#btnFinalizarDesenho').removeClass('d-none');
+
+        if (this.desenho.listenerClick) this.desenho.listenerClick.remove();
+        if (this.desenho.listenerRightClick) this.desenho.listenerRightClick.remove();
+
+        this.desenho.listenerClick = this.map.addListener('click', (e) => {
+
+            const ponto = e.latLng;
+
+            if (!this.desenho.temporario) {
+                this.desenho.temporario = new google.maps.Polygon({
+                    paths: [ponto],
+                    strokeColor: "red",
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2,
+                    fillColor: "red",
+                    fillOpacity: 0.35,
+                    editable: true,
+                    map: this.map,
+                    clickable: false,
+                    zIndex: 2
+                });
+
+                this.desenho.cor = "red";
+                google.maps.event.addListener(this.desenho.temporario, 'rightclick', (e) => {
+                    const path = this.desenho.temporario.getPath();
+                    if (typeof e.vertex === 'number') {
+                        if (path.getLength() > 3) {
+                            this.cliqueEmVertice = true;
+                            path.removeAt(e.vertex);
+                        } else {
+                            alert("Polígono precisa de pelo menos 3 pontos.");
+                        }
+                    }
+                });
+
+            } else {
+                this.desenho.temporario.getPath().push(ponto);
+            }
+        });
+
+        this.desenho.listenerRightClick = this.map.addListener('rightclick', (e) => {
+            if (this.cliqueEmVertice) {
+                this.cliqueEmVertice = false;
+                return;
+            }
+
+            if (!this.desenho.temporario) return;
+
+            const pathLength = this.desenho.temporario.getPath().getLength();
+            if (pathLength < 3) {
+                alert("Você precisa de pelo menos 3 pontos.");
+                return;
+            }
+            console.log("Salvando polígono de lote...");
+            this.salvarDesenho('poligono_lote', null);
         });
     },
 
@@ -4322,6 +4403,26 @@ const MapFramework = {
         if (tipo != 'polilinha') {
             this.desenho.temporario.id_desenho = this.desenho.temporario.id_desenho || identificador;
         }
+        // Detecta quarteirão se for polígono de lote
+        let quarteirao = null;
+        if (camada === 'poligono_lote' && tipo === 'poligono' && this.desenho.temporario) {
+            // Cria GeoJSON temporário para calcular centroide
+            const coordsGeo = coordenadas.map(p => [p.lng, p.lat]);
+            coordsGeo.push(coordsGeo[0]); // fecha o polígono
+            const poligonoGeoJSON = turf.polygon([coordsGeo]);
+            const centroid = turf.centroid(poligonoGeoJSON);
+            const latLngCentroide = new google.maps.LatLng(
+                centroid.geometry.coordinates[1],
+                centroid.geometry.coordinates[0]
+            );
+            
+            quarteirao = this.acharQuarteirao(latLngCentroide);
+            if (quarteirao) {
+                this.desenho.temporario.quarteirao = quarteirao;
+                console.log('Quarteirão detectado antes de salvar:', quarteirao);
+            }
+        }
+
         console.log("Chamando ajax...");
         $.ajax({
             url: 'salvarDesenho.php',
@@ -4334,7 +4435,8 @@ const MapFramework = {
                 ortofoto: dadosOrto[0]['quadricula'],
                 tipo: tipo,
                 cor: cor,
-                identificador: this.desenho.temporario.id_desenho
+                identificador: this.desenho.temporario.id_desenho,
+                quarteirao: quarteirao || ''
             },
             success: (response) => {
                 console.log("Resposta positiva");
@@ -4368,6 +4470,13 @@ const MapFramework = {
                         });
 
                         adicionarObjetoNaCamada(camada, objetoSalvo);
+
+                        // Se for polígono de lote, criar marcador no centroide (quarteirão já foi detectado antes de salvar)
+                        if (camada === 'poligono_lote' && tipo === 'poligono') {
+                            // O quarteirão já foi detectado e salvo antes, apenas passa para o marcador
+                            objetoSalvo.quarteirao = this.desenho.temporario?.quarteirao || null;
+                            this.criarMarcadorNoCentroidePoligono(objetoSalvo);
+                        }
 
                         this.desenho.temporario = null;
                         this.desenho.pontos = [];
@@ -4403,6 +4512,94 @@ const MapFramework = {
                 this.desenho.pontos = [];
             }
         });
+    },
+
+    calcularCentroidePoligono: function (poligono) {
+        try {
+            // Calcula o centroide do polígono usando turf
+            if (!poligono.coordenadasGeoJSON) {
+                console.error('Polígono não tem coordenadasGeoJSON');
+                return null;
+            }
+
+            const centroid = turf.centroid(poligono.coordenadasGeoJSON);
+            return new google.maps.LatLng(
+                centroid.geometry.coordinates[1],
+                centroid.geometry.coordinates[0]
+            );
+        } catch (error) {
+            console.error('Erro ao calcular centroide:', error);
+            return null;
+        }
+    },
+
+    criarMarcadorNoCentroidePoligono: function (poligono) {
+        try {
+            // Calcula o centroide do polígono usando turf
+            const latLng = this.calcularCentroidePoligono(poligono);
+            if (!latLng) {
+                console.error('Não foi possível calcular o centroide');
+                return;
+            }
+
+            // Cria o elemento HTML do marcador
+            let el = document.createElement('div');
+            el.style.height = '32px';
+            el.style.width = '32px';
+            el.style.borderRadius = '50%';
+            el.style.background = 'red';
+            el.style.border = '2px solid #fff';
+            el.style.display = 'flex';
+            el.style.alignItems = 'center';
+            el.style.justifyContent = 'center';
+            el.style.color = 'white';
+            el.style.fontWeight = 'bold';
+            el.style.fontSize = '14px';
+            el.style.transform = 'translate(0, 15px)';
+            el.style.position = 'relative';
+            el.style.cursor = 'pointer';
+            el.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)';
+            el.className = 'marcador-personalizado';
+            el.textContent = ''; // Marcador vazio, apenas visual
+
+            // Cria marcador avançado
+            let marker = new google.maps.marker.AdvancedMarkerElement({
+                position: latLng,
+                content: el,
+                gmpClickable: true
+            });
+            marker.setMap(this.map);
+
+            // Propriedades do marcador
+            marker.corMarcador = 'red';
+            marker.tipoMarcador = 'poligono_lote';
+            marker.poligonoAssociado = poligono; // Referência ao polígono
+
+            // Adiciona evento de clique para mostrar tooltip (se necessário)
+            el.addEventListener('click', function (event) {
+                event.stopPropagation();
+                // Pode adicionar tooltip aqui se necessário
+            });
+
+            // Adiciona à camada marcador_quadra
+            if (!arrayCamadas["marcador_quadra"]) arrayCamadas["marcador_quadra"] = [];
+            arrayCamadas["marcador_quadra"].push(marker);
+            adicionarObjetoNaCamada("marcador_quadra", marker);
+
+            // Salva o marcador no banco
+            // Para polígonos de lote, não temos quadra específica, então usamos string vazia
+            const idQuadra = poligono.identificador || '';
+            const numeroMarcador = ''; // Marcador vazio, sem número
+            const corMarcador = 'red';
+            const quarteiraoMarcador = poligono.quarteirao || null; // Usa o quarteirão do polígono
+
+            // Passa string vazia se não houver identificador
+            this.salvarMarcadorNoBanco(latLng, idQuadra, numeroMarcador, marker, false, corMarcador, quarteiraoMarcador);
+
+            console.log('Marcador criado no centroide do polígono de lote');
+        } catch (error) {
+            console.error('Erro ao criar marcador no centroide:', error);
+        }
     },
 
     verificarLinhaDentroDeQuadra: function (linhaGoogleMaps, toleranciaMetros = 3) {
@@ -5540,7 +5737,7 @@ const MapFramework = {
         this.salvarMarcadorNoBanco(latLng, idQuadra, numeroLote, marker, correspondeAoLoteSelecionado, corMarcador);
     },
 
-    salvarMarcadorNoBanco: function (latLng, idQuadra, numeroMarcador, marcadorElement, correspondeAoLoteSelecionado, corMarcador) {
+    salvarMarcadorNoBanco: function (latLng, idQuadra, numeroMarcador, marcadorElement, correspondeAoLoteSelecionado, corMarcador, quarteirao = null) {
         // Obtém informações do lote selecionado
         loteElementoSelecionado = $('.opcao-lote.selected');
         const quadraSelecionada = loteElementoSelecionado.data('quadra') || idQuadra;
@@ -5560,7 +5757,7 @@ const MapFramework = {
                 numero: numeroMarcador,
                 ortofoto: dadosOrto[0]['quadricula'],
                 tipo: numeroMarcador, // <- aqui vai o número do lote do input!
-                quarteirao: quarteiraoAtualSelecionado || '',
+                quarteirao: quarteirao || quarteiraoAtualSelecionado || '',
                 quadra: quadraSelecionada || idQuadra,
                 cor: corMarcador
             },

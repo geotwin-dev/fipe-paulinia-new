@@ -42,9 +42,25 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
         $type = $pesquisaData['type'];
         $values = $pesquisaData['values'];
         
-        // Construir query SQL baseada no tipo de pesquisa (igual ao painel.php)
-        $sql = "SELECT * FROM cadastro WHERE 1=1";
-        $params = [];
+        // Verificar se há cache de resultados - mesma pesquisa com resultados
+        $usarCache = false;
+        $allResults = null;
+        
+        if (isset($pesquisaData['results']) && 
+            is_array($pesquisaData['results']) &&
+            isset($pesquisaData['results']['allResults']) &&
+            is_array($pesquisaData['results']['allResults']) &&
+            count($pesquisaData['results']['allResults']) > 0) {
+            // Cache válido encontrado - mesma pesquisa com resultados
+            $usarCache = true;
+            $allResults = $pesquisaData['results']['allResults'];
+        }
+        
+        // Se não usar cache, fazer pesquisa no banco (pesquisa diferente ou sem cache)
+        if (!$usarCache) {
+            // Construir query SQL baseada no tipo de pesquisa (igual ao painel.php)
+            $sql = "SELECT * FROM cadastro WHERE 1=1 AND imob_id = imob_id_principal";
+            $params = [];
         
         switch ($type) {
             case 'endereco_numero':
@@ -194,21 +210,28 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
             default:
                 echo json_encode(['ids' => []]);
                 exit;
+            }
+            
+            // Executar pesquisa (SEM paginação - todos os resultados)
+            $stmt = $pdo->prepare($sql);
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+            $stmt->execute();
+            $allResults = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Salvar no cache
+            $pesquisaData['results'] = [
+                'allResults' => $allResults
+            ];
+            file_put_contents($file, json_encode($pesquisaData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         }
         
-        // Executar pesquisa (SEM paginação - todos os resultados)
-        $stmt = $pdo->prepare($sql);
-        foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value);
-        }
-        $stmt->execute();
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Coletar combinações únicas de (quarteirao, quadra, lote)
+        // Coletar combinações únicas de (quarteirao, quadra, lote) dos resultados (cache ou banco)
         $combinacoesComLetras = [];
         $combinacoesSemLetras = [];
         
-        foreach ($results as $resultado) {
+        foreach ($allResults as $resultado) {
             $cara_quarteirao = isset($resultado['cara_quarteirao']) ? $resultado['cara_quarteirao'] : null;
             $quadra = isset($resultado['quadra']) ? $resultado['quadra'] : null;
             $lote = isset($resultado['lote']) ? $resultado['lote'] : null;

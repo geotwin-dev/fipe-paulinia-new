@@ -24,7 +24,11 @@ try {
     }
 
     // Se for polígono, exigimos identificador (conforme seu fluxo atual)
-    if ($tipo === 'poligono' && ($id_desenho === null || $id_desenho === '')) {
+    // EXCETO para polígonos de lote (poligono_lote) que não precisam de identificador
+    $camada_enviada_temp = isset($_POST['camada']) ? trim($_POST['camada']) : null;
+    $camada_temp = $camada_enviada_temp ? strtolower($camada_enviada_temp) : null;
+    
+    if ($tipo === 'poligono' && ($id_desenho === null || $id_desenho === '') && $camada_temp !== 'poligono_lote') {
         echo json_encode([
             'status' => 'erro',
             'mensagem' => 'Identificador é obrigatório para polígono.'
@@ -51,15 +55,22 @@ try {
         }
     }
 
+    // Coleta quarteirão se enviado
+    $quarteirao = isset($_POST['quarteirao']) ? trim($_POST['quarteirao']) : null;
+    if ($quarteirao === '') {
+        $quarteirao = null;
+    }
+
     // INSERT
-    $sql = "INSERT INTO desenhos (data_hora, usuario, quadricula, id_desenho, camada, tipo, cor, coordenadas, status, ult_modificacao, user, oque)
-            VALUES (NOW(), :usuario, :quadricula, :id_desenho, :camada, :tipo, :cor, :coordenadas, 1, NOW(), :user, 'INSERT')";
+    $sql = "INSERT INTO desenhos (data_hora, usuario, quadricula, id_desenho, camada, quarteirao, tipo, cor, coordenadas, status, ult_modificacao, user, oque)
+            VALUES (NOW(), :usuario, :quadricula, :id_desenho, :camada, :quarteirao, :tipo, :cor, :coordenadas, 1, NOW(), :user, 'INSERT')";
 
     $stmt = $pdo->prepare($sql);
     $stmt->bindValue(':usuario',     $usuario !== '' ? $usuario : null, PDO::PARAM_NULL | PDO::PARAM_STR);
     $stmt->bindValue(':quadricula',  $quadricula, PDO::PARAM_STR);
     $stmt->bindValue(':id_desenho',  $id_desenho !== '' ? $id_desenho : null, PDO::PARAM_NULL | PDO::PARAM_STR);
     $stmt->bindValue(':camada',      $camada, PDO::PARAM_STR);
+    $stmt->bindValue(':quarteirao',  $quarteirao, PDO::PARAM_NULL | PDO::PARAM_STR);
     $stmt->bindValue(':tipo',        $tipo, PDO::PARAM_STR);
     $stmt->bindValue(':cor',         $cor, PDO::PARAM_STR);
     $stmt->bindValue(':coordenadas', $coordenadas, PDO::PARAM_STR);
