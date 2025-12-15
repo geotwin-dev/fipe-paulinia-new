@@ -897,6 +897,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                                 <table class="table table-striped table-bordered table-hover table-sm">
                                     <thead class="table-dark">
                                         <tr>
+                                            <th>Quantidade</th>
                                             <th>Inscrição</th>
                                             <th>Imob ID</th>
                                             <th>CNPJ</th>
@@ -913,6 +914,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                                             <th>Tipo Utilização</th>
                                             <th>Área Construída A (m²)</th>
                                             <th>Utilização Área A</th>
+                                            
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -932,6 +934,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                                     data-lote="${item.lote || ''}"
                                     data-esta-no-mapa="${estaNoMapa}"
                                     style="cursor: pointer;">
+                                    <td style="text-align: center;">${item.multiplo || 'N/A'}</td>
                                     <td>${item.inscricao || 'N/A'}</td>
                                     <td>${item.imob_id || 'N/A'}</td>
                                     <td>${item.cnpj || 'N/A'}</td>

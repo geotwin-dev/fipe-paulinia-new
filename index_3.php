@@ -3481,7 +3481,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         // Função para carregar loteamentos de forma invisível (apenas dados, sem desenhar no mapa)
         async function carregarLoteamentosInvisiveis(quadricula) {
             try {
-                console.log('📦 Carregando loteamentos em background para:', quadricula);
+                //console.log('📦 Carregando loteamentos em background para:', quadricula);
                 
                 const response = await fetch(`loteamentos_quadriculas/json/resultados_quadricula_${quadricula}.json`, {
                     cache: "no-store"
@@ -3552,7 +3552,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 // Salva os loteamentos invisíveis no cache do MapFramework
                 if (loteamentosInvisiveis.length > 0) {
                     MapFramework.loteamentosCache = loteamentosInvisiveis;
-                    console.log(`✅ ${loteamentosInvisiveis.length} loteamentos carregados em background (invisíveis)`);
+                    //console.log(`✅ ${loteamentosInvisiveis.length} loteamentos carregados em background (invisíveis)`);
                 }
 
             } catch (error) {
@@ -4251,7 +4251,7 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                     if (data.ids && Array.isArray(data.ids) && data.ids.length > 0) {
                         idsDesenhosFiltrados = data.ids.map(id => parseInt(id));
                         temPesquisaSalva = true;
-                        console.log('Desenhos filtrados encontrados:', idsDesenhosFiltrados.length);
+                        //console.log('Desenhos filtrados encontrados:', idsDesenhosFiltrados.length);
                         // Mostrar checkbox se houver pesquisa
                         $('#liFiltrado').show();
                         $('#liFiltradoCheckbox').show();

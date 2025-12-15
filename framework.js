@@ -5567,16 +5567,29 @@ const MapFramework = {
 
         //console.log('Carregamentos dos quarteirões:', this.quarteiroesNumeros);
         const self = this; // Salva referência ao MapFramework
+        
+        // Garante que seja um array e converte para strings
+        const quarteiroesArray = Array.isArray(this.quarteiroesNumeros) 
+            ? this.quarteiroesNumeros.map(q => String(q).trim())
+            : [];
+        
+        //console.log('Quarteirões processados:', quarteiroesArray);
+        
         $.ajax({
             url: 'carregarPlanilha.php',
             method: 'POST',
             async: false,
+            contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
             data: {
-                quarteiroes: this.quarteiroesNumeros
+                quarteiroes: JSON.stringify(quarteiroesArray)
             },
             dataType: 'json',
             success: function (response) {
-                //console.log('Dados carregados da planilha:', response);
+                //console.log('Dados carregados da planilha - Total:', response ? response.length : 0);
+                if (response.erro) {
+                    console.error('Erro na resposta:', response.erro);
+                }
+                
                 self.dadosMoradores = response;
 
             },
@@ -5586,6 +5599,7 @@ const MapFramework = {
                 console.error('Response:', xhr.responseText);
             }
         });
+
     },
 
     carregarIptus: function (parametro_imod_id) {
@@ -5922,10 +5936,10 @@ const MapFramework = {
         
         if (window.loteamentosLayer && window.loteamentosLayer.length > 0) {
             loteamentosParaBuscar = window.loteamentosLayer;
-            console.log('📊 Usando loteamentos visíveis:', loteamentosParaBuscar.length);
+            //console.log('📊 Usando loteamentos visíveis:', loteamentosParaBuscar.length);
         } else if (this.loteamentosCache && this.loteamentosCache.length > 0) {
             loteamentosParaBuscar = this.loteamentosCache;
-            console.log('📦 Usando loteamentos do cache:', loteamentosParaBuscar.length);
+            //console.log('📦 Usando loteamentos do cache:', loteamentosParaBuscar.length);
         } else {
             console.log('⚠️ Loteamentos não carregados. Marque o checkbox "Loteamentos" primeiro.');
             return 'N/A';
@@ -5939,7 +5953,7 @@ const MapFramework = {
             latLng = new google.maps.LatLng(posicao.lat, posicao.lng);
         }
         
-        console.log('🔍 Procurando loteamento para posição:', latLng.lat(), latLng.lng());
+        //console.log('🔍 Procurando loteamento para posição:', latLng.lat(), latLng.lng());
         
         // Percorre os loteamentos para encontrar qual contém a posição
         loteamentosParaBuscar.forEach((polygon, index) => {
@@ -5973,11 +5987,7 @@ const MapFramework = {
     carregarMarcadoresSalvos: function (ortofoto) {
         // Limpa marcadores antigos
         arrayCamadas['marcador_quadra'] = [];
-        // Remove do mapa todos os marcadores antigos
-        // (caso a função seja chamada mais de uma vez)
-        // Não precisa se já está limpando arrayCamadas, mas por garantia:
-        // (Se quiser, pode iterar e dar setMap(null) em cada um)
-
+    
         $.ajax({
             url: 'carregarDesenhosMarcador.php',
             method: 'GET',
@@ -5987,30 +5997,26 @@ const MapFramework = {
                 camada: 'marcador_quadra'
             },
             success: (response) => {
-                //console.log(response);
-
                 if (response.status === 'sucesso') {
                     response.dados.forEach(desenho => {
-                        //console.log(desenho.cor);
                         if ((desenho.camada || '').toLowerCase() !== 'marcador_quadra') return;
+    
                         const coords = JSON.parse(desenho.coordenadas);
                         const numeroMarcador = desenho.lote; // Mantém como string para preservar letras (ex: 2A)
                         if (!coords[0]) return;
+    
                         let lat = coords[0].lat;
                         let lng = coords[0].lng;
-
-                        if(desenho.cor == 'red' || desenho.cor == '#FF0000'){
-                            var colorTextMarcador = 'white';
-                        }else{
-                            var colorTextMarcador = 'black';
-                        }
-                        
+    
+                        var colorTextMarcador = (desenho.cor == 'red' || desenho.cor == '#FF0000') ? 'white' : 'black';
+                        var borderTempBack = (desenho.qtde_cadastros != null && desenho.qtde_cadastros > 1) ? '0px' : '10px';
+    
                         // Cria HTML do marcador
                         let el = document.createElement('div');
                         el.style.padding = '0 5px';
                         el.style.height = '16px';
                         el.style.background = desenho.cor;
-                        el.style.borderRadius = '10px';
+                        el.style.borderRadius = borderTempBack;
                         el.style.display = 'flex';
                         el.style.alignItems = 'center';
                         el.style.justifyContent = 'center';
@@ -6018,32 +6024,31 @@ const MapFramework = {
                         el.style.fontWeight = 'bold';
                         el.style.fontSize = '8px';
                         el.style.border = '2px solid ' + colorTextMarcador;
-                        el.style.transform = 'translate(0, 10px)'; // Centraliza o marcador no ponto clicado
+                        el.style.transform = 'translate(0, 10px)';
                         el.style.position = 'relative';
                         el.style.cursor = 'pointer';
                         el.className = 'marcador-personalizado';
                         el.textContent = numeroMarcador != null ? numeroMarcador.toString() : '';
-
+    
                         // Cria marcador avançado
                         let marker = new google.maps.marker.AdvancedMarkerElement({
                             position: { lat: parseFloat(lat), lng: parseFloat(lng) },
                             content: el,
                             gmpClickable: true
                         });
-
-                        if(desenho.quarteirao == null){
+    
+                        if (desenho.quarteirao == null) {
                             desenho.quarteirao = MapFramework.acharQuarteirao(marker.position);
                         }
-
-                        //marker.setMap(MapFramework.map);
+    
                         marker.idQuadra = desenho.id_desenho;
                         marker.numeroMarcador = numeroMarcador;
                         marker.quarteirao = desenho.quarteirao;
                         marker.quadra = desenho.quadra;
                         marker.identificadorBanco = desenho.id; // ID do banco para poder deletar
                         marker.corMarcador = desenho.cor || null; // Armazena a cor do marcador
-
-                        // Adiciona evento de clique para mostrar infowindow com dados do morador
+    
+                        // Clique no marcador
                         el.addEventListener('click', function (event) {
                             if (typeof window.sincronizarSelecaoPorMarcador === 'function') {
                                 window.sincronizarSelecaoPorMarcador({
@@ -6054,748 +6059,919 @@ const MapFramework = {
                                     identificador: desenho.id
                                 });
                             }
-                            
-                            // Busca dados do morador baseado em lote, quadra e quarteirão
-                            const dadosMorador = MapFramework.dadosMoradores.find(morador =>
-                                morador.lote == desenho.lote &&
-                                morador.quadra == desenho.quadra &&
-                                morador.cara_quarteirao == desenho.quarteirao
-                            );
-
-                            console.log(MapFramework.dadosMoradores, dadosMorador);
-
-                            // Cria conteúdo do infowindow
+    
+                            const loteDesenho = String(desenho.lote || '').trim();
+                            const quadraDesenho = String(desenho.quadra || '').trim();
+                            let quarteiraoDesenho = String(desenho.quarteirao || '').trim();
+    
+                            const normalizarQuarteirao = (quarteirao) => {
+                                const q = String(quarteirao || '').trim();
+                                if (!q) return '';
+                                const num = parseInt(q, 10);
+                                if (isNaN(num)) return q;
+                                return String(num).padStart(4, '0');
+                            };
+    
+                            quarteiraoDesenho = normalizarQuarteirao(quarteiraoDesenho);
+    
+                            const compararMorador = (morador) => {
+                                const loteMorador = String(morador.lote || '').trim();
+                                const quadraMorador = String(morador.quadra || '').trim().toUpperCase();
+                                const quarteiraoMorador = normalizarQuarteirao(morador.cara_quarteirao);
+                                const quadraDesenhoNormalizada = quadraDesenho.toUpperCase();
+    
+                                return loteMorador === loteDesenho &&
+                                    quadraMorador === quadraDesenhoNormalizada &&
+                                    quarteiraoMorador === quarteiraoDesenho;
+                            };
+    
+                            const qtdeCadastros = (desenho.qtde_cadastros != null && desenho.qtde_cadastros > 1) ? desenho.qtde_cadastros : 1;
+    
+                            if (qtdeCadastros > 1) {
+                                desenho.dadosMoradores = MapFramework.dadosMoradores.filter(compararMorador);
+                                desenho.indiceMoradorAtual = 0;
+                                desenho.dadosMorador = (desenho.dadosMoradores.length > 0) ? desenho.dadosMoradores[0] : null;
+                            } else {
+                                desenho.dadosMoradores = null;
+                                desenho.indiceMoradorAtual = 0;
+                                desenho.dadosMorador = MapFramework.dadosMoradores.find(compararMorador);
+                            }
+    
+                            const dadosMorador = desenho.dadosMorador;
+                            const todosMoradores = desenho.dadosMoradores || (dadosMorador ? [dadosMorador] : []);
+                            const temMultiplosCadastros = todosMoradores.length > 1;
+    
                             let conteudoInfoWindow = '';
-
+                            const infoWindowId = 'iw_' + desenho.id;
+    
                             let tituloInicialHtml = `
-                                <div style="display: flex; align-items: flex-start; margin-bottom: 15px; min-width: 550px;">
+                                <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 15px; min-width: 550px;">
                                     <h5 style="margin: 0 0 8px 0; color: #333; font-weight: bold;">Dados Cadastrais</h5>
                                     <button type="button" class="btn btn-outline-secondary btn-sm ms-2 btn-docs-morador" style="font-size: 10px; padding: 2px 6px; border-radius: 3px;">Docs</button>
                                 </div>
                             `;
-
-                            // Descobre o loteamento em que o marcador está
+    
                             const loteamentoMarcador = MapFramework.acharLoteamento(marker.position) || 'N/A';
-
-                            // Primeiro, sempre mostra os dados do desenho
+    
                             let dadosDesenhoHTML = `
                                 <div style="margin-bottom: 15px;">
                                     <h4 style="margin: 0 0 8px 0; color: #333; font-size: 14px; font-weight: bold;">
                                         Desenho 
-                                        <span onclick="alterarDesenhoNovo(${desenho.id}, '${desenho.quarteirao}', '${encodeURIComponent(loteamentoMarcador)}', '${desenho.id_desenho}', '${desenho.quadricula}')" 
-                                            style="background-color: #007bff; 
-                                            padding: 2px 6px; 
-                                            border-radius: 3px; 
-                                            font-size: 12px; 
-                                            margin-left: 10px;
-                                            color: #fff; 
-                                            cursor: pointer;">Editar quarteirão
+                                        <span onclick="alterarDesenhoNovo(${desenho.id}, '${desenho.quarteirao}', '${encodeURIComponent(loteamentoMarcador)}', '${desenho.id_desenho}', '${desenho.quadricula}')"
+                                            style="background-color: #007bff; padding: 2px 6px; border-radius: 3px; font-size: 12px; margin-left: 10px; color: #fff; cursor: pointer;">
+                                            Editar quarteirão
                                         </span>
                                     </h4>
                                     <div style="border-bottom: 1px solid #ddd; margin-bottom: 8px;"></div>
-                                    <div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">ID:</strong> <span style="color: #666;">${desenho.id}</span></div>
-                                    <div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">Loteamento:</strong> <span style="color: #666;">${loteamentoMarcador}</span></div>
-                                    <div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">Quarteirão:</strong> <span style="color: #666;">${desenho.quarteirao}</span></div>
-                                    <div id="documentosQuarteirao_${desenho.id}" style="margin-bottom: 5px;">
-                                        <div style="margin-left: 10px; margin: 5px 0;">
+                                    
+                                    <!-- Primeira div: Dados do marcador em linha -->
+                                    <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; align-items: center;">
+                                        <div><strong style="font-weight: bold; color: #333;">ID:</strong> <span style="color: #666;">${desenho.id}</span></div>
+                                        <div><strong style="font-weight: bold; color: #333;">Loteamento:</strong> <span style="color: #666;">${loteamentoMarcador}</span></div>
+                                        <div><strong style="font-weight: bold; color: #333;">Quarteirão:</strong> <span style="color: #666;">${desenho.quarteirao}</span></div>
+                                        <div><strong style="font-weight: bold; color: #333;">Quadra:</strong> <span style="color: #666;">${desenho.quadra}</span></div>
+                                        <div><strong style="font-weight: bold; color: #333;">Lote:</strong> <span style="color: #666;">${desenho.lote}</span></div>
+                                        <div><strong style="font-weight: bold; color: #333;">Qtde de cadastros:</strong> <span style="color: #666;">${desenho.qtde_cadastros}</span></div>
+                                    </div>
+                                    
+                                    <!-- Segunda div: Documentos em linha -->
+                                    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px;">
+                                        <div><strong style="font-weight: bold; color: #333;">Documentos:</strong></div>
+                                        <div id="documentosQuarteirao_${desenho.id}" style="display: flex; flex-wrap: wrap; gap: 5px; align-items: center;">
                                             <span style="color: #999; font-size: 11px;">Carregando...</span>
                                         </div>
                                     </div>
-                                    <div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">Quadra:</strong> <span style="color: #666;">${desenho.quadra}</span></div>
-                                    <div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">Lote:</strong> <span style="color: #666;">${desenho.lote}</span></div>
                                 </div>
                             `;
-
+    
                             let optionAlert2 = '';
                             let observacaoAlert2 = desenho.obs;
-
-                            if(observacaoAlert2){
+    
+                            if (observacaoAlert2) {
                                 let idxAlert2 = observacaoAlert2.indexOf("⚠️");
                                 let obsFiltrada2 = idxAlert2 !== -1 ? observacaoAlert2.substring(idxAlert2) : observacaoAlert2;
-                                
+    
                                 if (observacaoAlert2.includes("⚠️")) {
-                                    optionAlert2 = `<div>
-                                        <span>Observação: <b>${obsFiltrada2}</b></span><br>
-                                    </div>`;
-
+                                    optionAlert2 = `<div><span>Observação: <b>${obsFiltrada2}</b></span><br></div>`;
                                 } else {
                                     optionAlert2 = `<button class="btn btn-primary" onclick="alert('${observacaoAlert2}')">Observação</button>`;
                                 }
                             }
-
+    
                             const conteudoObservacaoHTML = `<div style="margin-top: 10px;">${optionAlert2}</div>`;
-
+    
                             if (dadosMorador) {
-                                // Se encontrou dados do morador, exibe TODOS os campos dinamicamente
-                                let camposHTML = '';
-                                const imobId = dadosMorador.imob_id || null;
-
-                                // Itera sobre todos os campos do objeto dadosMorador
+                                const identificarCamposComuns = (todos) => {
+                                    if (!todos || todos.length === 0) return {};
+                                    if (todos.length === 1) return {};
+    
+                                    const camposComuns = {};
+                                    const primeiro = todos[0];
+    
+                                    Object.keys(primeiro).forEach(campo => {
+                                        const valorPrimeiro = primeiro[campo];
+    
+                                        const todosIguais = todos.every(m => {
+                                            const valorAtual = m[campo];
+                                            if (valorPrimeiro === null || valorPrimeiro === undefined || valorPrimeiro === '') {
+                                                return (valorAtual === null || valorAtual === undefined || valorAtual === '');
+                                            }
+                                            return String(valorPrimeiro).trim() === String(valorAtual).trim();
+                                        });
+    
+                                        if (todosIguais && (valorPrimeiro !== null && valorPrimeiro !== undefined && valorPrimeiro !== '')) {
+                                            camposComuns[campo] = valorPrimeiro;
+                                        }
+                                    });
+    
+                                    return camposComuns;
+                                };
+    
+                                const camposComuns = temMultiplosCadastros ? identificarCamposComuns(todosMoradores) : {};
+    
+                                let dadosGeraisHTML = '';
+                                Object.keys(camposComuns).forEach(campo => {
+                                    const valor = camposComuns[campo];
+                                    const nomeCampo = campo.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                    dadosGeraisHTML += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${nomeCampo}:</strong> <span style="color: #666;">${valor}</span></div>`;
+                                });
+    
+                                let camposEspecificosHTML = '';
                                 Object.keys(dadosMorador).forEach(campo => {
+                                    if (Object.prototype.hasOwnProperty.call(camposComuns, campo)) return;
+    
                                     const valor = dadosMorador[campo];
-                                    // Só exibe campos que não são null, undefined ou string vazia
                                     if (valor !== null && valor !== undefined && valor !== '') {
-                                        // Formata o nome do campo (remove underscores e capitaliza)
                                         const nomeCampo = campo.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                        camposHTML += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${nomeCampo}:</strong> <span style="color: #666;">${valor}</span></div>`;
+                                        camposEspecificosHTML += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${nomeCampo}:</strong> <span style="color: #666;">${valor}</span></div>`;
                                     }
                                 });
-
-								// Sistema de abas para Cadastro, IPTU e Outros endereços
-                                const infoWindowId = 'iw_' + desenho.id;
-                                const abasHTML = `
-                                    <div style="display: flex; border-bottom: 2px solid #ddd; margin-bottom: 10px; margin-top: 10px;">
-                                        <button class="info-tab-cadastro" data-tab="cadastro" data-iwid="${infoWindowId}" style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid transparent; font-weight: 600; color: #007bff; transition: all 0.3s ease;">
+    
+                                let botoesNavegacaoHTML = '';
+                                if (temMultiplosCadastros) {
+                                    botoesNavegacaoHTML = `
+                                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">
+                                            <button type="button" class="btn-nav-morador btn-nav-anterior" data-iwid="${infoWindowId}" data-direction="anterior"
+                                                style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer;">
+                                                ← Anterior
+                                            </button>
+                                            <span id="contador-morador-${infoWindowId}" style="font-size: 12px; color: #333; font-weight: bold;">
+                                                1 de ${todosMoradores.length}
+                                            </span>
+                                            <button type="button" class="btn-nav-morador btn-nav-proximo" data-iwid="${infoWindowId}" data-direction="proximo"
+                                                style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer;">
+                                                Próximo →
+                                            </button>
+                                        </div>
+                                    `;
+                                }
+    
+                                // Só mostra aba "Dados Gerais" se tiver múltiplos cadastros
+                                const mostrarAbaDadosGerais = temMultiplosCadastros;
+                                
+                                const abasEsquerdaHTML = mostrarAbaDadosGerais ? `
+                                    <div style="display: flex; border-bottom: 2px solid #ddd; margin-bottom: 10px;">
+                                        <button class="info-tab-dados-gerais" data-tab="dados-gerais" data-iwid="${infoWindowId}" data-side="left"
+                                            style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid transparent; font-weight: 600; color: #007bff; transition: all 0.3s ease;">
+                                            Dados Gerais
+                                        </button>
+                                        <button class="info-tab-enderecos" data-tab="enderecos" data-iwid="${infoWindowId}" data-side="left"
+                                            style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid transparent; font-weight: 500; color: #666; transition: all 0.3s ease;">
+                                            Outros endereços
+                                        </button>
+                                    </div>
+                                ` : `
+                                    <div style="display: flex; border-bottom: 2px solid #ddd; margin-bottom: 10px;">
+                                        <button class="info-tab-enderecos" data-tab="enderecos" data-iwid="${infoWindowId}" data-side="left"
+                                            style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid #007bff; font-weight: 600; color: #007bff; transition: all 0.3s ease;">
+                                            Outros endereços
+                                        </button>
+                                    </div>
+                                `;
+    
+                                const abasDireitaHTML = `
+                                    <div style="display: flex; border-bottom: 2px solid #ddd; margin-bottom: 10px;">
+                                        <button class="info-tab-cadastro" data-tab="cadastro" data-iwid="${infoWindowId}" data-side="right"
+                                            style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid transparent; font-weight: 600; color: #007bff; transition: all 0.3s ease;">
                                             Cadastro
                                         </button>
-                                        <button class="info-tab-iptu" data-tab="iptu" data-iwid="${infoWindowId}" style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid transparent; font-weight: 500; color: #666; transition: all 0.3s ease;">
+                                        <button class="info-tab-iptu" data-tab="iptu" data-iwid="${infoWindowId}" data-side="right"
+                                            style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid transparent; font-weight: 500; color: #666; transition: all 0.3s ease;">
                                             IPTU
                                         </button>
-										<button class="info-tab-enderecos" data-tab="enderecos" data-iwid="${infoWindowId}" style="flex: 1; padding: 8px 15px; text-align: center; cursor: pointer; background-color: #f8f9fa; border: none; border-bottom: 2px solid transparent; font-weight: 500; color: #666; transition: all 0.3s ease;">
-											Outros endereços
-										</button>
                                     </div>
                                 `;
-
+    
+                                const conteudoDadosGeraisHTML = mostrarAbaDadosGerais ? `
+                                    <div id="tab-dados-gerais-${infoWindowId}" class="tab-dados-gerais-content" style="display: block; line-height: 1.4;">
+                                        ${dadosGeraisHTML || '<p style="color: #888; font-style: italic;">Não há dados comuns a todos os cadastros.</p>'}
+                                    </div>
+                                ` : '';
+                                
+                                const conteudoEnderecosHTML = `
+                                    <div id="tab-enderecos-${infoWindowId}" class="tab-enderecos-content" style="display: ${mostrarAbaDadosGerais ? 'none' : 'block'}; line-height: 1.4;">
+                                        <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
+                                            <h4 style="margin: 0; color: #333; font-size: 14px; font-weight: bold;">Endereços alternativos</h4>
+                                            <button type="button" class="btn btn-sm btn-primary btn-end-alt-add" id="btn-add-endereco-${infoWindowId}" style="padding: 4px 8px; color: #fff !important;">Adicionar endereço</button>
+                                        </div>
+                                        <div id="form-endereco-${infoWindowId}" style="display:none; margin-bottom: 10px; border: 1px solid #ddd; padding: 10px; border-radius: 4px; background:#fafafa;">
+                                            <div style="display:flex; gap:8px; flex-wrap: wrap;">
+                                                <input type="text" class="form-control" id="inp-endereco-${infoWindowId}" placeholder="Endereço" style="flex:2; min-width: 180px; padding:6px 8px;">
+                                                <input type="text" class="form-control" id="inp-numero-${infoWindowId}" placeholder="Número" style="flex:1; min-width: 90px; padding:6px 8px;">
+                                                <input type="text" class="form-control" id="inp-complemento-${infoWindowId}" placeholder="Complemento" style="flex:1; min-width: 140px; padding:6px 8px;">
+                                            </div>
+                                            <textarea class="form-control" id="inp-observacao-${infoWindowId}" placeholder="Observação" rows="2" style="margin-top:8px; width:100%; padding:6px 8px;"></textarea>
+                                            <div style="margin-top:8px; display:flex; gap:8px;">
+                                                <button type="button" class="btn btn-sm btn-success btn-end-alt-salvar" id="btn-salvar-endereco-${infoWindowId}" style="padding: 4px 8px; color: #fff !important;">Salvar</button>
+                                                <button type="button" class="btn btn-sm btn-secondary btn-end-alt-cancelar" id="btn-cancelar-endereco-${infoWindowId}" style="padding: 4px 8px; color: #fff !important;">Cancelar</button>
+                                            </div>
+                                        </div>
+                                        <div id="lista-enderecos-${infoWindowId}" style="min-height: 60px;">
+                                            <div style="text-align: center; padding: 20px; color: #666;">
+                                                <i class="fas fa-spinner fa-spin"></i> Clique na aba Outros endereços para carregar a lista
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+    
                                 const conteudoCadastroHTML = `
                                     <div id="tab-cadastro-${infoWindowId}" class="tab-cadastro-content" style="display: block; line-height: 1.4;">
-                                        ${camposHTML}
+                                        ${botoesNavegacaoHTML}
+                                        ${camposEspecificosHTML || '<p style="color: #888; font-style: italic;">Nenhum dado específico encontrado.</p>'}
                                     </div>
                                 `;
-
+    
                                 const conteudoIptuHTML = `
                                     <div id="tab-iptu-${infoWindowId}" class="tab-iptu-content" style="display: none; line-height: 1.4;">
+                                        ${botoesNavegacaoHTML}
                                         <div style="text-align: center; padding: 20px; color: #666;">
                                             <i class="fas fa-spinner fa-spin"></i> Clique na aba IPTU para carregar os dados
                                         </div>
                                     </div>
                                 `;
-
-								const conteudoEnderecosHTML = `
-									<div id="tab-enderecos-${infoWindowId}" class="tab-enderecos-content" style="display: none; line-height: 1.4;">
-										<div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
-											<h4 style="margin: 0; color: #333; font-size: 14px; font-weight: bold;">Endereços alternativos</h4>
-											<button type="button" class="btn btn-sm btn-primary btn-end-alt-add" id="btn-add-endereco-${infoWindowId}" style="padding: 4px 8px; color: #fff !important;">Adicionar endereço</button>
-										</div>
-										<div id="form-endereco-${infoWindowId}" style="display:none; margin-bottom: 10px; border: 1px solid #ddd; padding: 10px; border-radius: 4px; background:#fafafa;">
-											<div style="display:flex; gap:8px; flex-wrap: wrap;">
-												<input type="text" class="form-control" id="inp-endereco-${infoWindowId}" placeholder="Endereço" style="flex:2; min-width: 180px; padding:6px 8px;">
-												<input type="text" class="form-control" id="inp-numero-${infoWindowId}" placeholder="Número" style="flex:1; min-width: 90px; padding:6px 8px;">
-												<input type="text" class="form-control" id="inp-complemento-${infoWindowId}" placeholder="Complemento" style="flex:1; min-width: 140px; padding:6px 8px;">
-											</div>
-											<textarea class="form-control" id="inp-observacao-${infoWindowId}" placeholder="Observação" rows="2" style="margin-top:8px; width:100%; padding:6px 8px;"></textarea>
-											<div style="margin-top:8px; display:flex; gap:8px;">
-												<button type="button" class="btn btn-sm btn-success btn-end-alt-salvar" id="btn-salvar-endereco-${infoWindowId}" style="padding: 4px 8px; color: #fff !important;">Salvar</button>
-												<button type="button" class="btn btn-sm btn-secondary btn-end-alt-cancelar" id="btn-cancelar-endereco-${infoWindowId}" style="padding: 4px 8px; color: #fff !important;">Cancelar</button>
-											</div>
-										</div>
-										<div id="lista-enderecos-${infoWindowId}" style="min-height: 60px;">
-											<div style="text-align: center; padding: 20px; color: #666;">
-												<i class="fas fa-spinner fa-spin"></i> Clique na aba Outros endereços para carregar a lista
-											</div>
-										</div>
-									</div>
-								`;
-
+    
                                 conteudoInfoWindow = `
                                     <div style="padding: 0 10px 10px 10px; font-family: Arial, sans-serif;">
                                         ${tituloInicialHtml}
                                         ${dadosDesenhoHTML}
-                                        <div>
-                                            <h4 style="margin: 0 0 8px 0; color: #333; font-size: 14px; font-weight: bold;">Cadastro</h4>
-                                            <div style="border-bottom: 1px solid #ddd; margin-bottom: 8px;"></div>
-                                            ${abasHTML}
-                                            ${conteudoCadastroHTML}
-                                            ${conteudoIptuHTML}
-											${conteudoEnderecosHTML}
+                                        <div style="margin-top: 15px;">
+                                             <div style="border-bottom: 1px solid #ddd; margin-bottom: 8px;"></div>
+                                            <div style="display: flex; gap: 20px;">
+                                                <div style="flex: 1;">
+                                                    ${abasEsquerdaHTML}
+                                                    ${conteudoDadosGeraisHTML}
+                                                    ${conteudoEnderecosHTML}
+                                                </div>
+                                                <div style="flex: 1;">
+                                                    ${abasDireitaHTML}
+                                                    ${conteudoCadastroHTML}
+                                                    ${conteudoIptuHTML}
+                                                </div>
+                                            </div>
                                         </div>
                                         ${conteudoObservacaoHTML}
                                     </div>
                                 `;
                             } else {
-                                // Se não encontrou dados do cadastro, mostra apenas os dados do desenho
                                 conteudoInfoWindow = `
                                     <div style="padding: 10px; font-family: Arial, sans-serif;">
                                         ${dadosDesenhoHTML}
                                         <div>
                                             <h4 style="margin: 0 0 8px 0; color: #333; font-size: 14px; font-weight: bold;">Cadastro</h4>
                                             <div style="border-bottom: 1px solid #ddd; margin-bottom: 8px;"></div>
-                                            <p style="margin: 0; color: #888; font-style: italic;">
-                                                Dados do cadastro não encontrados
-                                            </p>
+                                            <p style="margin: 0; color: #888; font-style: italic;">Dados do cadastro não encontrados</p>
                                         </div>
                                         ${conteudoObservacaoHTML}
                                     </div>
                                 `;
                             }
-
-                            // Remove infowindow anterior se existir
+    
                             if (MapFramework.infoWindow) {
                                 MapFramework.infoWindow.close();
                             }
-
-                            // Cria novo infowindow
+    
                             MapFramework.infoWindow = new google.maps.InfoWindow({
                                 content: conteudoInfoWindow,
                                 position: { lat: parseFloat(lat), lng: parseFloat(lng) }
                             });
-
-                            // Abre o infowindow
+    
                             MapFramework.infoWindow.open(MapFramework.map);
-
-                            // Adiciona eventos quando o InfoWindow estiver pronto
+    
                             google.maps.event.addListener(MapFramework.infoWindow, 'domready', function () {
-                                // Carrega os documentos do quarteirão
+                                // Docs do quarteirão
                                 if (desenho.quarteirao) {
                                     $.ajax({
                                         url: 'consultas/listar_arquivos_quarteirao.php',
                                         method: 'POST',
                                         data: { quarteirao: desenho.quarteirao },
                                         dataType: 'json',
-                                        success: function(response) {
+                                        success: function (respDocs) {
                                             const containerDocs = document.querySelector(`#documentosQuarteirao_${desenho.id}`);
-
-                                            //condição para caso o quarteirão tenha menos de 4 digitos
-                                            //colocar um zero a esquerda
-                                            if (desenho.quarteirao.length < 4) {
+    
+                                            if (desenho.quarteirao && desenho.quarteirao.length < 4) {
                                                 desenho.quarteirao = '0' + desenho.quarteirao;
                                             }
-
-                                            if (containerDocs) {
-                                                if (response.success && response.arquivos && response.arquivos.length > 0) {
-                                                    // Cria a lista de documentos
-                                                    let listaHTML = '<div style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;">';
-                                                    response.arquivos.forEach(arquivo => {
-                                                        const nomeArquivo = arquivo.length > 25 ? arquivo.substring(0, 25) + '...' : arquivo;
-                                                        const caminho = `loteamentos_quadriculas/pdfs_quarteiroes/${desenho.quarteirao}/${arquivo}`;
-                                                        listaHTML += `
-                                                            <a href="${caminho}" target="_blank" 
-                                                               style="display: inline-block; color: #666; text-decoration: none; padding: 3px 8px; 
-                                                                      font-size: 11px; background-color: #e9ecef; border-radius: 10px; 
-                                                                      transition: background-color 0.2s ease;"
-                                                               onmouseover="this.style.backgroundColor='#007bff'; this.style.color='white';"
-                                                               onmouseout="this.style.backgroundColor='#e9ecef'; this.style.color='#666';"
-                                                               title="${arquivo}">
-                                                                <i class="fas fa-file-pdf" style="margin-right: 3px; font-size: 10px;"></i>${nomeArquivo}
-                                                            </a>
-                                                        `;
-                                                    });
-                                                    listaHTML += '</div>';
-                                                    
-                                                    containerDocs.innerHTML = `
-                                                        ${listaHTML}
+    
+                                            if (!containerDocs) return;
+    
+                                            if (respDocs.success && respDocs.arquivos && respDocs.arquivos.length > 0) {
+                                                let listaHTML = '';
+                                                respDocs.arquivos.forEach(arquivo => {
+                                                    const nomeArquivo = arquivo.length > 25 ? arquivo.substring(0, 25) + '...' : arquivo;
+                                                    const caminho = `loteamentos_quadriculas/pdfs_quarteiroes/${desenho.quarteirao}/${arquivo}`;
+                                                    listaHTML += `
+                                                        <a href="${caminho}" target="_blank"
+                                                           style="display: inline-block; color: #666; text-decoration: none; padding: 3px 8px;
+                                                                  font-size: 11px; background-color: #e9ecef; border-radius: 10px;
+                                                                  transition: background-color 0.2s ease;"
+                                                           onmouseover="this.style.backgroundColor='#007bff'; this.style.color='white';"
+                                                           onmouseout="this.style.backgroundColor='#e9ecef'; this.style.color='#666';"
+                                                           title="${arquivo}">
+                                                            <i class="fas fa-file-pdf" style="margin-right: 3px; font-size: 10px;"></i>${nomeArquivo}
+                                                        </a>
                                                     `;
-                                                } else {
-                                                    containerDocs.innerHTML = `
-                                                        <div style="margin-left: 10px; margin: 5px 0;">
-                                                            <span style="color: #999; font-size: 11px; font-style: italic;">Nenhum documento encontrado</span>
-                                                        </div>
-                                                    `;
-                                                }
+                                                });
+                                                containerDocs.innerHTML = listaHTML;
+                                            } else {
+                                                containerDocs.innerHTML = `<span style="color: #999; font-size: 11px; font-style: italic;">Nenhum documento encontrado</span>`;
                                             }
                                         },
-                                        error: function() {
+                                        error: function () {
                                             const containerDocs = document.querySelector(`#documentosQuarteirao_${desenho.id}`);
                                             if (containerDocs) {
-                                                containerDocs.innerHTML = `
-                                                    <div style="margin-left: 10px; margin: 5px 0;">
-                                                        <span style="color: #dc3545; font-size: 11px;">Erro ao carregar documentos</span>
-                                                    </div>
-                                                `;
+                                                containerDocs.innerHTML = `<span style="color: #dc3545; font-size: 11px;">Erro ao carregar documentos</span>`;
                                             }
                                         }
                                     });
                                 }
-                                
-                                // Event listeners para as abas (apenas se houver dados do morador)
-                                if (dadosMorador) {
+    
+                                // Abas / IPTU / Endereços (só se tiver cadastro)
+                                const dadosMoradorAtual = desenho.dadosMorador;
+                                if (dadosMoradorAtual) {
                                     const currentInfoWindowId = 'iw_' + desenho.id;
-                                    const imobId = dadosMorador.imob_id || null;
-
-                                    // Remove listeners anteriores deste InfoWindow (se houver)
-                                    const eventNamespace = '.infowindow-' + currentInfoWindowId;
-                                    document.removeEventListener('click', null);
-
-                                    // Event listeners para as abas usando querySelector no documento
-                                    // O InfoWindow injeta o conteúdo no DOM, então podemos buscar diretamente
-                                    setTimeout(function() {
+    
+                                    const gerarBotoesNavegacao = (iwid) => {
+                                        if (!temMultiplosCadastros || !todosMoradores || todosMoradores.length <= 1) return '';
+                                        const indiceAtual = desenho.indiceMoradorAtual || 0;
+    
+                                        return `
+                                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">
+                                                <button type="button" class="btn-nav-morador btn-nav-anterior" data-iwid="${iwid}" data-direction="anterior"
+                                                    style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: ${indiceAtual === 0 ? 'not-allowed' : 'pointer'}; opacity: ${indiceAtual === 0 ? '0.5' : '1'};"
+                                                    ${indiceAtual === 0 ? 'disabled' : ''}>
+                                                    ← Anterior
+                                                </button>
+                                                <span id="contador-morador-${iwid}" style="font-size: 12px; color: #333; font-weight: bold;">
+                                                    ${indiceAtual + 1} de ${todosMoradores.length}
+                                                </span>
+                                                <button type="button" class="btn-nav-morador btn-nav-proximo" data-iwid="${iwid}" data-direction="proximo"
+                                                    style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: ${indiceAtual === todosMoradores.length - 1 ? 'not-allowed' : 'pointer'}; opacity: ${indiceAtual === todosMoradores.length - 1 ? '0.5' : '1'};"
+                                                    ${indiceAtual === todosMoradores.length - 1 ? 'disabled' : ''}>
+                                                    Próximo →
+                                                </button>
+                                            </div>
+                                        `;
+                                    };
+    
+                                    setTimeout(function () {
                                         const tabButtons = document.querySelectorAll(`[data-iwid="${currentInfoWindowId}"]`);
-                                        
+    
                                         tabButtons.forEach(btn => {
-                                            btn.addEventListener('click', function(e) {
+                                            btn.addEventListener('click', function (e) {
                                                 e.preventDefault();
                                                 e.stopPropagation();
-                                                
+    
                                                 const tabName = this.getAttribute('data-tab');
                                                 const iwid = this.getAttribute('data-iwid');
-                                                
-                                                // Remove classe active de todas as abas deste InfoWindow
-                                                const allTabs = document.querySelectorAll(`[data-iwid="${iwid}"]`);
-                                                allTabs.forEach(tab => {
+                                                const side = this.getAttribute('data-side');
+    
+                                                const allTabsSameSide = document.querySelectorAll(`[data-iwid="${iwid}"][data-side="${side}"]`);
+                                                allTabsSameSide.forEach(tab => {
                                                     tab.style.fontWeight = '500';
                                                     tab.style.color = '#666';
                                                     tab.style.borderBottomColor = 'transparent';
                                                 });
-                                                
-                                                // Adiciona classe active na aba clicada
+    
                                                 this.style.fontWeight = '600';
                                                 this.style.color = '#007bff';
                                                 this.style.borderBottomColor = '#007bff';
-                                                
-                                                // Mostra/oculta conteúdo das abas
-                                                const tabCadastro = document.querySelector(`#tab-cadastro-${iwid}`);
-                                                const tabIptu = document.querySelector(`#tab-iptu-${iwid}`);
-												const tabEnderecos = document.querySelector(`#tab-enderecos-${iwid}`);
-                                                
-                                                if (tabName === 'cadastro') {
-                                                    if (tabCadastro) tabCadastro.style.display = 'block';
-                                                    if (tabIptu) tabIptu.style.display = 'none';
-													if (tabEnderecos) tabEnderecos.style.display = 'none';
-                                                } else if (tabName === 'iptu') {
-                                                    if (tabCadastro) tabCadastro.style.display = 'none';
-                                                    if (tabIptu) tabIptu.style.display = 'block';
-													if (tabEnderecos) tabEnderecos.style.display = 'none';
-                                                    
-                                                    // Carrega dados do IPTU se ainda não foram carregados
-                                                    if (tabIptu && !tabIptu.dataset.loaded && imobId) {
-                                                        tabIptu.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Carregando dados do IPTU...</div>';
-                                                        
-                                                        $.ajax({
-                                                            url: 'carregarIptus.php',
-                                                            method: 'GET',
-                                                            data: { imob_id: imobId },
-                                                            dataType: 'json',
-                                                            success: function(response) {
-                                                                tabIptu.dataset.loaded = 'true';
-                                                                
-                                                                // Verifica se a resposta veio com o novo formato (objeto com dados e dicionario)
-                                                                // ou no formato antigo (array direto) para manter compatibilidade
-                                                                let dadosArray = [];
-                                                                let dadosArray2 = [];
-                                                                let dicionario = {};
-                                                                let dicionario2 = {};
-                                                                
-                                                                if (response && typeof response === 'object') {
-                                                                    if (response.dados && Array.isArray(response.dados)) {
-                                                                        // Novo formato: { dados: [...], dados2: [...], dicionario: {...}, dicionario2: {...} }
-                                                                        dadosArray = response.dados;
-                                                                        dadosArray2 = response.dados2 || [];
-                                                                        dicionario = response.dicionario || {};
-                                                                        dicionario2 = response.dicionario2 || {};
-                                                                    } else if (Array.isArray(response)) {
-                                                                        // Formato antigo: array direto (mantém compatibilidade)
-                                                                        dadosArray = response;
-                                                                        dadosArray2 = [];
-                                                                        dicionario = {};
-                                                                        dicionario2 = {};
+    
+                                                if (side === 'left') {
+                                                    const tabDadosGerais = document.querySelector(`#tab-dados-gerais-${iwid}`);
+                                                    const tabEnderecos = document.querySelector(`#tab-enderecos-${iwid}`);
+    
+                                                    if (tabName === 'dados-gerais') {
+                                                        if (tabDadosGerais) tabDadosGerais.style.display = 'block';
+                                                        if (tabEnderecos) tabEnderecos.style.display = 'none';
+                                                    } else if (tabName === 'enderecos') {
+                                                        if (tabDadosGerais) tabDadosGerais.style.display = 'none';
+                                                        if (tabEnderecos) tabEnderecos.style.display = 'block';
+    
+                                                        // Carregar endereços alternativos + binds + form
+                                                        if (tabEnderecos && !tabEnderecos.dataset.loaded) {
+                                                            const listaCont = document.querySelector(`#lista-enderecos-${iwid}`);
+                                                            if (listaCont) {
+                                                                listaCont.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Carregando endereços alternativos...</div>';
+                                                            }
+    
+                                                            $.ajax({
+                                                                url: 'carregarEnderecosAlternativos.php',
+                                                                method: 'GET',
+                                                                data: { id_marcador: desenho.id },
+                                                                dataType: 'json',
+                                                                success: function (resp) {
+                                                                    tabEnderecos.dataset.loaded = 'true';
+    
+                                                                    const lista = document.querySelector(`#lista-enderecos-${iwid}`);
+                                                                    if (!lista) return;
+    
+                                                                    if (resp && resp.status === 'sucesso' && Array.isArray(resp.dados) && resp.dados.length > 0) {
+                                                                        let html = '';
+                                                                        resp.dados.forEach((row, idx) => {
+                                                                            html += `
+                                                                                <div class="card-end-alt" data-id="${row.id}" style="position:relative; padding:10px; border:1px solid #ddd; border-radius:4px; background:#fff; ${idx > 0 ? 'margin-top:10px;' : ''}">
+                                                                                    <button type="button" class="btn btn-sm btn-warning btn-edit-end-alt" title="Editar" data-id="${row.id}" style="position:absolute; top:6px; right:32px; padding:2px 6px; line-height:1; color:#fff !important; background-color:#ffc107; border-color:#ffc107;">✎</button>
+                                                                                    <button type="button" class="btn btn-sm btn-danger btn-del-end-alt" title="Excluir" data-id="${row.id}" style="position:absolute; top:6px; right:6px; padding:2px 6px; line-height:1; color:#fff !important;">×</button>
+                                                                                    <div style="margin-bottom:4px;"><strong style="color:#333;">Endereço:</strong> <span style="color:#555;">${(row.endereco || '').toString()}</span></div>
+                                                                                    <div style="margin-bottom:4px;"><strong style="color:#333;">Número:</strong> <span style="color:#555;">${(row.numero || '').toString()}</span></div>
+                                                                                    <div style="margin-bottom:4px;"><strong style="color:#333;">Complemento:</strong> <span style="color:#555;">${(row.complemento || '').toString()}</span></div>
+                                                                                    <div><strong style="color:#333;">Observação:</strong> <span style="color:#555;">${(row.observacao || '').toString()}</span></div>
+                                                                                </div>
+                                                                            `;
+                                                                        });
+                                                                        lista.innerHTML = html;
+    
+                                                                        // Editar
+                                                                        lista.querySelectorAll('.btn-edit-end-alt').forEach(btnEdit => {
+                                                                            btnEdit.addEventListener('click', function (ev) {
+                                                                                ev.preventDefault();
+                                                                                ev.stopPropagation();
+    
+                                                                                const idEnd = this.getAttribute('data-id');
+                                                                                if (!idEnd) return;
+    
+                                                                                const card = this.closest('.card-end-alt');
+                                                                                if (!card) return;
+    
+                                                                                const enderecoText = (card.querySelector('div:first-of-type span') || {}).textContent ? card.querySelector('div:first-of-type span').textContent.trim() : '';
+                                                                                const numeroText = (card.querySelector('div:nth-of-type(2) span') || {}).textContent ? card.querySelector('div:nth-of-type(2) span').textContent.trim() : '';
+                                                                                const complementoText = (card.querySelector('div:nth-of-type(3) span') || {}).textContent ? card.querySelector('div:nth-of-type(3) span').textContent.trim() : '';
+                                                                                const observacaoText = (card.querySelector('div:nth-of-type(4) span') || {}).textContent ? card.querySelector('div:nth-of-type(4) span').textContent.trim() : '';
+    
+                                                                                const inpEndereco = document.getElementById(`inp-endereco-${iwid}`);
+                                                                                const inpNumero = document.getElementById(`inp-numero-${iwid}`);
+                                                                                const inpComplemento = document.getElementById(`inp-complemento-${iwid}`);
+                                                                                const inpObservacao = document.getElementById(`inp-observacao-${iwid}`);
+    
+                                                                                if (inpEndereco) inpEndereco.value = enderecoText;
+                                                                                if (inpNumero) inpNumero.value = numeroText;
+                                                                                if (inpComplemento) inpComplemento.value = complementoText;
+                                                                                if (inpObservacao) inpObservacao.value = observacaoText;
+    
+                                                                                const formBox = document.getElementById(`form-endereco-${iwid}`);
+                                                                                if (formBox) {
+                                                                                    formBox.style.display = 'block';
+                                                                                    formBox.dataset.editId = idEnd;
+                                                                                }
+    
+                                                                                const btnSalvar = document.getElementById(`btn-salvar-endereco-${iwid}`);
+                                                                                if (btnSalvar) {
+                                                                                    btnSalvar.textContent = 'Atualizar';
+                                                                                    btnSalvar.dataset.editId = idEnd;
+                                                                                }
+                                                                            });
+                                                                        });
+    
+                                                                        // Excluir
+                                                                        lista.querySelectorAll('.btn-del-end-alt').forEach(btnDel => {
+                                                                            btnDel.addEventListener('click', function (ev) {
+                                                                                ev.preventDefault();
+                                                                                ev.stopPropagation();
+    
+                                                                                const idEnd = this.getAttribute('data-id');
+                                                                                if (!idEnd) return;
+    
+                                                                                if (!confirm('Deseja realmente excluir este endereço?')) return;
+    
+                                                                                const btnRef = this;
+                                                                                btnRef.disabled = true;
+                                                                                btnRef.textContent = '...';
+    
+                                                                                $.ajax({
+                                                                                    url: 'deletarEnderecoAlternativo.php',
+                                                                                    method: 'POST',
+                                                                                    dataType: 'json',
+                                                                                    data: { id: idEnd },
+                                                                                    success: function (resDel) {
+                                                                                        if (resDel && resDel.status === 'sucesso') {
+                                                                                            const card = btnRef.closest('.card-end-alt');
+                                                                                            if (card) card.remove();
+                                                                                            if (!lista.querySelector('.card-end-alt')) {
+                                                                                                lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhum endereço alternativo cadastrado.</div>';
+                                                                                            }
+                                                                                        } else {
+                                                                                            alert((resDel && resDel.mensagem) ? resDel.mensagem : 'Falha ao excluir o endereço.');
+                                                                                            btnRef.disabled = false;
+                                                                                            btnRef.textContent = '×';
+                                                                                        }
+                                                                                    },
+                                                                                    error: function () {
+                                                                                        alert('Erro ao excluir o endereço.');
+                                                                                        btnRef.disabled = false;
+                                                                                        btnRef.textContent = '×';
+                                                                                    }
+                                                                                });
+                                                                            });
+                                                                        });
+                                                                    } else {
+                                                                        lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhum endereço alternativo cadastrado.</div>';
+                                                                    }
+    
+                                                                    // Form (add/salvar/cancelar)
+                                                                    const btnAdd = document.getElementById(`btn-add-endereco-${iwid}`);
+                                                                    const formBox = document.getElementById(`form-endereco-${iwid}`);
+                                                                    const btnSalvar = document.getElementById(`btn-salvar-endereco-${iwid}`);
+                                                                    const btnCancelar = document.getElementById(`btn-cancelar-endereco-${iwid}`);
+    
+                                                                    if (btnAdd && formBox) {
+                                                                        btnAdd.onclick = function (ev) {
+                                                                            ev.preventDefault();
+    
+                                                                            const isShowing = formBox.style.display !== 'none' && formBox.style.display !== '';
+                                                                            formBox.style.display = isShowing ? 'none' : 'block';
+    
+                                                                            if (!isShowing) {
+                                                                                delete formBox.dataset.editId;
+                                                                                if (btnSalvar) {
+                                                                                    btnSalvar.textContent = 'Salvar';
+                                                                                    delete btnSalvar.dataset.editId;
+                                                                                }
+    
+                                                                                ['endereco', 'numero', 'complemento', 'observacao'].forEach(suf => {
+                                                                                    const inp = document.getElementById(`inp-${suf}-${iwid}`);
+                                                                                    if (inp) inp.value = '';
+                                                                                });
+                                                                            }
+                                                                        };
+                                                                    }
+    
+                                                                    if (btnCancelar && formBox) {
+                                                                        btnCancelar.onclick = function (ev) {
+                                                                            ev.preventDefault();
+                                                                            formBox.style.display = 'none';
+                                                                            delete formBox.dataset.editId;
+    
+                                                                            if (btnSalvar) {
+                                                                                btnSalvar.textContent = 'Salvar';
+                                                                                delete btnSalvar.dataset.editId;
+                                                                            }
+    
+                                                                            ['endereco', 'numero', 'complemento', 'observacao'].forEach(suf => {
+                                                                                const inp = document.getElementById(`inp-${suf}-${iwid}`);
+                                                                                if (inp) inp.value = '';
+                                                                            });
+                                                                        };
+                                                                    }
+    
+                                                                    if (btnSalvar && formBox) {
+                                                                        btnSalvar.onclick = function (ev) {
+                                                                            ev.preventDefault();
+    
+                                                                            const endereco = (document.getElementById(`inp-endereco-${iwid}`) || {}).value || '';
+                                                                            const numero = (document.getElementById(`inp-numero-${iwid}`) || {}).value || '';
+                                                                            const complemento = (document.getElementById(`inp-complemento-${iwid}`) || {}).value || '';
+                                                                            const observacao = (document.getElementById(`inp-observacao-${iwid}`) || {}).value || '';
+    
+                                                                            if (!endereco.trim()) {
+                                                                                alert('Informe o endereço.');
+                                                                                return;
+                                                                            }
+    
+                                                                            const editId = (btnSalvar.dataset.editId || formBox.dataset.editId || '').trim();
+                                                                            const isEdit = !!editId;
+    
+                                                                            btnSalvar.disabled = true;
+                                                                            btnSalvar.textContent = isEdit ? 'Atualizando...' : 'Salvando...';
+    
+                                                                            const urlAjax = isEdit ? 'atualizarEnderecoAlternativo.php' : 'salvarEnderecoAlternativo.php';
+                                                                            const dataAjax = isEdit
+                                                                                ? { id: editId, endereco: endereco, numero: numero, complemento: complemento, observacao: observacao }
+                                                                                : { id_marcador: desenho.id, endereco: endereco, numero: numero, complemento: complemento, observacao: observacao };
+    
+                                                                            $.ajax({
+                                                                                url: urlAjax,
+                                                                                method: 'POST',
+                                                                                dataType: 'json',
+                                                                                data: dataAjax,
+                                                                                success: function (res) {
+                                                                                    btnSalvar.disabled = false;
+                                                                                    btnSalvar.textContent = 'Salvar';
+    
+                                                                                    if (res && res.status === 'sucesso') {
+                                                                                        delete formBox.dataset.editId;
+                                                                                        delete btnSalvar.dataset.editId;
+    
+                                                                                        delete tabEnderecos.dataset.loaded;
+                                                                                        const btnEnd = document.querySelector(`button.info-tab-enderecos[data-iwid="${iwid}"]`);
+                                                                                        if (btnEnd) btnEnd.click();
+    
+                                                                                        formBox.style.display = 'none';
+                                                                                        ['endereco', 'numero', 'complemento', 'observacao'].forEach(suf => {
+                                                                                            const inp = document.getElementById(`inp-${suf}-${iwid}`);
+                                                                                            if (inp) inp.value = '';
+                                                                                        });
+                                                                                    } else {
+                                                                                        alert((res && res.mensagem) ? res.mensagem : (isEdit ? 'Falha ao atualizar o endereço.' : 'Falha ao salvar o endereço.'));
+                                                                                    }
+                                                                                },
+                                                                                error: function () {
+                                                                                    btnSalvar.disabled = false;
+                                                                                    btnSalvar.textContent = isEdit ? 'Atualizar' : 'Salvar';
+                                                                                    alert(isEdit ? 'Erro ao atualizar o endereço.' : 'Erro ao salvar o endereço.');
+                                                                                }
+                                                                            });
+                                                                        };
+                                                                    }
+                                                                },
+                                                                error: function () {
+                                                                    const lista = document.querySelector(`#lista-enderecos-${iwid}`);
+                                                                    if (lista) {
+                                                                        lista.innerHTML = '<div style="padding: 10px; color: #a00;">Erro ao carregar endereços alternativos.</div>';
                                                                     }
                                                                 }
-                                                                
-                                                                if (dadosArray && dadosArray.length > 0) {
-                                                                    let content = '<div style="margin-bottom: 15px;">';
-                                                                    
-                                                                    dadosArray.forEach(function(iptu, index) {
-                                                                        if (index > 0) {
-                                                                            content += '<hr style="margin: 15px 0; border: 0; border-top: 1px solid #ddd;">';
+                                                            });
+                                                        }
+                                                    }
+                                                } else if (side === 'right') {
+                                                    const tabCadastro = document.querySelector(`#tab-cadastro-${iwid}`);
+                                                    const tabIptu = document.querySelector(`#tab-iptu-${iwid}`);
+    
+                                                    if (tabName === 'cadastro') {
+                                                        if (tabCadastro) tabCadastro.style.display = 'block';
+                                                        if (tabIptu) tabIptu.style.display = 'none';
+                                                    } else if (tabName === 'iptu') {
+                                                        if (tabCadastro) tabCadastro.style.display = 'none';
+                                                        if (tabIptu) tabIptu.style.display = 'block';
+    
+                                                        const imobIdAtual = desenho.dadosMorador ? (desenho.dadosMorador.imob_id || null) : null;
+    
+                                                        if (tabIptu && !tabIptu.dataset.loaded && imobIdAtual) {
+                                                            tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Carregando dados do IPTU...</div>';
+    
+                                                            $.ajax({
+                                                                url: 'carregarIptus.php',
+                                                                method: 'GET',
+                                                                data: { imob_id: imobIdAtual },
+                                                                dataType: 'json',
+                                                                success: function (respIptu) {
+                                                                    tabIptu.dataset.loaded = 'true';
+    
+                                                                    let dadosArray = [];
+                                                                    let dadosArray2 = [];
+                                                                    let dicionario = {};
+                                                                    let dicionario2 = {};
+    
+                                                                    if (respIptu && typeof respIptu === 'object') {
+                                                                        if (respIptu.dados && Array.isArray(respIptu.dados)) {
+                                                                            dadosArray = respIptu.dados;
+                                                                            dadosArray2 = respIptu.dados2 || [];
+                                                                            dicionario = respIptu.dicionario || {};
+                                                                            dicionario2 = respIptu.dicionario2 || {};
+                                                                        } else if (Array.isArray(respIptu)) {
+                                                                            dadosArray = respIptu;
                                                                         }
-                                                                        
-                                                                        Object.keys(iptu).forEach(function(key) {
-                                                                            const value = iptu[key];
-                                                                            if (value !== null && value !== '' && key !== 'erro') {
-                                                                                // Usa o dicionário se existir, senão usa a formatação automática como fallback
-                                                                                const fieldName = dicionario[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                                                                content += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${fieldName}:</strong> <span style="color: #666;">${value}</span></div>`;
-                                                                            }
+                                                                    }
+    
+                                                                    if (dadosArray && dadosArray.length > 0) {
+                                                                        let content = '<div style="margin-bottom: 15px;">';
+    
+                                                                        dadosArray.forEach(function (iptu, index) {
+                                                                            if (index > 0) content += '<hr style="margin: 15px 0; border: 0; border-top: 1px solid #ddd;">';
+    
+                                                                            Object.keys(iptu).forEach(function (key) {
+                                                                                const value = iptu[key];
+                                                                                if (value !== null && value !== '' && key !== 'erro') {
+                                                                                    const fieldName = dicionario[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                                                                    content += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${fieldName}:</strong> <span style="color: #666;">${value}</span></div>`;
+                                                                                }
+                                                                            });
                                                                         });
-                                                                    });
-                                                                    
-                                                                    content += '</div>';
-                                                                    
-                                                                    // Adiciona seção de Composição da área construída
-                                                                    if (dadosArray2 && dadosArray2.length > 0) {
+    
+                                                                        content += '</div>';
+    
+                                                                        // Composição da área construída
                                                                         content += '<div style="margin-top: 20px; margin-bottom: 15px;">';
                                                                         content += '<h4 style="margin-bottom: 10px; font-size: 14px; font-weight: bold; color: #333;">Composição da área construída</h4>';
                                                                         content += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;">';
-                                                                        
-                                                                        // Cabeçalho da tabela
+    
                                                                         content += '<thead><tr style="background-color: #f5f5f5; border-bottom: 2px solid #ddd;">';
                                                                         const colunas = ['area', 'area_construida', 'utilizacao', 'construcao', 'classificacao'];
-                                                                        colunas.forEach(function(col) {
+                                                                        colunas.forEach(function (col) {
                                                                             const label = dicionario2[col] || col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                                                                             content += `<th style="padding: 8px; text-align: left; font-weight: bold; color: #333; border: 1px solid #ddd;">${label}</th>`;
                                                                         });
                                                                         content += '</tr></thead>';
-                                                                        
-                                                                        // Corpo da tabela
+    
                                                                         content += '<tbody>';
-                                                                        dadosArray2.forEach(function(area) {
-                                                                            content += '<tr>';
-                                                                            colunas.forEach(function(col) {
-                                                                                const value = area[col] !== null && area[col] !== '' ? area[col] : '';
-                                                                                content += `<td style="padding: 8px; border: 1px solid #ddd; color: #666;">${value}</td>`;
+                                                                        if (dadosArray2 && dadosArray2.length > 0) {
+                                                                            dadosArray2.forEach(function (area) {
+                                                                                content += '<tr>';
+                                                                                colunas.forEach(function (col) {
+                                                                                    const value = (area[col] !== null && area[col] !== '') ? area[col] : '';
+                                                                                    content += `<td style="padding: 8px; border: 1px solid #ddd; color: #666;">${value}</td>`;
+                                                                                });
+                                                                                content += '</tr>';
                                                                             });
-                                                                            content += '</tr>';
-                                                                        });
-                                                                        content += '</tbody>';
-                                                                        
-                                                                        content += '</table>';
-                                                                        content += '</div>';
-                                                                    } else {
-                                                                        // Tabela vazia se não houver dados
-                                                                        content += '<div style="margin-top: 20px; margin-bottom: 15px;">';
-                                                                        content += '<h4 style="margin-bottom: 10px; font-size: 14px; font-weight: bold; color: #333;">Composição da área construída</h4>';
-                                                                        content += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;">';
-                                                                        
-                                                                        // Cabeçalho da tabela
-                                                                        content += '<thead><tr style="background-color: #f5f5f5; border-bottom: 2px solid #ddd;">';
-                                                                        const colunasVazias = ['area', 'area_construida', 'utilizacao', 'construcao', 'classificacao'];
-                                                                        colunasVazias.forEach(function(col) {
-                                                                            const label = dicionario2[col] || col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                                                            content += `<th style="padding: 8px; text-align: left; font-weight: bold; color: #333; border: 1px solid #ddd;">${label}</th>`;
-                                                                        });
-                                                                        content += '</tr></thead>';
-                                                                        
-                                                                        // Linhas vazias
-                                                                        content += '<tbody>';
-                                                                        for (let i = 0; i < 3; i++) {
-                                                                            content += '<tr>';
-                                                                            colunasVazias.forEach(function(col) {
-                                                                                content += `<td style="padding: 8px; border: 1px solid #ddd;"></td>`;
-                                                                            });
-                                                                            content += '</tr>';
+                                                                        } else {
+                                                                            for (let i = 0; i < 3; i++) {
+                                                                                content += '<tr>';
+                                                                                colunas.forEach(function () {
+                                                                                    content += `<td style="padding: 8px; border: 1px solid #ddd;"></td>`;
+                                                                                });
+                                                                                content += '</tr>';
+                                                                            }
                                                                         }
                                                                         content += '</tbody>';
-                                                                        
+    
                                                                         content += '</table>';
                                                                         content += '</div>';
-                                                                    }
-                                                                    
-                                                                    tabIptu.innerHTML = content;
-                                                                } else {
-                                                                    // Verifica se houve erro na resposta
-                                                                    if (response && response.erro) {
-                                                                        tabIptu.innerHTML = '<div style="color: #dc3545; padding: 10px;">Erro: ' + response.erro + '<br><strong>ID buscado: ' + imobId + '</strong></div>';
+    
+                                                                        tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + content;
                                                                     } else {
-                                                                        tabIptu.innerHTML = '<div style="color: #666; font-style: italic; padding: 10px;">Nenhum dado encontrado na tabela IPTU para este imóvel<br><strong>ID buscado: ' + imobId + '</strong></div>';
+                                                                        if (respIptu && respIptu.erro) {
+                                                                            tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #dc3545; padding: 10px;">Erro: ' + respIptu.erro + '<br><strong>ID buscado: ' + imobIdAtual + '</strong></div>';
+                                                                        } else {
+                                                                            tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #666; font-style: italic; padding: 10px;">Nenhum dado encontrado na tabela IPTU para este imóvel<br><strong>ID buscado: ' + imobIdAtual + '</strong></div>';
+                                                                        }
                                                                     }
+                                                                },
+                                                                error: function (xhr, status, error) {
+                                                                    console.error('Erro ao carregar dados do IPTU:', error);
+                                                                    tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #dc3545; padding: 10px;">Erro ao carregar dados do IPTU. Tente novamente.<br><strong>ID buscado: ' + imobIdAtual + '</strong></div>';
                                                                 }
-                                                            },
-                                                            error: function(xhr, status, error) {
-                                                                console.error('Erro ao carregar dados do IPTU:', error);
-                                                                tabIptu.innerHTML = '<div style="color: #dc3545; padding: 10px;">Erro ao carregar dados do IPTU. Tente novamente.<br><strong>ID buscado: ' + imobId + '</strong></div>';
-                                                            }
-                                                        });
-                                                    } else if (!imobId) {
-                                                        tabIptu.innerHTML = '<div style="color: #666; font-style: italic; padding: 10px;">ID Imobiliário não disponível para carregar dados do IPTU</div>';
+                                                            });
+                                                        } else if (!imobIdAtual && tabIptu) {
+                                                            tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #666; font-style: italic; padding: 10px;">ID Imobiliário não disponível para carregar dados do IPTU</div>';
+                                                        }
                                                     }
-												} else if (tabName === 'enderecos') {
-													if (tabCadastro) tabCadastro.style.display = 'none';
-													if (tabIptu) tabIptu.style.display = 'none';
-													if (tabEnderecos) tabEnderecos.style.display = 'block';
-
-													// Carrega endereços alternativos se ainda não carregou
-													if (tabEnderecos && !tabEnderecos.dataset.loaded) {
-														const listaCont = document.querySelector(`#lista-enderecos-${iwid}`);
-														if (listaCont) {
-															listaCont.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Carregando endereços alternativos...</div>';
-														}
-														$.ajax({
-															url: 'carregarEnderecosAlternativos.php',
-															method: 'GET',
-															data: { id_marcador: desenho.id },
-															dataType: 'json',
-															success: function(resp) {
-																tabEnderecos.dataset.loaded = 'true';
-																const lista = document.querySelector(`#lista-enderecos-${iwid}`);
-																if (!lista) return;
-																if (resp && resp.status === 'sucesso' && Array.isArray(resp.dados) && resp.dados.length > 0) {
-																	let html = '';
-																	resp.dados.forEach((row, idx) => {
-																		html += `
-																			<div class="card-end-alt" data-id="${row.id}" style="position:relative; padding:10px; border:1px solid #ddd; border-radius:4px; background:#fff; ${idx>0 ? 'margin-top:10px;' : ''}">
-																				<button type="button" class="btn btn-sm btn-warning btn-edit-end-alt" title="Editar" data-id="${row.id}" style="position:absolute; top:6px; right:32px; padding:2px 6px; line-height:1; color:#fff !important; background-color:#ffc107; border-color:#ffc107;">✎</button>
-																				<button type="button" class="btn btn-sm btn-danger btn-del-end-alt" title="Excluir" data-id="${row.id}" style="position:absolute; top:6px; right:6px; padding:2px 6px; line-height:1; color:#fff !important;">×</button>
-																				<div style="margin-bottom:4px;"><strong style="color:#333;">Endereço:</strong> <span style="color:#555;">${(row.endereco||'').toString()}</span></div>
-																				<div style="margin-bottom:4px;"><strong style="color:#333;">Número:</strong> <span style="color:#555;">${(row.numero||'').toString()}</span></div>
-																				<div style="margin-bottom:4px;"><strong style="color:#333;">Complemento:</strong> <span style="color:#555;">${(row.complemento||'').toString()}</span></div>
-																				<div><strong style="color:#333;">Observação:</strong> <span style="color:#555;">${(row.observacao||'').toString()}</span></div>
-																			</div>
-																		`;
-																	});
-																	lista.innerHTML = html;
-																	// Bind de edição
-																	const botoesEditar = lista.querySelectorAll('.btn-edit-end-alt');
-																	botoesEditar.forEach(btn => {
-																		btn.addEventListener('click', function(ev) {
-																			ev.preventDefault();
-																			ev.stopPropagation();
-																			const idEnd = this.getAttribute('data-id');
-																			if (!idEnd) return;
-																			// Busca os dados do card
-																			const card = this.closest('.card-end-alt');
-																			if (!card) return;
-																			// Preenche o formulário com os dados
-																			const enderecoText = card.querySelector('div:first-of-type span').textContent.trim();
-																			const numeroText = card.querySelector('div:nth-of-type(2) span').textContent.trim();
-																			const complementoText = card.querySelector('div:nth-of-type(3) span').textContent.trim();
-																			const observacaoText = card.querySelector('div:nth-of-type(4) span').textContent.trim();
-																			// Preenche os campos
-																			const inpEndereco = document.getElementById(`inp-endereco-${iwid}`);
-																			const inpNumero = document.getElementById(`inp-numero-${iwid}`);
-																			const inpComplemento = document.getElementById(`inp-complemento-${iwid}`);
-																			const inpObservacao = document.getElementById(`inp-observacao-${iwid}`);
-																			if (inpEndereco) inpEndereco.value = enderecoText;
-																			if (inpNumero) inpNumero.value = numeroText;
-																			if (inpComplemento) inpComplemento.value = complementoText;
-																			if (inpObservacao) inpObservacao.value = observacaoText;
-																			// Mostra o formulário
-																			const formBox = document.getElementById(`form-endereco-${iwid}`);
-																			if (formBox) {
-																				formBox.style.display = 'block';
-																				formBox.dataset.editId = idEnd;
-																			}
-																			// Muda o botão Salvar para Atualizar
-																			const btnSalvar = document.getElementById(`btn-salvar-endereco-${iwid}`);
-																			if (btnSalvar) {
-																				btnSalvar.textContent = 'Atualizar';
-																				btnSalvar.dataset.editId = idEnd;
-																			}
-																		});
-																	});
-																	// Bind de exclusão
-																	const botoesExcluir = lista.querySelectorAll('.btn-del-end-alt');
-																	botoesExcluir.forEach(btn => {
-																		btn.addEventListener('click', function(ev) {
-																			ev.preventDefault();
-																			ev.stopPropagation();
-																			const idEnd = this.getAttribute('data-id');
-																			console.log('[EndAlt] Clique excluir - id:', idEnd);
-																			if (!idEnd) return;
-																			if (!confirm('Deseja realmente excluir este endereço?')) return;
-																			const btnRef = this;
-																			btnRef.disabled = true;
-																			btnRef.textContent = '...';
-																			const urlDel = 'deletarEnderecoAlternativo.php';
-																			console.log('[EndAlt] Enviando exclusão para:', urlDel, 'payload:', { id: idEnd });
-																			$.ajax({
-																				url: urlDel,
-																				method: 'POST',
-																				dataType: 'json',
-																				data: { id: idEnd },
-																				success: function(resDel, textStatus, xhr) {
-																					console.log('[EndAlt] Sucesso exclusão - status:', textStatus, 'json:', resDel);
-																					if (resDel && resDel.status === 'sucesso') {
-																						// Remove visualmente o bloco
-                                                                                        const card = btnRef.closest('.card-end-alt');
-                                                                                        if (card) card.remove();
-                                                                                        // Se esvaziou, mostra mensagem
-                                                                                        if (!lista.querySelector('.card-end-alt')) {
-                                                                                            lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhum endereço alternativo cadastrado.</div>';
-                                                                                        }
-																					} else {
-																						console.warn('[EndAlt] Falha exclusão - resposta:', resDel);
-																						alert((resDel && resDel.mensagem) ? resDel.mensagem : 'Falha ao excluir o endereço.');
-																						btnRef.disabled = false;
-																						btnRef.textContent = '×';
-																					}
-																				},
-																				error: function(xhr, status, errorThrown) {
-																					console.error('[EndAlt] Erro AJAX exclusão', { status, errorThrown, responseText: xhr && xhr.responseText });
-																					alert('Erro ao excluir o endereço.');
-																					btnRef.disabled = false;
-																					btnRef.textContent = '×';
-																				}
-																			});
-																		});
-																	});
-																} else {
-																	lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhum endereço alternativo cadastrado.</div>';
-																}
-															},
-															error: function() {
-																const lista = document.querySelector(`#lista-enderecos-${iwid}`);
-																if (lista) {
-																	lista.innerHTML = '<div style="padding: 10px; color: #a00;">Erro ao carregar endereços alternativos.</div>';
-																}
-															}
-														});
-
-														// Eventos do formulário
-														const btnAdd = document.getElementById(`btn-add-endereco-${iwid}`);
-														const formBox = document.getElementById(`form-endereco-${iwid}`);
-														const btnSalvar = document.getElementById(`btn-salvar-endereco-${iwid}`);
-														const btnCancelar = document.getElementById(`btn-cancelar-endereco-${iwid}`);
-
-														if (btnAdd && formBox) {
-															btnAdd.onclick = function(e) {
-																e.preventDefault();
-																const isShowing = formBox.style.display !== 'none' && formBox.style.display !== '';
-																formBox.style.display = isShowing ? 'none' : 'block';
-																if (!isShowing) {
-																	// Limpa modo de edição ao abrir para novo
-																	delete formBox.dataset.editId;
-																	const btnSalvarLoc = document.getElementById(`btn-salvar-endereco-${iwid}`);
-																	if (btnSalvarLoc) {
-																		btnSalvarLoc.textContent = 'Salvar';
-																		delete btnSalvarLoc.dataset.editId;
-																	}
-																	// Limpa os campos
-																	['endereco','numero','complemento','observacao'].forEach(suf => {
-																		const el = document.getElementById(`inp-${suf}-${iwid}`);
-																		if (el) el.value = '';
-																	});
-																}
-																// Garante texto branco e habilita os botões ao abrir
-																const btnSalvarLoc = document.getElementById(`btn-salvar-endereco-${iwid}`);
-																const btnCancelarLoc = document.getElementById(`btn-cancelar-endereco-${iwid}`);
-																if (btnSalvarLoc) {
-																	btnSalvarLoc.removeAttribute('disabled');
-																	btnSalvarLoc.style.color = '#fff';
-																	btnSalvarLoc.style.opacity = '1';
-																}
-																if (btnCancelarLoc) {
-																	btnCancelarLoc.removeAttribute('disabled');
-																	btnCancelarLoc.style.color = '#fff';
-																	btnCancelarLoc.style.opacity = '1';
-																}
-															};
-														}
-														if (btnCancelar && formBox) {
-															btnCancelar.onclick = function(e) {
-																e.preventDefault();
-																formBox.style.display = 'none';
-																// Limpa modo de edição
-																delete formBox.dataset.editId;
-																const btnSalvarLoc = document.getElementById(`btn-salvar-endereco-${iwid}`);
-																if (btnSalvarLoc) {
-																	btnSalvarLoc.textContent = 'Salvar';
-																	delete btnSalvarLoc.dataset.editId;
-																}
-																// Limpa os campos
-																['endereco','numero','complemento','observacao'].forEach(suf => {
-																	const el = document.getElementById(`inp-${suf}-${iwid}`);
-																	if (el) el.value = '';
-																});
-															};
-														}
-														if (btnSalvar) {
-															btnSalvar.onclick = function(e) {
-																e.preventDefault();
-																const endereco = (document.getElementById(`inp-endereco-${iwid}`) || {}).value || '';
-																const numero = (document.getElementById(`inp-numero-${iwid}`) || {}).value || '';
-																const complemento = (document.getElementById(`inp-complemento-${iwid}`) || {}).value || '';
-																const observacao = (document.getElementById(`inp-observacao-${iwid}`) || {}).value || '';
-
-																if (!endereco.trim()) {
-																	alert('Informe o endereço.');
-																	return;
-																}
-
-																// Verifica se está editando ou criando novo
-																const editId = this.dataset.editId || formBox.dataset.editId;
-																const isEdit = editId && editId !== '';
-
-																btnSalvar.disabled = true;
-																btnSalvar.textContent = isEdit ? 'Atualizando...' : 'Salvando...';
-
-																const urlAjax = isEdit ? 'atualizarEnderecoAlternativo.php' : 'salvarEnderecoAlternativo.php';
-																const dataAjax = isEdit ? {
-																	id: editId,
-																	endereco: endereco,
-																	numero: numero,
-																	complemento: complemento,
-																	observacao: observacao
-																} : {
-																	id_marcador: desenho.id,
-																	endereco: endereco,
-																	numero: numero,
-																	complemento: complemento,
-																	observacao: observacao
-																};
-
-																$.ajax({
-																	url: urlAjax,
-																	method: 'POST',
-																	dataType: 'json',
-																	data: dataAjax,
-																	success: function(res) {
-																		btnSalvar.disabled = false;
-																		btnSalvar.textContent = 'Salvar';
-																		if (res && res.status === 'sucesso') {
-																			// Limpa modo de edição
-																			delete formBox.dataset.editId;
-																			delete btnSalvar.dataset.editId;
-																			// Força recarga da lista
-																			const lista = document.querySelector(`#lista-enderecos-${iwid}`);
-																			if (lista) {
-																				lista.innerHTML = '<div style="text-align: center; padding: 10px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Atualizando lista...</div>';
-																			}
-																			delete tabEnderecos.dataset.loaded;
-																			const btnEnd = document.querySelector(`button.info-tab-enderecos[data-iwid="${iwid}"]`);
-																			if (btnEnd) btnEnd.click();
-																			if (formBox) formBox.style.display = 'none';
-																			['endereco','numero','complemento','observacao'].forEach(suf => {
-																				const el = document.getElementById(`inp-${suf}-${iwid}`);
-																				if (el) el.value = '';
-																			});
-																		} else {
-																			alert((res && res.mensagem) ? res.mensagem : (isEdit ? 'Falha ao atualizar o endereço.' : 'Falha ao salvar o endereço.'));
-																		}
-																	},
-																	error: function() {
-																		btnSalvar.disabled = false;
-																		btnSalvar.textContent = isEdit ? 'Atualizar' : 'Salvar';
-																		alert(isEdit ? 'Erro ao atualizar o endereço.' : 'Erro ao salvar o endereço.');
-																	}
-																});
-															};
-														}
-													}
                                                 }
                                             });
                                         });
-                                    }, 100); // Pequeno delay para garantir que o DOM foi injetado
-                                }
-
-                                const btnDocs = document.querySelector('.btn-docs-morador');
-                                if (btnDocs) {
-                                    btnDocs.addEventListener('click', function (e) {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-
-                                        // Obtém o imob_id do cadastro se existir
-                                        const imobId = dadosMorador ? dadosMorador.imob_id : null;
-
-                                        if (imobId) {
-                                            // Se tem imob_id, usa ele como identificador
-                                            if (typeof abrirModalGerenciarDocsImovel === 'function') {
-                                                abrirModalGerenciarDocsImovel(imobId, {
-                                                    desenhos: desenho,
-                                                    cadastro: dadosMorador
-                                                });
-                                            }
-                                        } else {
-                                            // Se não tem imob_id, cria um identificador único baseado em quarteirao_quadra_lote
-                                            const identificadorUnico = `${desenho.quarteirao}_${desenho.quadra}_${desenho.lote}`;
-                                            if (typeof abrirModalGerenciarDocsImovel === 'function') {
-                                                abrirModalGerenciarDocsImovel(identificadorUnico, {
-                                                    desenhos: desenho,
-                                                    cadastro: dadosMorador
-                                                });
-                                            }
+                                        
+                                        // Se não tem múltiplos cadastros, carrega automaticamente os endereços após 1 segundo
+                                        if (!temMultiplosCadastros) {
+                                            setTimeout(() => {
+                                                const btnEnderecos = document.querySelector(`button.info-tab-enderecos[data-iwid="${currentInfoWindowId}"]`);
+                                                if (btnEnderecos) {
+                                                    btnEnderecos.click();
+                                                }
+                                            }, 1000);
                                         }
-                                    });
+                                    }, 100);
+
+                                    // Docs (UMA vez)
+                                    const btnDocs = document.querySelector('.btn-docs-morador');
+                                    if (btnDocs) {
+                                        btnDocs.addEventListener('click', function (e) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+    
+                                            const dadosMoradorAtual2 = desenho.dadosMorador;
+                                            const imobId = dadosMoradorAtual2 ? dadosMoradorAtual2.imob_id : null;
+    
+                                            if (imobId) {
+                                                if (typeof abrirModalGerenciarDocsImovel === 'function') {
+                                                    abrirModalGerenciarDocsImovel(imobId, {
+                                                        desenhos: desenho,
+                                                        cadastro: dadosMoradorAtual2
+                                                    });
+                                                }
+                                            } else {
+                                                const identificadorUnico = `${desenho.quarteirao}_${desenho.quadra}_${desenho.lote}`;
+                                                if (typeof abrirModalGerenciarDocsImovel === 'function') {
+                                                    abrirModalGerenciarDocsImovel(identificadorUnico, {
+                                                        desenhos: desenho,
+                                                        cadastro: dadosMoradorAtual2
+                                                    });
+                                                }
+                                            }
+                                        });
+                                    }
+    
+                                    // Navegação múltiplos cadastros (UMA vez)
+                                    if (temMultiplosCadastros && todosMoradores.length > 1) {
+                                        const identificarCamposComuns = (todos) => {
+                                            if (!todos || todos.length === 0) return {};
+                                            if (todos.length === 1) return {};
+    
+                                            const camposComuns = {};
+                                            const primeiro = todos[0];
+    
+                                            Object.keys(primeiro).forEach(campo => {
+                                                const valorPrimeiro = primeiro[campo];
+                                                const todosIguais = todos.every(m => {
+                                                    const valorAtual = m[campo];
+                                                    if (valorPrimeiro === null || valorPrimeiro === undefined || valorPrimeiro === '') {
+                                                        return (valorAtual === null || valorAtual === undefined || valorAtual === '');
+                                                    }
+                                                    return String(valorPrimeiro).trim() === String(valorAtual).trim();
+                                                });
+    
+                                                if (todosIguais && (valorPrimeiro !== null && valorPrimeiro !== undefined && valorPrimeiro !== '')) {
+                                                    camposComuns[campo] = valorPrimeiro;
+                                                }
+                                            });
+    
+                                            return camposComuns;
+                                        };
+    
+                                        const atualizarConteudoMorador = () => {
+                                            const indiceAtual = desenho.indiceMoradorAtual;
+                                            const moradorAtual = todosMoradores[indiceAtual];
+                                            if (!moradorAtual) return;
+    
+                                            desenho.dadosMorador = moradorAtual;
+    
+                                            const camposComuns = identificarCamposComuns(todosMoradores);
+    
+                                            const contadores = document.querySelectorAll(`#contador-morador-${infoWindowId}`);
+                                            contadores.forEach(contador => {
+                                                contador.textContent = `${indiceAtual + 1} de ${todosMoradores.length}`;
+                                            });
+    
+                                            let camposEspecificosHTML = '';
+                                            Object.keys(moradorAtual).forEach(campo => {
+                                                if (Object.prototype.hasOwnProperty.call(camposComuns, campo)) return;
+    
+                                                const valor = moradorAtual[campo];
+                                                if (valor !== null && valor !== undefined && valor !== '') {
+                                                    const nomeCampo = campo.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                                    camposEspecificosHTML += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${nomeCampo}:</strong> <span style="color: #666;">${valor}</span></div>`;
+                                                }
+                                            });
+    
+                                            let botoesHTML = `
+                                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">
+                                                    <button type="button" class="btn-nav-morador btn-nav-anterior" data-iwid="${infoWindowId}" data-direction="anterior"
+                                                        style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: ${indiceAtual === 0 ? 'not-allowed' : 'pointer'}; opacity: ${indiceAtual === 0 ? '0.5' : '1'};"
+                                                        ${indiceAtual === 0 ? 'disabled' : ''}>
+                                                        ← Anterior
+                                                    </button>
+                                                    <span id="contador-morador-${infoWindowId}" style="font-size: 12px; color: #333; font-weight: bold;">
+                                                        ${indiceAtual + 1} de ${todosMoradores.length}
+                                                    </span>
+                                                    <button type="button" class="btn-nav-morador btn-nav-proximo" data-iwid="${infoWindowId}" data-direction="proximo"
+                                                        style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: ${indiceAtual === todosMoradores.length - 1 ? 'not-allowed' : 'pointer'}; opacity: ${indiceAtual === todosMoradores.length - 1 ? '0.5' : '1'};"
+                                                        ${indiceAtual === todosMoradores.length - 1 ? 'disabled' : ''}>
+                                                        Próximo →
+                                                    </button>
+                                                </div>
+                                            `;
+    
+                                            const tabCadastro = document.querySelector(`#tab-cadastro-${infoWindowId}`);
+                                            if (tabCadastro) {
+                                                tabCadastro.innerHTML = botoesHTML + (camposEspecificosHTML || '<p style="color: #888; font-style: italic;">Nenhum dado específico encontrado.</p>');
+                                            }
+    
+                                            const tabIptu = document.querySelector(`#tab-iptu-${infoWindowId}`);
+                                            if (tabIptu) {
+                                                tabIptu.innerHTML = botoesHTML + '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Clique na aba IPTU para carregar os dados</div>';
+                                                delete tabIptu.dataset.loaded;
+                                            }
+                                        };
+    
+                                        setTimeout(function () {
+                                            const tabCadastroContainer = document.querySelector(`#tab-cadastro-${infoWindowId}`);
+                                            const tabIptuContainer = document.querySelector(`#tab-iptu-${infoWindowId}`);
+    
+                                            const handlerNav = function (e) {
+                                                const target = e.target.closest('.btn-nav-morador');
+                                                if (!target) return;
+    
+                                                e.preventDefault();
+                                                e.stopPropagation();
+    
+                                                const direction = target.getAttribute('data-direction');
+                                                if (direction === 'anterior' && desenho.indiceMoradorAtual > 0) {
+                                                    desenho.indiceMoradorAtual--;
+                                                    atualizarConteudoMorador();
+                                                } else if (direction === 'proximo' && desenho.indiceMoradorAtual < todosMoradores.length - 1) {
+                                                    desenho.indiceMoradorAtual++;
+                                                    atualizarConteudoMorador();
+                                                }
+                                            };
+    
+                                            if (tabCadastroContainer) tabCadastroContainer.addEventListener('click', handlerNav);
+                                            if (tabIptuContainer) tabIptuContainer.addEventListener('click', handlerNav);
+    
+                                            atualizarConteudoMorador();
+                                        }, 100);
+                                    }
                                 }
                             });
                         });
-
+    
                         arrayCamadas['marcador_quadra'].push(marker);
-                        // Comentado: controle automático de sequência não funciona com lotes alfanuméricos (ex: 2A)
-                        // const idQuadra = parseInt(desenho.id_desenho);
-                        // if (!this.marcadoresPorQuadra[idQuadra] || this.marcadoresPorQuadra[idQuadra] < numeroMarcador) {
-                        //     this.marcadoresPorQuadra[idQuadra] = numeroMarcador;
-                        // }
-
                     });
                 } else {
                     console.warn('Erro ao carregar marcadores:', response.mensagem);
@@ -6805,7 +6981,7 @@ const MapFramework = {
                 console.error('Erro na requisição de marcadores:', error);
             }
         });
-    },
+    },    
 
     // Marca o lote atual como inserido com sucesso (cor verde)
     marcarLoteComoInserido: function (numeroLote) {
