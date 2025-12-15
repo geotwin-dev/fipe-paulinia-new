@@ -338,6 +338,377 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
     }
 }
 
+// Endpoint para realizar pesquisa no banco de dados (sem desenhos)
+if (isset($_GET['pesquisar'])) {
+    header('Content-Type: application/json');
+
+    try {
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($input) || !isset($input['type']) || !isset($input['values'])) {
+            echo json_encode(['error' => 'Dados inválidos']);
+            exit;
+        }
+
+        $type = $input['type'];
+        $values = $input['values'];
+        
+        // Verificar se há cache de resultados salvos
+        $userId = null;
+        if (isset($_SESSION['usuario']) && is_array($_SESSION['usuario']) && isset($_SESSION['usuario'][1])) {
+            $userId = md5($_SESSION['usuario'][1]);
+        } else {
+            $userId = md5(session_id());
+        }
+        
+        $dir = __DIR__ . '/jsonPesquisa';
+        $file = $dir . '/' . $userId . '.json';
+        
+        $usarCache = false;
+        $cacheData = null;
+        $allResults = null;
+        
+        if (file_exists($file)) {
+            $cacheData = json_decode(file_get_contents($file), true);
+            // Verificar se o cache corresponde à pesquisa atual
+            if (is_array($cacheData) && 
+                isset($cacheData['type']) && $cacheData['type'] === $type &&
+                isset($cacheData['values']) && is_array($cacheData['values']) &&
+                is_array($values)) {
+                
+                // Comparar valores de forma mais robusta
+                $cacheValuesNormalized = $cacheData['values'];
+                $currentValuesNormalized = $values;
+                
+                // Normalizar arrays para comparação (ordenar chaves e converter tipos)
+                ksort($cacheValuesNormalized);
+                ksort($currentValuesNormalized);
+                
+                // Converter valores para string para comparação
+                $cacheValuesStr = json_encode($cacheValuesNormalized, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK);
+                $currentValuesStr = json_encode($currentValuesNormalized, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK);
+                
+                if ($cacheValuesStr === $currentValuesStr &&
+                    isset($cacheData['results']) && 
+                    is_array($cacheData['results']) &&
+                    isset($cacheData['results']['allResults']) &&
+                    is_array($cacheData['results']['allResults']) &&
+                    count($cacheData['results']['allResults']) > 0) {
+                    // Cache válido encontrado - mesma pesquisa com resultados
+                    $usarCache = true;
+                    $allResults = $cacheData['results']['allResults'];
+                }
+            }
+        }
+        
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        
+        // Só construir query SQL se não usar cache (pesquisa diferente ou sem cache)
+        if (!$usarCache) {
+            // Construir query SQL baseada no tipo de pesquisa (SEM JOIN com desenhos)
+            $sql = "SELECT * FROM cadastro WHERE 1=1 AND imob_id = imob_id_principal";
+            $params = [];
+
+            switch ($type) {
+            case 'endereco_numero':
+                if (!empty($values['endereco'])) {
+                    $sql .= " AND logradouro LIKE :endereco";
+                    $params[':endereco'] = '%' . $values['endereco'] . '%';
+                }
+                if (!empty($values['numero'])) {
+                    $sql .= " AND numero = :numero";
+                    $params[':numero'] = $values['numero'];
+                }
+                break;
+
+            case 'quarteirao':
+                if (!empty($values['quarteirao'])) {
+                    $sql .= " AND cara_quarteirao = :quarteirao";
+                    $params[':quarteirao'] = $values['quarteirao'];
+                }
+                break;
+
+            case 'quarteirao_quadra':
+                if (!empty($values['quarteirao'])) {
+                    $sql .= " AND cara_quarteirao = :quarteirao";
+                    $params[':quarteirao'] = $values['quarteirao'];
+                }
+                if (!empty($values['quadra'])) {
+                    $sql .= " AND quadra = :quadra";
+                    $params[':quadra'] = $values['quadra'];
+                }
+                break;
+
+            case 'quarteirao_quadra_lote':
+                if (!empty($values['quarteirao'])) {
+                    $sql .= " AND cara_quarteirao = :quarteirao";
+                    $params[':quarteirao'] = $values['quarteirao'];
+                }
+                if (!empty($values['quadra'])) {
+                    $sql .= " AND quadra = :quadra";
+                    $params[':quadra'] = $values['quadra'];
+                }
+                if (!empty($values['lote'])) {
+                    $sql .= " AND lote = :lote";
+                    $params[':lote'] = $values['lote'];
+                }
+                break;
+
+            case 'loteamento':
+                if (!empty($values['loteamento'])) {
+                    $sql .= " AND nome_loteamento LIKE :loteamento";
+                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                }
+                break;
+
+            case 'loteamento_quadra':
+                if (!empty($values['loteamento'])) {
+                    $sql .= " AND nome_loteamento LIKE :loteamento";
+                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                }
+                if (!empty($values['quadra'])) {
+                    $sql .= " AND quadra = :quadra";
+                    $params[':quadra'] = $values['quadra'];
+                }
+                break;
+
+            case 'loteamento_quadra_lote':
+                if (!empty($values['loteamento'])) {
+                    $sql .= " AND nome_loteamento LIKE :loteamento";
+                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                }
+                if (!empty($values['quadra'])) {
+                    $sql .= " AND quadra = :quadra";
+                    $params[':quadra'] = $values['quadra'];
+                }
+                if (!empty($values['lote'])) {
+                    $sql .= " AND lote = :lote";
+                    $params[':lote'] = $values['lote'];
+                }
+                break;
+
+            case 'cnpj':
+                if (!empty($values['cnpj'])) {
+                    $sql .= " AND cnpj = :cnpj";
+                    $params[':cnpj'] = $values['cnpj'];
+                }
+                break;
+
+            case 'uso_imovel':
+                if (!empty($values['uso_imovel'])) {
+                    $sql .= " AND uso_imovel LIKE :uso_imovel";
+                    $params[':uso_imovel'] = '%' . $values['uso_imovel'] . '%';
+                }
+                break;
+
+            case 'bairro':
+                if (!empty($values['bairro'])) {
+                    $sql .= " AND bairro LIKE :bairro";
+                    $params[':bairro'] = '%' . $values['bairro'] . '%';
+                }
+                break;
+
+            case 'inscricao':
+                if (!empty($values['inscricao'])) {
+                    $sql .= " AND inscricao = :inscricao";
+                    $params[':inscricao'] = $values['inscricao'];
+                }
+                break;
+
+            case 'imob_id':
+                if (!empty($values['imob_id'])) {
+                    $sql .= " AND imob_id = :imob_id";
+                    $params[':imob_id'] = $values['imob_id'];
+                }
+                break;
+
+            case 'zona':
+                if (!empty($values['zona'])) {
+                    $sql .= " AND zona = :zona";
+                    $params[':zona'] = $values['zona'];
+                }
+                break;
+
+            case 'cat_via':
+                if (!empty($values['cat_via'])) {
+                    $sql .= " AND cat_via LIKE :cat_via";
+                    $params[':cat_via'] = '%' . $values['cat_via'] . '%';
+                }
+                break;
+
+            case 'tipo_edificacao':
+                if (!empty($values['tipo_edificacao'])) {
+                    $sql .= " AND tipo_edificacao LIKE :tipo_edificacao";
+                    $params[':tipo_edificacao'] = '%' . $values['tipo_edificacao'] . '%';
+                }
+                break;
+
+            case 'area_construida':
+                if (!empty($values['area_construida_min'])) {
+                    $sql .= " AND total_construido >= :area_construida_min";
+                    $params[':area_construida_min'] = floatval($values['area_construida_min']);
+                }
+                if (!empty($values['area_construida_max'])) {
+                    $sql .= " AND total_construido <= :area_construida_max";
+                    $params[':area_construida_max'] = floatval($values['area_construida_max']);
+                }
+                break;
+
+            case 'area_terreno':
+                if (!empty($values['area_terreno_min'])) {
+                    $sql .= " AND area_terreno >= :area_terreno_min";
+                    $params[':area_terreno_min'] = floatval($values['area_terreno_min']);
+                }
+                if (!empty($values['area_terreno_max'])) {
+                    $sql .= " AND area_terreno <= :area_terreno_max";
+                    $params[':area_terreno_max'] = floatval($values['area_terreno_max']);
+                }
+                break;
+
+            default:
+                echo json_encode(['error' => 'Tipo de pesquisa não implementado']);
+                exit;
+            }
+        }
+
+        // Paginação
+        $page = isset($input['page']) && is_numeric($input['page']) ? max(1, intval($input['page'])) : 1;
+        $limit = isset($input['limit']) && is_numeric($input['limit']) ? max(1, min(1000, intval($input['limit']))) : 50;
+        $offset = ($page - 1) * $limit;
+
+        // Se usar cache, buscar do cache
+        if ($usarCache && $allResults !== null) {
+            // Usar o totalCount salvo no cache (total real do banco)
+            $totalCount = isset($cacheData['totalCount']) ? intval($cacheData['totalCount']) : count($allResults);
+            
+            // Aplicar paginação APENAS na exibição dos dados da tabela
+            $results = array_slice($allResults, $offset, $limit);
+        } else {
+            // Fazer pesquisa no banco (SEM JOIN)
+            // Primeiro, contar o total de resultados
+            $wherePart = '';
+            if (preg_match('/WHERE\s+(.+?)(?:\s+ORDER\s+BY|$)/is', $sql, $matches)) {
+                $wherePart = trim($matches[1]);
+            } else if (preg_match('/WHERE\s+(.+)$/is', $sql, $matches)) {
+                $wherePart = trim($matches[1]);
+            }
+            
+            if (empty($wherePart)) {
+                $wherePart = '1=1';
+            }
+            
+            $countSql = "SELECT COUNT(*) as total FROM cadastro WHERE " . $wherePart;
+            
+            $countStmt = $pdo->prepare($countSql);
+            foreach ($params as $key => $value) {
+                $countStmt->bindValue($key, $value);
+            }
+            $countStmt->execute();
+            $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+            // Buscar TODOS os resultados (sem paginação) para cache
+            $stmtTodos = $pdo->prepare($sql);
+            foreach ($params as $key => $value) {
+                $stmtTodos->bindValue($key, $value);
+            }
+            $stmtTodos->execute();
+            $allResults = $stmtTodos->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Aplicar paginação APENAS na exibição dos dados da tabela
+            $results = array_slice($allResults, $offset, $limit);
+        }
+
+        // Calcular informações de paginação
+        $totalPages = ceil($totalCount / $limit);
+
+        // Salvar pesquisa apenas se não usou cache (nova pesquisa)
+        if (!$usarCache) {
+            // Salvar pesquisa e resultados no JSON (apenas quando faz nova pesquisa)
+            // Salvar TODOS os resultados
+            $cacheData = [
+                'type' => $type,
+                'values' => $values,
+                'totalCount' => $totalCount, // Salvar o total real do banco
+                'usuario_email' => isset($_SESSION['usuario']) && is_array($_SESSION['usuario']) && isset($_SESSION['usuario'][1]) ? $_SESSION['usuario'][1] : null,
+                'results' => [
+                    'allResults' => $allResults // TODOS os resultados
+                ]
+            ];
+            file_put_contents($file, json_encode($cacheData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        }
+        
+        // Retornar resultados (SEM desenhos)
+        echo json_encode([
+            'success' => true,
+            'total' => intval($totalCount),
+            'page' => $page,
+            'limit' => $limit,
+            'totalPages' => $totalPages,
+            'dados' => $results
+        ]);
+    } catch (PDOException $e) {
+        echo json_encode([
+            'error' => 'Erro ao executar pesquisa: ' . $e->getMessage()
+        ]);
+    } catch (Exception $e) {
+        echo json_encode([
+            'error' => 'Erro: ' . $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+// Endpoint simples para salvar/carregar última pesquisa do usuário
+if (isset($_GET['searchApi'])) {
+    header('Content-Type: application/json');
+    
+    $userId = null;
+    if (isset($_SESSION['usuario']) && is_array($_SESSION['usuario']) && isset($_SESSION['usuario'][1])) {
+        $userId = md5($_SESSION['usuario'][1]);
+    } else {
+        $userId = md5(session_id());
+    }
+    
+    $dir = __DIR__ . '/jsonPesquisa';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+    $file = $dir . '/' . $userId . '.json';
+    
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (is_array($input) && isset($input['type']) && isset($input['values'])) {
+            // Salvar apenas a pesquisa (não os resultados)
+            $data = [
+                'type' => $input['type'],
+                'values' => $input['values']
+            ];
+            file_put_contents($file, json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            echo json_encode(['status' => 'success']);
+        } else {
+            echo json_encode(['status' => 'error', 'message' => 'Dados inválidos']);
+        }
+    } else {
+        if (file_exists($file)) {
+            $data = json_decode(file_get_contents($file), true);
+            if (is_array($data) && isset($data['type']) && isset($data['values'])) {
+                echo json_encode([
+                    'status' => 'success',
+                    'type' => $data['type'],
+                    'values' => $data['values']
+                ]);
+            } else {
+                echo json_encode(['status' => 'not_found']);
+            }
+        } else {
+            echo json_encode(['status' => 'not_found']);
+        }
+    }
+    exit;
+}
+
+// Buscar dados da ortofoto (apenas se não for endpoint)
 if (isset($_GET['quadricula'])) {
     try {
         $stmt = $pdo->prepare("SELECT * FROM ortofotos WHERE quadricula = :a");
@@ -351,9 +722,11 @@ if (isset($_GET['quadricula'])) {
 } else {
     $dadosOrto = [];
 }
-
-echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 ?>
+
+<script>
+    let dadosOrto = <?php echo json_encode($dadosOrto); ?>;
+</script>
 
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -1345,6 +1718,197 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             font-weight: 600;
             color: #007bff;
         }
+        /* ==================== QUADRINHO DE PESQUISA ==================== */
+        #searchBox {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            /* Centralizar horizontalmente */
+            z-index: 999;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            display: inline-block;
+            max-width: calc(100% - 30px);
+            width: fit-content; /* Largura baseada no conteúdo (searchControls) */
+            min-width: fit-content; /* Garantir que sempre seja baseado no conteúdo */
+        }
+
+        #searchControls {
+            padding: 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            white-space: nowrap;
+            width: fit-content;
+            /* Largura baseada no conteúdo (inputs) */
+        }
+
+        #btnToggleResults {
+            height: 25px;
+            margin: -15px 0 0 0;
+            border-radius: 0 0 8px 8px;
+            padding: 0;
+            box-sizing: border-box;
+            /* Largura será definida via JavaScript para corresponder ao searchControls */
+        }
+
+        #searchType {
+            min-width: 200px;
+        }
+
+        #searchInputs {
+            display: flex;
+            gap: 10px;
+            white-space: nowrap;
+        }
+
+        #searchInputs input {
+            min-width: 150px;
+            max-width: 220px;
+        }
+
+        #btnPesquisar {
+            white-space: nowrap;
+        }
+
+        #btnPesquisar .btn-loading {
+            display: none;
+        }
+
+        #btnPesquisar.loading .btn-text {
+            display: none;
+        }
+
+        #btnPesquisar.loading .btn-loading {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Container da tabela de resultados */
+        #searchResultsBox {
+            position: absolute;
+            top: 162px;
+            left: 0;
+            right: 0;
+            z-index: 999;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            display: none;
+            width: calc(100% - 30px);
+            margin: 0 auto;
+            max-height: calc(100vh - 180px);
+            overflow: hidden;
+        }
+
+        #searchResultsBox.visible {
+            display: block;
+        }
+
+        #searchResultsHeader {
+            background: #343a40;
+            color: white;
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            border-radius: 8px 8px 0 0;
+        }
+
+        #searchResultsTitle {
+            font-weight: bold;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #searchResultsBody {
+            padding: 0;
+            max-height: calc(100vh - 220px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #searchResultsBody .table-responsive {
+            position: relative;
+            overflow-x: auto;
+            overflow-y: visible;
+            flex: 1;
+            padding: 0;
+        }
+
+        #searchResultsBody .table-responsive::-webkit-scrollbar {
+            height: 10px;
+        }
+
+        #searchResultsBody .table-responsive::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        #searchResultsBody .table-responsive::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 5px;
+        }
+
+        #searchResultsBody .table-responsive::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        #searchResultsBody table {
+            font-size: 12px;
+            margin-bottom: 0;
+            width: 100%;
+        }
+
+        #searchResultsBody table thead {
+            position: sticky;
+            top: 0;
+            z-index: 150;
+            background: #343a40 !important;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        #searchResultsBody table thead th {
+            background: #343a40 !important;
+            position: relative;
+            z-index: 151;
+            border-bottom: 2px solid #495057;
+            white-space: nowrap;
+            padding: 8px 10px;
+            font-size: 11px;
+        }
+
+        #searchResultsBody table tbody td {
+            background: white;
+            padding: 6px 10px;
+            white-space: nowrap;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #searchResultsPaginationBottom {
+            position: sticky;
+            bottom: 0;
+            z-index: 200;
+            background: white;
+            padding: 10px 15px;
+            border-top: 1px solid #dee2e6;
+            box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
+            display: none;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
     </style>
 </head>
 
@@ -1877,11 +2441,703 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
         </nav>
 
         <div id="map"></div>
+
+        <!-- Quadrinho de Pesquisa -->
+        <div id="searchBox">
+            <div id="searchControls">
+                <select id="searchType" class="form-select">
+                    <option value="">Selecione o tipo de pesquisa</option>
+                </select>
+                <div id="searchInputs"></div>
+                <button class="btn btn-success" id="btnPesquisar">
+                    <span class="btn-text">Pesquisar</span>
+                    <span class="btn-loading">
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                        Pesquisando...
+                    </span>
+                </button>
+            </div>
+            <button class="btn btn-light" id="btnToggleResults" style="display: none;"></button>
+        </div>
+
+        <!-- Quadrinho de Resultados (Tabela) -->
+        <div id="searchResultsBox">
+            <div id="searchResultsHeader">
+                <span id="searchResultsTitle">
+                    <i class="fas fa-table"></i> Resultados da Pesquisa
+                    <span id="resultsCount" class="badge bg-primary ms-2">0 registros</span>
+                </span>
+            </div>
+            <div id="searchResultsBody">
+                <div class="table-responsive" id="tableContainer">
+                    <table class="table table-striped table-hover table-sm">
+                        <thead class="table-dark">
+                            <tr id="resultsTableHead">
+                                <!-- Cabeçalhos serão preenchidos dinamicamente -->
+                            </tr>
+                        </thead>
+                        <tbody id="resultsTableBody">
+                            <!-- Dados serão preenchidos dinamicamente -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="searchResultsPaginationBottom" style="display: none;">
+                    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                        <div id="paginationInfoBottom" class="text-muted small"></div>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <label for="resultsPerPage" class="text-muted small" style="margin: 0; white-space: nowrap;">Resultados por página:</label>
+                            <select id="resultsPerPage" class="form-select form-select-sm" style="width: auto; min-width: 80px;">
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="250">250</option>
+                                <option value="500">500</option>
+                                <option value="1000">1000</option>
+                            </select>
+                        </div>
+                    </div>
+                    <nav aria-label="Paginação">
+                        <ul id="paginationControlsBottom" class="pagination pagination-sm mb-0">
+                            <!-- Controles de paginação serão preenchidos dinamicamente -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
         const paginaAtual = 'index_3';
         const userControl = <?php echo json_encode($_SESSION['usuario'][2]); ?>;
+
+        // =================== SISTEMA DE PESQUISA (SEM DESENHOS) ===================
+        
+        // Opções de pesquisa (igual ao painel.php)
+        const searchOptions = [
+            {
+                value: 'endereco_numero',
+                label: 'Endereço e Número',
+                fields: [{
+                        name: 'endereco',
+                        placeholder: 'Endereço'
+                    },
+                    {
+                        name: 'numero',
+                        placeholder: 'Número'
+                    }
+                ]
+            },
+            {
+                value: 'quarteirao',
+                label: 'Quarteirão',
+                fields: [{
+                    name: 'quarteirao',
+                    placeholder: 'Quarteirão'
+                }]
+            },
+            {
+                value: 'quarteirao_quadra',
+                label: 'Quarteirão e Quadra',
+                fields: [{
+                        name: 'quarteirao',
+                        placeholder: 'Quarteirão'
+                    },
+                    {
+                        name: 'quadra',
+                        placeholder: 'Quadra'
+                    }
+                ]
+            },
+            {
+                value: 'quarteirao_quadra_lote',
+                label: 'Quarteirão, Quadra e Lote',
+                fields: [{
+                        name: 'quarteirao',
+                        placeholder: 'Quarteirão'
+                    },
+                    {
+                        name: 'quadra',
+                        placeholder: 'Quadra'
+                    },
+                    {
+                        name: 'lote',
+                        placeholder: 'Lote'
+                    }
+                ]
+            },
+            {
+                value: 'loteamento',
+                label: 'Loteamento',
+                fields: [{
+                    name: 'loteamento',
+                    placeholder: 'Loteamento'
+                }]
+            },
+            {
+                value: 'loteamento_quadra',
+                label: 'Loteamento e Quadra',
+                fields: [{
+                        name: 'loteamento',
+                        placeholder: 'Loteamento'
+                    },
+                    {
+                        name: 'quadra',
+                        placeholder: 'Quadra'
+                    }
+                ]
+            },
+            {
+                value: 'loteamento_quadra_lote',
+                label: 'Loteamento, Quadra e Lote',
+                fields: [{
+                        name: 'loteamento',
+                        placeholder: 'Loteamento'
+                    },
+                    {
+                        name: 'quadra',
+                        placeholder: 'Quadra'
+                    },
+                    {
+                        name: 'lote',
+                        placeholder: 'Lote'
+                    }
+                ]
+            },
+            {
+                value: 'cnpj',
+                label: 'CNPJ',
+                fields: [{
+                    name: 'cnpj',
+                    placeholder: 'CNPJ'
+                }]
+            },
+            {
+                value: 'uso_imovel',
+                label: 'Uso do Imóvel',
+                fields: [{
+                    name: 'uso_imovel',
+                    placeholder: 'Uso do Imóvel'
+                }]
+            },
+            {
+                value: 'bairro',
+                label: 'Bairro',
+                fields: [{
+                    name: 'bairro',
+                    placeholder: 'Bairro'
+                }]
+            },
+            {
+                value: 'inscricao',
+                label: 'Inscrição',
+                fields: [{
+                    name: 'inscricao',
+                    placeholder: 'Inscrição'
+                }]
+            },
+            {
+                value: 'imob_id',
+                label: 'ID Imobiliário',
+                fields: [{
+                    name: 'imob_id',
+                    placeholder: 'ID Imobiliário'
+                }]
+            },
+            {
+                value: 'zona',
+                label: 'Zona',
+                fields: [{
+                    name: 'zona',
+                    placeholder: 'Zona'
+                }]
+            },
+            {
+                value: 'cat_via',
+                label: 'Categoria de Via',
+                fields: [{
+                    name: 'cat_via',
+                    placeholder: 'Categoria de Via'
+                }]
+            },
+            {
+                value: 'tipo_edificacao',
+                label: 'Tipo de Edificação',
+                fields: [{
+                    name: 'tipo_edificacao',
+                    placeholder: 'Tipo de Edificação'
+                }]
+            },
+            {
+                value: 'area_construida',
+                label: 'Área Construída',
+                fields: [{
+                        name: 'area_construida_min',
+                        placeholder: 'Área Mínima (m²)'
+                    },
+                    {
+                        name: 'area_construida_max',
+                        placeholder: 'Área Máxima (m²)'
+                    }
+                ]
+            },
+            {
+                value: 'area_terreno',
+                label: 'Área do Terreno',
+                fields: [{
+                        name: 'area_terreno_min',
+                        placeholder: 'Área Mínima (m²)'
+                    },
+                    {
+                        name: 'area_terreno_max',
+                        placeholder: 'Área Máxima (m²)'
+                    }
+                ]
+            }
+        ];
+
+        // Variáveis globais de paginação
+        let currentPage = 1;
+        let currentLimit = 50;
+        let totalPages = 1;
+        let totalResults = 0;
+        let currentSearchPayload = null;
+
+        // Função para sincronizar largura do botão toggle com searchControls
+        function syncToggleButtonWidth() {
+            const btnToggleResults = document.getElementById('btnToggleResults');
+            const searchControls = document.getElementById('searchControls');
+            if (btnToggleResults && searchControls) {
+                requestAnimationFrame(() => {
+                    const controlsWidth = searchControls.offsetWidth;
+                    btnToggleResults.style.width = controlsWidth + 'px';
+                });
+            }
+        }
+
+        // Event listener para o seletor de resultados por página
+        document.addEventListener('DOMContentLoaded', function() {
+            const resultsPerPageSelect = document.getElementById('resultsPerPage');
+            if (resultsPerPageSelect) {
+                resultsPerPageSelect.addEventListener('change', function() {
+                    const newLimit = parseInt(this.value);
+                    if (newLimit !== currentLimit) {
+                        currentLimit = newLimit;
+                        const startItem = (currentPage - 1) * currentLimit + 1;
+                        const newPage = Math.max(1, Math.ceil(startItem / currentLimit));
+                        currentPage = newPage;
+                        if (currentSearchPayload) {
+                            loadPage(currentPage);
+                        }
+                    }
+                });
+            }
+
+            // Inicializar pesquisa
+            const select = document.getElementById('searchType');
+            const btnPesquisar = document.getElementById('btnPesquisar');
+
+            // Preencher select
+            if (select) {
+                searchOptions.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.label;
+                    select.appendChild(option);
+                });
+            }
+
+            // Sincronizar largura do botão toggle
+            syncToggleButtonWidth();
+
+            // Observar mudanças no tamanho do searchControls
+            const resizeObserver = new ResizeObserver(() => {
+                syncToggleButtonWidth();
+            });
+            const searchControls = document.getElementById('searchControls');
+            if (searchControls) {
+                resizeObserver.observe(searchControls);
+            }
+
+            // Troca de tipo de pesquisa
+            if (select) {
+                select.addEventListener('change', () => {
+                    const searchBox = document.getElementById('searchBox');
+                    if (searchBox) {
+                        searchBox.style.width = '';
+                    }
+                    buildSearchInputs(select.value);
+                    setTimeout(syncToggleButtonWidth, 0);
+                });
+            }
+
+            // Botão pesquisar
+            if (btnPesquisar) {
+                btnPesquisar.addEventListener('click', async () => {
+                    const payload = collectSearchData();
+                    if (!payload.type) {
+                        alert('Selecione um tipo de pesquisa.');
+                        return;
+                    }
+
+                    currentPage = 1;
+                    currentSearchPayload = payload;
+
+                    btnPesquisar.classList.add('loading');
+                    btnPesquisar.disabled = true;
+
+                    payload.page = currentPage;
+                    payload.limit = currentLimit;
+
+                    try {
+                        const response = await fetch('index_3.php?pesquisar=1', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(payload)
+                        });
+
+                        const result = await response.json();
+
+                        if (result.error) {
+                            alert('Erro na pesquisa: ' + result.error);
+                        } else if (result.success) {
+                            currentPage = result.page;
+                            totalPages = result.totalPages;
+                            totalResults = result.total;
+                            displaySearchResults(result.dados, result.total, result.page, result.totalPages);
+                        }
+                    } catch (err) {
+                        console.error('Erro ao realizar pesquisa:', err);
+                        alert('Erro ao realizar pesquisa.');
+                    } finally {
+                        btnPesquisar.classList.remove('loading');
+                        btnPesquisar.disabled = false;
+                    }
+                });
+            }
+
+            // Botão para mostrar/ocultar resultados
+            const btnToggleResults = document.getElementById('btnToggleResults');
+            if (btnToggleResults && !btnToggleResults.dataset.listenerAdded) {
+                btnToggleResults.dataset.listenerAdded = 'true';
+                const searchResultsBox = document.getElementById('searchResultsBox');
+
+                btnToggleResults.addEventListener('click', () => {
+                    const isVisible = searchResultsBox.classList.contains('visible');
+                    if (isVisible) {
+                        searchResultsBox.classList.remove('visible');
+                        btnToggleResults.innerHTML = '<i class="fas fa-chevron-down"></i>';
+                    } else {
+                        searchResultsBox.classList.add('visible');
+                        btnToggleResults.innerHTML = '<i class="fas fa-chevron-up"></i>';
+                    }
+                    syncToggleButtonWidth();
+                });
+            }
+
+            // Carregar última pesquisa
+            loadLastSearch();
+        });
+
+        // Função para carregar página
+        async function loadPage(page) {
+            if (!currentSearchPayload) return;
+
+            const payload = {
+                ...currentSearchPayload,
+                page: page,
+                limit: currentLimit
+            };
+
+            const btnPesquisar = document.getElementById('btnPesquisar');
+            if (btnPesquisar) {
+                btnPesquisar.classList.add('loading');
+                btnPesquisar.disabled = true;
+            }
+
+            try {
+                const response = await fetch('index_3.php?pesquisar=1', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (result.error) {
+                    alert('Erro na pesquisa: ' + result.error);
+                } else if (result.success) {
+                    currentPage = result.page;
+                    totalPages = result.totalPages;
+                    totalResults = result.total;
+                    displaySearchResults(result.dados, result.total, result.page, result.totalPages);
+                }
+            } catch (err) {
+                alert('Erro ao realizar pesquisa: ' + err.message);
+            } finally {
+                if (btnPesquisar) {
+                    btnPesquisar.classList.remove('loading');
+                    btnPesquisar.disabled = false;
+                }
+            }
+        }
+
+        function buildSearchInputs(selectedValue, savedValues = {}) {
+            const container = document.getElementById('searchInputs');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (!selectedValue) return;
+
+            const option = searchOptions.find(o => o.value === selectedValue);
+            if (!option) return;
+
+            option.fields.forEach(field => {
+                const input = document.createElement('input');
+                input.className = 'form-control';
+                input.name = field.name;
+                input.placeholder = field.placeholder;
+                input.style.maxWidth = '220px';
+                
+                if (field.name.includes('area_') || field.name.includes('min') || field.name.includes('max')) {
+                    input.type = 'number';
+                    input.step = '0.01';
+                    input.min = '0';
+                }
+                
+                if (savedValues[field.name]) input.value = savedValues[field.name];
+                container.appendChild(input);
+            });
+        }
+
+        function collectSearchData() {
+            const select = document.getElementById('searchType');
+            if (!select) return { type: '', values: {} };
+            
+            const type = select.value;
+            const inputs = document.querySelectorAll('#searchInputs input');
+            const values = {};
+            inputs.forEach(inp => values[inp.name] = inp.value);
+            return {
+                type,
+                values
+            };
+        }
+
+        async function loadLastSearch() {
+            try {
+                const res = await fetch('index_3.php?searchApi=1');
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data || !data.type) return;
+
+                const select = document.getElementById('searchType');
+                if (select) {
+                    select.value = data.type;
+                    buildSearchInputs(data.type, data.values || {});
+                }
+            } catch (err) {
+                console.error('Erro ao carregar última pesquisa:', err);
+            }
+        }
+
+        // Função para exibir resultados da pesquisa (SEM desenhos)
+        function displaySearchResults(dados, total, page = 1, totalPages = 1) {
+            const resultsTableHead = document.getElementById('resultsTableHead');
+            const resultsTableBody = document.getElementById('resultsTableBody');
+            const resultsCount = document.getElementById('resultsCount');
+            const searchResultsBox = document.getElementById('searchResultsBox');
+            const btnToggleResults = document.getElementById('btnToggleResults');
+            const searchResultsPaginationBottom = document.getElementById('searchResultsPaginationBottom');
+            const paginationInfoBottom = document.getElementById('paginationInfoBottom');
+            const paginationControlsBottom = document.getElementById('paginationControlsBottom');
+
+            // Mostrar botão toggle e definir ícone inicial
+            if (btnToggleResults) {
+                syncToggleButtonWidth();
+                setTimeout(() => {
+                    btnToggleResults.style.display = 'block';
+                    // Quando a tabela aparece, ela está visível, então o ícone deve apontar para cima
+                    btnToggleResults.innerHTML = '<i class="fas fa-chevron-up"></i>';
+                }, 0);
+            }
+
+            if (!dados || dados.length === 0) {
+                if (resultsTableHead) {
+                    resultsTableHead.innerHTML = '<tr><th colspan="100%" class="text-center">Nenhum resultado encontrado</th></tr>';
+                }
+                if (resultsTableBody) {
+                    resultsTableBody.innerHTML = '';
+                }
+                if (resultsCount) {
+                    resultsCount.textContent = '0 registros';
+                }
+                if (searchResultsPaginationBottom) {
+                    searchResultsPaginationBottom.style.display = 'none';
+                }
+                if (searchResultsBox) {
+                    searchResultsBox.classList.add('visible');
+                    // Atualizar ícone do botão toggle
+                    if (btnToggleResults) {
+                        btnToggleResults.innerHTML = '<i class="fas fa-chevron-up"></i>';
+                    }
+                }
+                return;
+            }
+
+            // Definir colunas específicas na ordem desejada
+            const columnsOrder = [
+                'inscricao',
+                'imob_id',
+                'logradouro',
+                'numero',
+                'bairro',
+                'nome_loteamento',
+                'cara_quarteirao',
+                'quadra',
+                'lote',
+                'total_construido',
+                'nome_pessoa',
+                'cnpj',
+                'area_terreno',
+                'tipo_edificacao',
+                'tipo_utilizacao',
+                'zona',
+                'cat_via',
+                'multiplo',
+                'uso_imovel'
+            ];
+
+            // Mapeamento de nomes de colunas para nomes bonitos
+            const columnNames = {
+                'inscricao': 'Inscrição',
+                'imob_id': 'Imob ID',
+                'logradouro': 'Logradouro',
+                'numero': 'Número',
+                'bairro': 'Bairro',
+                'nome_loteamento': 'Loteamento',
+                'cara_quarteirao': 'Quarteirão',
+                'quadra': 'Quadra',
+                'lote': 'Lote',
+                'total_construido': 'Área Construída',
+                'nome_pessoa': 'Nome',
+                'cnpj': 'CNPJ',
+                'area_terreno': 'Área Terreno',
+                'tipo_edificacao': 'Tipo Edificação',
+                'tipo_utilizacao': 'Tipo Utilização',
+                'zona': 'Zona',
+                'cat_via': 'Cat. Via',
+                'multiplo': 'Cadastros',
+                'uso_imovel': 'Uso Imóvel'
+            };
+
+            // Filtrar apenas as colunas que existem nos dados
+            const columnArray = columnsOrder.filter(col => {
+                return dados.some(row => row.hasOwnProperty(col));
+            });
+
+            // Criar cabeçalho
+            let headerHTML = '<tr>';
+            columnArray.forEach(col => {
+                const headerName = columnNames[col] || col;
+                headerHTML += `<th>${headerName}</th>`;
+            });
+            headerHTML += '</tr>';
+            if (resultsTableHead) {
+                resultsTableHead.innerHTML = headerHTML;
+            }
+
+            // Criar corpo
+            let bodyHTML = '';
+            dados.forEach((row) => {
+                bodyHTML += '<tr>';
+                columnArray.forEach(col => {
+                    const value = row[col] !== null && row[col] !== undefined ? row[col] : '';
+                    bodyHTML += `<td title="${value}">${value}</td>`;
+                });
+                bodyHTML += '</tr>';
+            });
+            if (resultsTableBody) {
+                resultsTableBody.innerHTML = bodyHTML;
+            }
+
+            // Atualizar contador
+            if (resultsCount) {
+                resultsCount.textContent = total.toLocaleString('pt-BR') + ' registros';
+            }
+
+            // Atualizar informações de paginação
+            const start = (page - 1) * currentLimit + 1;
+            const end = Math.min(start + dados.length - 1, total);
+            if (paginationInfoBottom) {
+                paginationInfoBottom.textContent = `Mostrando ${start.toLocaleString('pt-BR')} a ${end.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} resultados`;
+            }
+
+            // Criar controles de paginação
+            if (paginationControlsBottom) {
+                let paginationHTML = '';
+
+                // Botão primeira página
+                paginationHTML += `<li class="page-item ${page === 1 ? 'disabled' : ''}"><a class="page-link" href="#" data-page="1">Primeira</a></li>`;
+
+                // Botão anterior
+                paginationHTML += `<li class="page-item ${page === 1 ? 'disabled' : ''}"><a class="page-link" href="#" data-page="${page - 1}">Anterior</a></li>`;
+
+                // Números de página
+                const maxVisible = 5;
+                let startPage = Math.max(1, page - Math.floor(maxVisible / 2));
+                let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+                if (endPage - startPage < maxVisible - 1) {
+                    startPage = Math.max(1, endPage - maxVisible + 1);
+                }
+
+                for (let i = startPage; i <= endPage; i++) {
+                    paginationHTML += `<li class="page-item ${i === page ? 'active' : ''}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
+                }
+
+                // Botão próximo
+                paginationHTML += `<li class="page-item ${page === totalPages ? 'disabled' : ''}"><a class="page-link" href="#" data-page="${page + 1}">Próxima</a></li>`;
+
+                // Botão última página
+                paginationHTML += `<li class="page-item ${page === totalPages ? 'disabled' : ''}"><a class="page-link" href="#" data-page="${totalPages}">Última</a></li>`;
+
+                paginationControlsBottom.innerHTML = paginationHTML;
+
+                // Adicionar event listeners aos links de paginação
+                paginationControlsBottom.querySelectorAll('a.page-link').forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const pageNum = parseInt(this.getAttribute('data-page'));
+                        if (pageNum && pageNum !== page && pageNum >= 1 && pageNum <= totalPages) {
+                            loadPage(pageNum);
+                            const searchResultsBody = document.getElementById('searchResultsBody');
+                            if (searchResultsBody) {
+                                searchResultsBody.scrollTop = 0;
+                            }
+                        }
+                    });
+                });
+            }
+
+            // Mostrar paginação
+            if (searchResultsPaginationBottom && totalPages > 1) {
+                searchResultsPaginationBottom.style.display = 'flex';
+            } else if (searchResultsPaginationBottom) {
+                searchResultsPaginationBottom.style.display = 'none';
+            }
+
+            // Mostrar tabela
+            if (searchResultsBox) {
+                searchResultsBox.classList.add('visible');
+                // Atualizar ícone do botão toggle quando a tabela é mostrada
+                if (btnToggleResults) {
+                    btnToggleResults.innerHTML = '<i class="fas fa-chevron-up"></i>';
+                }
+            }
+        }
         const nomeUsuario = <?php echo json_encode($_SESSION['usuario'][0] ?? ''); ?>;
 
         function criaBotAdm() {
