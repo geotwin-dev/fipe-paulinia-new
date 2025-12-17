@@ -2259,16 +2259,16 @@ const MapFramework = {
                                 if (paginaAtual == 'index_2') {
                                     // Se for polígono E for poligono_lote, abre InfoWindow específico
                                     if (tipo === 'poligono' && camadaNome === 'poligono_lote' && event.latLng) {
-                                        MapFramework.abrirInfoWindowPoligono_lote(objeto, event.latLng, objeto.identificador);
+                                        //MapFramework.abrirInfoWindowPoligono_lote(objeto, event.latLng, objeto.identificador);
                                     }
                                     // Se for polígono E for unidade, abre InfoWindow com dados da tabela informacoes_blocos
                                     else if (tipo === 'poligono' && camadaNome === 'unidade' && event.latLng) {
-                                        MapFramework.abrirInfoWindowUnidade(objeto, event.latLng, objeto.identificador);
+                                        //MapFramework.abrirInfoWindowUnidade(objeto, event.latLng, objeto.identificador);
                                     }
                                     // Se for polígono E não for unidade, abre InfoWindow com botões de cores
                                     else if (tipo === 'poligono' && camadaNome !== 'unidade' && camadaNome !== 'piscina' && camadaNome !== 'poligono_lote' && event.latLng) {
                                         console.log(paginaAtual)
-                                        MapFramework.abrirInfoWindowCores(objeto, event.latLng, desenho.id);
+                                        //MapFramework.abrirInfoWindowCores(objeto, event.latLng, desenho.id);
                                     } else {
                                         if (MapFramework.infoWindow) {
                                             MapFramework.infoWindow.close();
@@ -2282,12 +2282,12 @@ const MapFramework = {
                                     if (tipo === 'poligono' && camadaNome === 'poligono_lote' && event.latLng) {
                                         MapFramework.abrirInfoWindowPoligono_lote(objeto, event.latLng, objeto.identificador);
                                     }
-                    else if (tipo === 'poligono' && camadaNome === 'unidade' && event.latLng) {
-                        // Se estiver na index_2, usa versão editável; na index_3, usa versão somente leitura
-                        if (paginaAtual == 'index_3') {
-                            MapFramework.abrirInfoWindowUnidade2(objeto, event.latLng, objeto.identificador, objeto.id_desenho);
-                        }
-                    }
+                                    else if (tipo === 'poligono' && camadaNome === 'unidade' && event.latLng) {
+                                        // Se estiver na index_2, usa versão editável; na index_3, usa versão somente leitura
+                                        if (paginaAtual == 'index_3') {
+                                            MapFramework.abrirInfoWindowUnidade2(objeto, event.latLng, objeto.identificador, objeto.id_desenho);
+                                        }
+                                    }
                                 }
                             });
                         }
@@ -2878,6 +2878,12 @@ const MapFramework = {
             }
 
             if (!this.desenho.temporario) return;
+
+            // Proteção: não salva se já estiver salvando
+            if (this.desenho.salvando) {
+                console.log('⚠️ Salvamento já em andamento, ignorando clique direito');
+                return;
+            }
 
             const pathLength = this.desenho.temporario.getPath().getLength();
             if (pathLength < 3) {
@@ -4388,6 +4394,20 @@ const MapFramework = {
     },
 
     salvarDesenho: function (camada, identificador = '') {
+        // Proteção contra múltiplas chamadas simultâneas
+        if (this.desenho.salvando) {
+            console.log('⚠️ Salvamento já em andamento, ignorando chamada duplicada');
+            return;
+        }
+
+        if (!this.desenho.temporario) {
+            console.log('⚠️ Não há desenho temporário para salvar');
+            return;
+        }
+
+        // Marca como salvando para evitar duplicação
+        this.desenho.salvando = true;
+
         const path = this.desenho.temporario.getPath();
         const coordenadas = [];
 
@@ -4480,6 +4500,7 @@ const MapFramework = {
 
                         this.desenho.temporario = null;
                         this.desenho.pontos = [];
+                        this.desenho.salvando = false; // Resetar flag de salvamento
 
                         // Para lotes, mantém o modo de desenho ativo para permitir desenhar mais lotes
                         if (this.desenho.tipoAtual === 'polilinha') {
@@ -4495,12 +4516,14 @@ const MapFramework = {
                         this.desenho.temporario.setMap(null);
                         this.desenho.temporario = null;
                         this.desenho.pontos = [];
+                        this.desenho.salvando = false; // Resetar flag de salvamento
                     }
                 } catch (e) {
                     alert('Erro inesperado: ' + e.message + '\n\nVerifique o console para mais detalhes.');
                     this.desenho.temporario.setMap(null);
                     this.desenho.temporario = null;
                     this.desenho.pontos = [];
+                    this.desenho.salvando = false; // Resetar flag de salvamento
                 }
 
                 //console.log(arrayCamadas)
@@ -4510,6 +4533,7 @@ const MapFramework = {
                 this.desenho.temporario.setMap(null);
                 this.desenho.temporario = null;
                 this.desenho.pontos = [];
+                this.desenho.salvando = false; // Resetar flag de salvamento
             }
         });
     },
@@ -6350,625 +6374,627 @@ const MapFramework = {
                                 MapFramework.infoWindow.close();
                             }
     
-                            MapFramework.infoWindow = new google.maps.InfoWindow({
-                                content: conteudoInfoWindow,
-                                position: { lat: parseFloat(lat), lng: parseFloat(lng) }
-                            });
-    
-                            MapFramework.infoWindow.open(MapFramework.map);
-    
-                            google.maps.event.addListener(MapFramework.infoWindow, 'domready', function () {
-                                // Docs do quarteirão
-                                if (desenho.quarteirao) {
-                                    $.ajax({
-                                        url: 'consultas/listar_arquivos_quarteirao.php',
-                                        method: 'POST',
-                                        data: { quarteirao: desenho.quarteirao },
-                                        dataType: 'json',
-                                        success: function (respDocs) {
-                                            const containerDocs = document.querySelector(`#documentosQuarteirao_${desenho.id}`);
-    
-                                            if (desenho.quarteirao && desenho.quarteirao.length < 4) {
-                                                desenho.quarteirao = '0' + desenho.quarteirao;
-                                            }
-    
-                                            if (!containerDocs) return;
-    
-                                            if (respDocs.success && respDocs.arquivos && respDocs.arquivos.length > 0) {
-                                                let listaHTML = '';
-                                                respDocs.arquivos.forEach(arquivo => {
-                                                    const nomeArquivo = arquivo.length > 25 ? arquivo.substring(0, 25) + '...' : arquivo;
-                                                    const caminho = `loteamentos_quadriculas/pdfs_quarteiroes/${desenho.quarteirao}/${arquivo}`;
-                                                    listaHTML += `
-                                                        <a href="${caminho}" target="_blank"
-                                                           style="display: inline-block; color: #666; text-decoration: none; padding: 3px 8px;
-                                                                  font-size: 11px; background-color: #e9ecef; border-radius: 10px;
-                                                                  transition: background-color 0.2s ease;"
-                                                           onmouseover="this.style.backgroundColor='#007bff'; this.style.color='white';"
-                                                           onmouseout="this.style.backgroundColor='#e9ecef'; this.style.color='#666';"
-                                                           title="${arquivo}">
-                                                            <i class="fas fa-file-pdf" style="margin-right: 3px; font-size: 10px;"></i>${nomeArquivo}
-                                                        </a>
-                                                    `;
-                                                });
-                                                containerDocs.innerHTML = listaHTML;
-                                            } else {
-                                                containerDocs.innerHTML = `<span style="color: #999; font-size: 11px; font-style: italic;">Nenhum documento encontrado</span>`;
-                                            }
-                                        },
-                                        error: function () {
-                                            const containerDocs = document.querySelector(`#documentosQuarteirao_${desenho.id}`);
-                                            if (containerDocs) {
-                                                containerDocs.innerHTML = `<span style="color: #dc3545; font-size: 11px;">Erro ao carregar documentos</span>`;
-                                            }
-                                        }
-                                    });
-                                }
-    
-                                // Abas / IPTU / Endereços (só se tiver cadastro)
-                                const dadosMoradorAtual = desenho.dadosMorador;
-                                if (dadosMoradorAtual) {
-                                    const currentInfoWindowId = 'iw_' + desenho.id;
-    
-                                    const gerarBotoesNavegacao = (iwid) => {
-                                        if (!temMultiplosCadastros || !todosMoradores || todosMoradores.length <= 1) return '';
-                                        const indiceAtual = desenho.indiceMoradorAtual || 0;
-    
-                                        return `
-                                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">
-                                                <button type="button" class="btn-nav-morador btn-nav-anterior" data-iwid="${iwid}" data-direction="anterior"
-                                                    style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: ${indiceAtual === 0 ? 'not-allowed' : 'pointer'}; opacity: ${indiceAtual === 0 ? '0.5' : '1'};"
-                                                    ${indiceAtual === 0 ? 'disabled' : ''}>
-                                                    ← Anterior
-                                                </button>
-                                                <span id="contador-morador-${iwid}" style="font-size: 12px; color: #333; font-weight: bold;">
-                                                    ${indiceAtual + 1} de ${todosMoradores.length}
-                                                </span>
-                                                <button type="button" class="btn-nav-morador btn-nav-proximo" data-iwid="${iwid}" data-direction="proximo"
-                                                    style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: ${indiceAtual === todosMoradores.length - 1 ? 'not-allowed' : 'pointer'}; opacity: ${indiceAtual === todosMoradores.length - 1 ? '0.5' : '1'};"
-                                                    ${indiceAtual === todosMoradores.length - 1 ? 'disabled' : ''}>
-                                                    Próximo →
-                                                </button>
-                                            </div>
-                                        `;
-                                    };
-    
-                                    setTimeout(function () {
-                                        const tabButtons = document.querySelectorAll(`[data-iwid="${currentInfoWindowId}"]`);
-    
-                                        tabButtons.forEach(btn => {
-                                            btn.addEventListener('click', function (e) {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-    
-                                                const tabName = this.getAttribute('data-tab');
-                                                const iwid = this.getAttribute('data-iwid');
-                                                const side = this.getAttribute('data-side');
-    
-                                                const allTabsSameSide = document.querySelectorAll(`[data-iwid="${iwid}"][data-side="${side}"]`);
-                                                allTabsSameSide.forEach(tab => {
-                                                    tab.style.fontWeight = '500';
-                                                    tab.style.color = '#666';
-                                                    tab.style.borderBottomColor = 'transparent';
-                                                });
-    
-                                                this.style.fontWeight = '600';
-                                                this.style.color = '#007bff';
-                                                this.style.borderBottomColor = '#007bff';
-    
-                                                if (side === 'left') {
-                                                    const tabDadosGerais = document.querySelector(`#tab-dados-gerais-${iwid}`);
-                                                    const tabEnderecos = document.querySelector(`#tab-enderecos-${iwid}`);
-    
-                                                    if (tabName === 'dados-gerais') {
-                                                        if (tabDadosGerais) tabDadosGerais.style.display = 'block';
-                                                        if (tabEnderecos) tabEnderecos.style.display = 'none';
-                                                    } else if (tabName === 'enderecos') {
-                                                        if (tabDadosGerais) tabDadosGerais.style.display = 'none';
-                                                        if (tabEnderecos) tabEnderecos.style.display = 'block';
-    
-                                                        // Carregar endereços alternativos + binds + form
-                                                        if (tabEnderecos && !tabEnderecos.dataset.loaded) {
-                                                            const listaCont = document.querySelector(`#lista-enderecos-${iwid}`);
-                                                            if (listaCont) {
-                                                                listaCont.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Carregando endereços alternativos...</div>';
-                                                            }
-    
-                                                            $.ajax({
-                                                                url: 'carregarEnderecosAlternativos.php',
-                                                                method: 'GET',
-                                                                data: { id_marcador: desenho.id },
-                                                                dataType: 'json',
-                                                                success: function (resp) {
-                                                                    tabEnderecos.dataset.loaded = 'true';
-    
-                                                                    const lista = document.querySelector(`#lista-enderecos-${iwid}`);
-                                                                    if (!lista) return;
-    
-                                                                    if (resp && resp.status === 'sucesso' && Array.isArray(resp.dados) && resp.dados.length > 0) {
-                                                                        let html = '';
-                                                                        resp.dados.forEach((row, idx) => {
-                                                                            html += `
-                                                                                <div class="card-end-alt" data-id="${row.id}" style="position:relative; padding:10px; border:1px solid #ddd; border-radius:4px; background:#fff; ${idx > 0 ? 'margin-top:10px;' : ''}">
-                                                                                    <button type="button" class="btn btn-sm btn-warning btn-edit-end-alt" title="Editar" data-id="${row.id}" style="position:absolute; top:6px; right:32px; padding:2px 6px; line-height:1; color:#fff !important; background-color:#ffc107; border-color:#ffc107;">✎</button>
-                                                                                    <button type="button" class="btn btn-sm btn-danger btn-del-end-alt" title="Excluir" data-id="${row.id}" style="position:absolute; top:6px; right:6px; padding:2px 6px; line-height:1; color:#fff !important;">×</button>
-                                                                                    <div style="margin-bottom:4px;"><strong style="color:#333;">Endereço:</strong> <span style="color:#555;">${(row.endereco || '').toString()}</span></div>
-                                                                                    <div style="margin-bottom:4px;"><strong style="color:#333;">Número:</strong> <span style="color:#555;">${(row.numero || '').toString()}</span></div>
-                                                                                    <div style="margin-bottom:4px;"><strong style="color:#333;">Complemento:</strong> <span style="color:#555;">${(row.complemento || '').toString()}</span></div>
-                                                                                    <div><strong style="color:#333;">Observação:</strong> <span style="color:#555;">${(row.observacao || '').toString()}</span></div>
-                                                                                </div>
-                                                                            `;
-                                                                        });
-                                                                        lista.innerHTML = html;
-    
-                                                                        // Editar
-                                                                        lista.querySelectorAll('.btn-edit-end-alt').forEach(btnEdit => {
-                                                                            btnEdit.addEventListener('click', function (ev) {
-                                                                                ev.preventDefault();
-                                                                                ev.stopPropagation();
-    
-                                                                                const idEnd = this.getAttribute('data-id');
-                                                                                if (!idEnd) return;
-    
-                                                                                const card = this.closest('.card-end-alt');
-                                                                                if (!card) return;
-    
-                                                                                const enderecoText = (card.querySelector('div:first-of-type span') || {}).textContent ? card.querySelector('div:first-of-type span').textContent.trim() : '';
-                                                                                const numeroText = (card.querySelector('div:nth-of-type(2) span') || {}).textContent ? card.querySelector('div:nth-of-type(2) span').textContent.trim() : '';
-                                                                                const complementoText = (card.querySelector('div:nth-of-type(3) span') || {}).textContent ? card.querySelector('div:nth-of-type(3) span').textContent.trim() : '';
-                                                                                const observacaoText = (card.querySelector('div:nth-of-type(4) span') || {}).textContent ? card.querySelector('div:nth-of-type(4) span').textContent.trim() : '';
-    
-                                                                                const inpEndereco = document.getElementById(`inp-endereco-${iwid}`);
-                                                                                const inpNumero = document.getElementById(`inp-numero-${iwid}`);
-                                                                                const inpComplemento = document.getElementById(`inp-complemento-${iwid}`);
-                                                                                const inpObservacao = document.getElementById(`inp-observacao-${iwid}`);
-    
-                                                                                if (inpEndereco) inpEndereco.value = enderecoText;
-                                                                                if (inpNumero) inpNumero.value = numeroText;
-                                                                                if (inpComplemento) inpComplemento.value = complementoText;
-                                                                                if (inpObservacao) inpObservacao.value = observacaoText;
-    
-                                                                                const formBox = document.getElementById(`form-endereco-${iwid}`);
-                                                                                if (formBox) {
-                                                                                    formBox.style.display = 'block';
-                                                                                    formBox.dataset.editId = idEnd;
-                                                                                }
-    
-                                                                                const btnSalvar = document.getElementById(`btn-salvar-endereco-${iwid}`);
-                                                                                if (btnSalvar) {
-                                                                                    btnSalvar.textContent = 'Atualizar';
-                                                                                    btnSalvar.dataset.editId = idEnd;
-                                                                                }
-                                                                            });
-                                                                        });
-    
-                                                                        // Excluir
-                                                                        lista.querySelectorAll('.btn-del-end-alt').forEach(btnDel => {
-                                                                            btnDel.addEventListener('click', function (ev) {
-                                                                                ev.preventDefault();
-                                                                                ev.stopPropagation();
-    
-                                                                                const idEnd = this.getAttribute('data-id');
-                                                                                if (!idEnd) return;
-    
-                                                                                if (!confirm('Deseja realmente excluir este endereço?')) return;
-    
-                                                                                const btnRef = this;
-                                                                                btnRef.disabled = true;
-                                                                                btnRef.textContent = '...';
-    
-                                                                                $.ajax({
-                                                                                    url: 'deletarEnderecoAlternativo.php',
-                                                                                    method: 'POST',
-                                                                                    dataType: 'json',
-                                                                                    data: { id: idEnd },
-                                                                                    success: function (resDel) {
-                                                                                        if (resDel && resDel.status === 'sucesso') {
-                                                                                            const card = btnRef.closest('.card-end-alt');
-                                                                                            if (card) card.remove();
-                                                                                            if (!lista.querySelector('.card-end-alt')) {
-                                                                                                lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhum endereço alternativo cadastrado.</div>';
-                                                                                            }
-                                                                                        } else {
-                                                                                            alert((resDel && resDel.mensagem) ? resDel.mensagem : 'Falha ao excluir o endereço.');
-                                                                                            btnRef.disabled = false;
-                                                                                            btnRef.textContent = '×';
-                                                                                        }
-                                                                                    },
-                                                                                    error: function () {
-                                                                                        alert('Erro ao excluir o endereço.');
-                                                                                        btnRef.disabled = false;
-                                                                                        btnRef.textContent = '×';
-                                                                                    }
-                                                                                });
-                                                                            });
-                                                                        });
-                                                                    } else {
-                                                                        lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhum endereço alternativo cadastrado.</div>';
-                                                                    }
-    
-                                                                    // Form (add/salvar/cancelar)
-                                                                    const btnAdd = document.getElementById(`btn-add-endereco-${iwid}`);
-                                                                    const formBox = document.getElementById(`form-endereco-${iwid}`);
-                                                                    const btnSalvar = document.getElementById(`btn-salvar-endereco-${iwid}`);
-                                                                    const btnCancelar = document.getElementById(`btn-cancelar-endereco-${iwid}`);
-    
-                                                                    if (btnAdd && formBox) {
-                                                                        btnAdd.onclick = function (ev) {
-                                                                            ev.preventDefault();
-    
-                                                                            const isShowing = formBox.style.display !== 'none' && formBox.style.display !== '';
-                                                                            formBox.style.display = isShowing ? 'none' : 'block';
-    
-                                                                            if (!isShowing) {
-                                                                                delete formBox.dataset.editId;
-                                                                                if (btnSalvar) {
-                                                                                    btnSalvar.textContent = 'Salvar';
-                                                                                    delete btnSalvar.dataset.editId;
-                                                                                }
-    
-                                                                                ['endereco', 'numero', 'complemento', 'observacao'].forEach(suf => {
-                                                                                    const inp = document.getElementById(`inp-${suf}-${iwid}`);
-                                                                                    if (inp) inp.value = '';
-                                                                                });
-                                                                            }
-                                                                        };
-                                                                    }
-    
-                                                                    if (btnCancelar && formBox) {
-                                                                        btnCancelar.onclick = function (ev) {
-                                                                            ev.preventDefault();
-                                                                            formBox.style.display = 'none';
-                                                                            delete formBox.dataset.editId;
-    
-                                                                            if (btnSalvar) {
-                                                                                btnSalvar.textContent = 'Salvar';
-                                                                                delete btnSalvar.dataset.editId;
-                                                                            }
-    
-                                                                            ['endereco', 'numero', 'complemento', 'observacao'].forEach(suf => {
-                                                                                const inp = document.getElementById(`inp-${suf}-${iwid}`);
-                                                                                if (inp) inp.value = '';
-                                                                            });
-                                                                        };
-                                                                    }
-    
-                                                                    if (btnSalvar && formBox) {
-                                                                        btnSalvar.onclick = function (ev) {
-                                                                            ev.preventDefault();
-    
-                                                                            const endereco = (document.getElementById(`inp-endereco-${iwid}`) || {}).value || '';
-                                                                            const numero = (document.getElementById(`inp-numero-${iwid}`) || {}).value || '';
-                                                                            const complemento = (document.getElementById(`inp-complemento-${iwid}`) || {}).value || '';
-                                                                            const observacao = (document.getElementById(`inp-observacao-${iwid}`) || {}).value || '';
-    
-                                                                            if (!endereco.trim()) {
-                                                                                alert('Informe o endereço.');
-                                                                                return;
-                                                                            }
-    
-                                                                            const editId = (btnSalvar.dataset.editId || formBox.dataset.editId || '').trim();
-                                                                            const isEdit = !!editId;
-    
-                                                                            btnSalvar.disabled = true;
-                                                                            btnSalvar.textContent = isEdit ? 'Atualizando...' : 'Salvando...';
-    
-                                                                            const urlAjax = isEdit ? 'atualizarEnderecoAlternativo.php' : 'salvarEnderecoAlternativo.php';
-                                                                            const dataAjax = isEdit
-                                                                                ? { id: editId, endereco: endereco, numero: numero, complemento: complemento, observacao: observacao }
-                                                                                : { id_marcador: desenho.id, endereco: endereco, numero: numero, complemento: complemento, observacao: observacao };
-    
-                                                                            $.ajax({
-                                                                                url: urlAjax,
-                                                                                method: 'POST',
-                                                                                dataType: 'json',
-                                                                                data: dataAjax,
-                                                                                success: function (res) {
-                                                                                    btnSalvar.disabled = false;
-                                                                                    btnSalvar.textContent = 'Salvar';
-    
-                                                                                    if (res && res.status === 'sucesso') {
-                                                                                        delete formBox.dataset.editId;
-                                                                                        delete btnSalvar.dataset.editId;
-    
-                                                                                        delete tabEnderecos.dataset.loaded;
-                                                                                        const btnEnd = document.querySelector(`button.info-tab-enderecos[data-iwid="${iwid}"]`);
-                                                                                        if (btnEnd) btnEnd.click();
-    
-                                                                                        formBox.style.display = 'none';
-                                                                                        ['endereco', 'numero', 'complemento', 'observacao'].forEach(suf => {
-                                                                                            const inp = document.getElementById(`inp-${suf}-${iwid}`);
-                                                                                            if (inp) inp.value = '';
-                                                                                        });
-                                                                                    } else {
-                                                                                        alert((res && res.mensagem) ? res.mensagem : (isEdit ? 'Falha ao atualizar o endereço.' : 'Falha ao salvar o endereço.'));
-                                                                                    }
-                                                                                },
-                                                                                error: function () {
-                                                                                    btnSalvar.disabled = false;
-                                                                                    btnSalvar.textContent = isEdit ? 'Atualizar' : 'Salvar';
-                                                                                    alert(isEdit ? 'Erro ao atualizar o endereço.' : 'Erro ao salvar o endereço.');
-                                                                                }
-                                                                            });
-                                                                        };
-                                                                    }
-                                                                },
-                                                                error: function () {
-                                                                    const lista = document.querySelector(`#lista-enderecos-${iwid}`);
-                                                                    if (lista) {
-                                                                        lista.innerHTML = '<div style="padding: 10px; color: #a00;">Erro ao carregar endereços alternativos.</div>';
-                                                                    }
-                                                                }
-                                                            });
-                                                        }
-                                                    }
-                                                } else if (side === 'right') {
-                                                    const tabCadastro = document.querySelector(`#tab-cadastro-${iwid}`);
-                                                    const tabIptu = document.querySelector(`#tab-iptu-${iwid}`);
-    
-                                                    if (tabName === 'cadastro') {
-                                                        if (tabCadastro) tabCadastro.style.display = 'block';
-                                                        if (tabIptu) tabIptu.style.display = 'none';
-                                                    } else if (tabName === 'iptu') {
-                                                        if (tabCadastro) tabCadastro.style.display = 'none';
-                                                        if (tabIptu) tabIptu.style.display = 'block';
-    
-                                                        const imobIdAtual = desenho.dadosMorador ? (desenho.dadosMorador.imob_id || null) : null;
-    
-                                                        if (tabIptu && !tabIptu.dataset.loaded && imobIdAtual) {
-                                                            tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Carregando dados do IPTU...</div>';
-    
-                                                            $.ajax({
-                                                                url: 'carregarIptus.php',
-                                                                method: 'GET',
-                                                                data: { imob_id: imobIdAtual },
-                                                                dataType: 'json',
-                                                                success: function (respIptu) {
-                                                                    tabIptu.dataset.loaded = 'true';
-    
-                                                                    let dadosArray = [];
-                                                                    let dadosArray2 = [];
-                                                                    let dicionario = {};
-                                                                    let dicionario2 = {};
-    
-                                                                    if (respIptu && typeof respIptu === 'object') {
-                                                                        if (respIptu.dados && Array.isArray(respIptu.dados)) {
-                                                                            dadosArray = respIptu.dados;
-                                                                            dadosArray2 = respIptu.dados2 || [];
-                                                                            dicionario = respIptu.dicionario || {};
-                                                                            dicionario2 = respIptu.dicionario2 || {};
-                                                                        } else if (Array.isArray(respIptu)) {
-                                                                            dadosArray = respIptu;
-                                                                        }
-                                                                    }
-    
-                                                                    if (dadosArray && dadosArray.length > 0) {
-                                                                        let content = '<div style="margin-bottom: 15px;">';
-    
-                                                                        dadosArray.forEach(function (iptu, index) {
-                                                                            if (index > 0) content += '<hr style="margin: 15px 0; border: 0; border-top: 1px solid #ddd;">';
-    
-                                                                            Object.keys(iptu).forEach(function (key) {
-                                                                                const value = iptu[key];
-                                                                                if (value !== null && value !== '' && key !== 'erro') {
-                                                                                    const fieldName = dicionario[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                                                                    content += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${fieldName}:</strong> <span style="color: #666;">${value}</span></div>`;
-                                                                                }
-                                                                            });
-                                                                        });
-    
-                                                                        content += '</div>';
-    
-                                                                        // Composição da área construída
-                                                                        content += '<div style="margin-top: 20px; margin-bottom: 15px;">';
-                                                                        content += '<h4 style="margin-bottom: 10px; font-size: 14px; font-weight: bold; color: #333;">Composição da área construída</h4>';
-                                                                        content += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;">';
-    
-                                                                        content += '<thead><tr style="background-color: #f5f5f5; border-bottom: 2px solid #ddd;">';
-                                                                        const colunas = ['area', 'area_construida', 'utilizacao', 'construcao', 'classificacao'];
-                                                                        colunas.forEach(function (col) {
-                                                                            const label = dicionario2[col] || col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                                                            content += `<th style="padding: 8px; text-align: left; font-weight: bold; color: #333; border: 1px solid #ddd;">${label}</th>`;
-                                                                        });
-                                                                        content += '</tr></thead>';
-    
-                                                                        content += '<tbody>';
-                                                                        if (dadosArray2 && dadosArray2.length > 0) {
-                                                                            dadosArray2.forEach(function (area) {
-                                                                                content += '<tr>';
-                                                                                colunas.forEach(function (col) {
-                                                                                    const value = (area[col] !== null && area[col] !== '') ? area[col] : '';
-                                                                                    content += `<td style="padding: 8px; border: 1px solid #ddd; color: #666;">${value}</td>`;
-                                                                                });
-                                                                                content += '</tr>';
-                                                                            });
-                                                                        } else {
-                                                                            for (let i = 0; i < 3; i++) {
-                                                                                content += '<tr>';
-                                                                                colunas.forEach(function () {
-                                                                                    content += `<td style="padding: 8px; border: 1px solid #ddd;"></td>`;
-                                                                                });
-                                                                                content += '</tr>';
-                                                                            }
-                                                                        }
-                                                                        content += '</tbody>';
-    
-                                                                        content += '</table>';
-                                                                        content += '</div>';
-    
-                                                                        tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + content;
-                                                                    } else {
-                                                                        if (respIptu && respIptu.erro) {
-                                                                            tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #dc3545; padding: 10px;">Erro: ' + respIptu.erro + '<br><strong>ID buscado: ' + imobIdAtual + '</strong></div>';
-                                                                        } else {
-                                                                            tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #666; font-style: italic; padding: 10px;">Nenhum dado encontrado na tabela IPTU para este imóvel<br><strong>ID buscado: ' + imobIdAtual + '</strong></div>';
-                                                                        }
-                                                                    }
-                                                                },
-                                                                error: function (xhr, status, error) {
-                                                                    console.error('Erro ao carregar dados do IPTU:', error);
-                                                                    tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #dc3545; padding: 10px;">Erro ao carregar dados do IPTU. Tente novamente.<br><strong>ID buscado: ' + imobIdAtual + '</strong></div>';
-                                                                }
-                                                            });
-                                                        } else if (!imobIdAtual && tabIptu) {
-                                                            tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #666; font-style: italic; padding: 10px;">ID Imobiliário não disponível para carregar dados do IPTU</div>';
-                                                        }
-                                                    }
+                            if (paginaAtual != 'index_2') {
+                                MapFramework.infoWindow = new google.maps.InfoWindow({
+                                    content: conteudoInfoWindow,
+                                    position: { lat: parseFloat(lat), lng: parseFloat(lng) }
+                                });
+        
+                                MapFramework.infoWindow.open(MapFramework.map);
+        
+                                google.maps.event.addListener(MapFramework.infoWindow, 'domready', function () {
+                                    // Docs do quarteirão
+                                    if (desenho.quarteirao) {
+                                        $.ajax({
+                                            url: 'consultas/listar_arquivos_quarteirao.php',
+                                            method: 'POST',
+                                            data: { quarteirao: desenho.quarteirao },
+                                            dataType: 'json',
+                                            success: function (respDocs) {
+                                                const containerDocs = document.querySelector(`#documentosQuarteirao_${desenho.id}`);
+        
+                                                if (desenho.quarteirao && desenho.quarteirao.length < 4) {
+                                                    desenho.quarteirao = '0' + desenho.quarteirao;
                                                 }
-                                            });
-                                        });
-                                        
-                                        // Se não tem múltiplos cadastros, carrega automaticamente os endereços após 1 segundo
-                                        if (!temMultiplosCadastros) {
-                                            setTimeout(() => {
-                                                const btnEnderecos = document.querySelector(`button.info-tab-enderecos[data-iwid="${currentInfoWindowId}"]`);
-                                                if (btnEnderecos) {
-                                                    btnEnderecos.click();
-                                                }
-                                            }, 1000);
-                                        }
-                                    }, 100);
-
-                                    // Docs (UMA vez)
-                                    const btnDocs = document.querySelector('.btn-docs-morador');
-                                    if (btnDocs) {
-                                        btnDocs.addEventListener('click', function (e) {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-    
-                                            const dadosMoradorAtual2 = desenho.dadosMorador;
-                                            const imobId = dadosMoradorAtual2 ? dadosMoradorAtual2.imob_id : null;
-    
-                                            if (imobId) {
-                                                if (typeof abrirModalGerenciarDocsImovel === 'function') {
-                                                    abrirModalGerenciarDocsImovel(imobId, {
-                                                        desenhos: desenho,
-                                                        cadastro: dadosMoradorAtual2
+        
+                                                if (!containerDocs) return;
+        
+                                                if (respDocs.success && respDocs.arquivos && respDocs.arquivos.length > 0) {
+                                                    let listaHTML = '';
+                                                    respDocs.arquivos.forEach(arquivo => {
+                                                        const nomeArquivo = arquivo.length > 25 ? arquivo.substring(0, 25) + '...' : arquivo;
+                                                        const caminho = `loteamentos_quadriculas/pdfs_quarteiroes/${desenho.quarteirao}/${arquivo}`;
+                                                        listaHTML += `
+                                                            <a href="${caminho}" target="_blank"
+                                                            style="display: inline-block; color: #666; text-decoration: none; padding: 3px 8px;
+                                                                    font-size: 11px; background-color: #e9ecef; border-radius: 10px;
+                                                                    transition: background-color 0.2s ease;"
+                                                            onmouseover="this.style.backgroundColor='#007bff'; this.style.color='white';"
+                                                            onmouseout="this.style.backgroundColor='#e9ecef'; this.style.color='#666';"
+                                                            title="${arquivo}">
+                                                                <i class="fas fa-file-pdf" style="margin-right: 3px; font-size: 10px;"></i>${nomeArquivo}
+                                                            </a>
+                                                        `;
                                                     });
+                                                    containerDocs.innerHTML = listaHTML;
+                                                } else {
+                                                    containerDocs.innerHTML = `<span style="color: #999; font-size: 11px; font-style: italic;">Nenhum documento encontrado</span>`;
                                                 }
-                                            } else {
-                                                const identificadorUnico = `${desenho.quarteirao}_${desenho.quadra}_${desenho.lote}`;
-                                                if (typeof abrirModalGerenciarDocsImovel === 'function') {
-                                                    abrirModalGerenciarDocsImovel(identificadorUnico, {
-                                                        desenhos: desenho,
-                                                        cadastro: dadosMoradorAtual2
-                                                    });
+                                            },
+                                            error: function () {
+                                                const containerDocs = document.querySelector(`#documentosQuarteirao_${desenho.id}`);
+                                                if (containerDocs) {
+                                                    containerDocs.innerHTML = `<span style="color: #dc3545; font-size: 11px;">Erro ao carregar documentos</span>`;
                                                 }
                                             }
                                         });
                                     }
-    
-                                    // Navegação múltiplos cadastros (UMA vez)
-                                    if (temMultiplosCadastros && todosMoradores.length > 1) {
-                                        const identificarCamposComuns = (todos) => {
-                                            if (!todos || todos.length === 0) return {};
-                                            if (todos.length === 1) return {};
-    
-                                            const camposComuns = {};
-                                            const primeiro = todos[0];
-    
-                                            Object.keys(primeiro).forEach(campo => {
-                                                const valorPrimeiro = primeiro[campo];
-                                                const todosIguais = todos.every(m => {
-                                                    const valorAtual = m[campo];
-                                                    if (valorPrimeiro === null || valorPrimeiro === undefined || valorPrimeiro === '') {
-                                                        return (valorAtual === null || valorAtual === undefined || valorAtual === '');
-                                                    }
-                                                    return String(valorPrimeiro).trim() === String(valorAtual).trim();
-                                                });
-    
-                                                if (todosIguais && (valorPrimeiro !== null && valorPrimeiro !== undefined && valorPrimeiro !== '')) {
-                                                    camposComuns[campo] = valorPrimeiro;
-                                                }
-                                            });
-    
-                                            return camposComuns;
-                                        };
-    
-                                        const atualizarConteudoMorador = () => {
-                                            const indiceAtual = desenho.indiceMoradorAtual;
-                                            const moradorAtual = todosMoradores[indiceAtual];
-                                            if (!moradorAtual) return;
-    
-                                            desenho.dadosMorador = moradorAtual;
-    
-                                            const camposComuns = identificarCamposComuns(todosMoradores);
-    
-                                            const contadores = document.querySelectorAll(`#contador-morador-${infoWindowId}`);
-                                            contadores.forEach(contador => {
-                                                contador.textContent = `${indiceAtual + 1} de ${todosMoradores.length}`;
-                                            });
-    
-                                            let camposEspecificosHTML = '';
-                                            Object.keys(moradorAtual).forEach(campo => {
-                                                if (Object.prototype.hasOwnProperty.call(camposComuns, campo)) return;
-    
-                                                const valor = moradorAtual[campo];
-                                                if (valor !== null && valor !== undefined && valor !== '') {
-                                                    const nomeCampo = campo.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                                    camposEspecificosHTML += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${nomeCampo}:</strong> <span style="color: #666;">${valor}</span></div>`;
-                                                }
-                                            });
-    
-                                            let botoesHTML = `
+        
+                                    // Abas / IPTU / Endereços (só se tiver cadastro)
+                                    const dadosMoradorAtual = desenho.dadosMorador;
+                                    if (dadosMoradorAtual) {
+                                        const currentInfoWindowId = 'iw_' + desenho.id;
+        
+                                        const gerarBotoesNavegacao = (iwid) => {
+                                            if (!temMultiplosCadastros || !todosMoradores || todosMoradores.length <= 1) return '';
+                                            const indiceAtual = desenho.indiceMoradorAtual || 0;
+        
+                                            return `
                                                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">
-                                                    <button type="button" class="btn-nav-morador btn-nav-anterior" data-iwid="${infoWindowId}" data-direction="anterior"
+                                                    <button type="button" class="btn-nav-morador btn-nav-anterior" data-iwid="${iwid}" data-direction="anterior"
                                                         style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: ${indiceAtual === 0 ? 'not-allowed' : 'pointer'}; opacity: ${indiceAtual === 0 ? '0.5' : '1'};"
                                                         ${indiceAtual === 0 ? 'disabled' : ''}>
                                                         ← Anterior
                                                     </button>
-                                                    <span id="contador-morador-${infoWindowId}" style="font-size: 12px; color: #333; font-weight: bold;">
+                                                    <span id="contador-morador-${iwid}" style="font-size: 12px; color: #333; font-weight: bold;">
                                                         ${indiceAtual + 1} de ${todosMoradores.length}
                                                     </span>
-                                                    <button type="button" class="btn-nav-morador btn-nav-proximo" data-iwid="${infoWindowId}" data-direction="proximo"
+                                                    <button type="button" class="btn-nav-morador btn-nav-proximo" data-iwid="${iwid}" data-direction="proximo"
                                                         style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: ${indiceAtual === todosMoradores.length - 1 ? 'not-allowed' : 'pointer'}; opacity: ${indiceAtual === todosMoradores.length - 1 ? '0.5' : '1'};"
                                                         ${indiceAtual === todosMoradores.length - 1 ? 'disabled' : ''}>
                                                         Próximo →
                                                     </button>
                                                 </div>
                                             `;
-    
-                                            const tabCadastro = document.querySelector(`#tab-cadastro-${infoWindowId}`);
-                                            if (tabCadastro) {
-                                                tabCadastro.innerHTML = botoesHTML + (camposEspecificosHTML || '<p style="color: #888; font-style: italic;">Nenhum dado específico encontrado.</p>');
-                                            }
-    
-                                            const tabIptu = document.querySelector(`#tab-iptu-${infoWindowId}`);
-                                            if (tabIptu) {
-                                                tabIptu.innerHTML = botoesHTML + '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Clique na aba IPTU para carregar os dados</div>';
-                                                delete tabIptu.dataset.loaded;
-                                            }
                                         };
-    
+        
                                         setTimeout(function () {
-                                            const tabCadastroContainer = document.querySelector(`#tab-cadastro-${infoWindowId}`);
-                                            const tabIptuContainer = document.querySelector(`#tab-iptu-${infoWindowId}`);
-    
-                                            const handlerNav = function (e) {
-                                                const target = e.target.closest('.btn-nav-morador');
-                                                if (!target) return;
-    
+                                            const tabButtons = document.querySelectorAll(`[data-iwid="${currentInfoWindowId}"]`);
+        
+                                            tabButtons.forEach(btn => {
+                                                btn.addEventListener('click', function (e) {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+        
+                                                    const tabName = this.getAttribute('data-tab');
+                                                    const iwid = this.getAttribute('data-iwid');
+                                                    const side = this.getAttribute('data-side');
+        
+                                                    const allTabsSameSide = document.querySelectorAll(`[data-iwid="${iwid}"][data-side="${side}"]`);
+                                                    allTabsSameSide.forEach(tab => {
+                                                        tab.style.fontWeight = '500';
+                                                        tab.style.color = '#666';
+                                                        tab.style.borderBottomColor = 'transparent';
+                                                    });
+        
+                                                    this.style.fontWeight = '600';
+                                                    this.style.color = '#007bff';
+                                                    this.style.borderBottomColor = '#007bff';
+        
+                                                    if (side === 'left') {
+                                                        const tabDadosGerais = document.querySelector(`#tab-dados-gerais-${iwid}`);
+                                                        const tabEnderecos = document.querySelector(`#tab-enderecos-${iwid}`);
+        
+                                                        if (tabName === 'dados-gerais') {
+                                                            if (tabDadosGerais) tabDadosGerais.style.display = 'block';
+                                                            if (tabEnderecos) tabEnderecos.style.display = 'none';
+                                                        } else if (tabName === 'enderecos') {
+                                                            if (tabDadosGerais) tabDadosGerais.style.display = 'none';
+                                                            if (tabEnderecos) tabEnderecos.style.display = 'block';
+        
+                                                            // Carregar endereços alternativos + binds + form
+                                                            if (tabEnderecos && !tabEnderecos.dataset.loaded) {
+                                                                const listaCont = document.querySelector(`#lista-enderecos-${iwid}`);
+                                                                if (listaCont) {
+                                                                    listaCont.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Carregando endereços alternativos...</div>';
+                                                                }
+        
+                                                                $.ajax({
+                                                                    url: 'carregarEnderecosAlternativos.php',
+                                                                    method: 'GET',
+                                                                    data: { id_marcador: desenho.id },
+                                                                    dataType: 'json',
+                                                                    success: function (resp) {
+                                                                        tabEnderecos.dataset.loaded = 'true';
+        
+                                                                        const lista = document.querySelector(`#lista-enderecos-${iwid}`);
+                                                                        if (!lista) return;
+        
+                                                                        if (resp && resp.status === 'sucesso' && Array.isArray(resp.dados) && resp.dados.length > 0) {
+                                                                            let html = '';
+                                                                            resp.dados.forEach((row, idx) => {
+                                                                                html += `
+                                                                                    <div class="card-end-alt" data-id="${row.id}" style="position:relative; padding:10px; border:1px solid #ddd; border-radius:4px; background:#fff; ${idx > 0 ? 'margin-top:10px;' : ''}">
+                                                                                        <button type="button" class="btn btn-sm btn-warning btn-edit-end-alt" title="Editar" data-id="${row.id}" style="position:absolute; top:6px; right:32px; padding:2px 6px; line-height:1; color:#fff !important; background-color:#ffc107; border-color:#ffc107;">✎</button>
+                                                                                        <button type="button" class="btn btn-sm btn-danger btn-del-end-alt" title="Excluir" data-id="${row.id}" style="position:absolute; top:6px; right:6px; padding:2px 6px; line-height:1; color:#fff !important;">×</button>
+                                                                                        <div style="margin-bottom:4px;"><strong style="color:#333;">Endereço:</strong> <span style="color:#555;">${(row.endereco || '').toString()}</span></div>
+                                                                                        <div style="margin-bottom:4px;"><strong style="color:#333;">Número:</strong> <span style="color:#555;">${(row.numero || '').toString()}</span></div>
+                                                                                        <div style="margin-bottom:4px;"><strong style="color:#333;">Complemento:</strong> <span style="color:#555;">${(row.complemento || '').toString()}</span></div>
+                                                                                        <div><strong style="color:#333;">Observação:</strong> <span style="color:#555;">${(row.observacao || '').toString()}</span></div>
+                                                                                    </div>
+                                                                                `;
+                                                                            });
+                                                                            lista.innerHTML = html;
+        
+                                                                            // Editar
+                                                                            lista.querySelectorAll('.btn-edit-end-alt').forEach(btnEdit => {
+                                                                                btnEdit.addEventListener('click', function (ev) {
+                                                                                    ev.preventDefault();
+                                                                                    ev.stopPropagation();
+        
+                                                                                    const idEnd = this.getAttribute('data-id');
+                                                                                    if (!idEnd) return;
+        
+                                                                                    const card = this.closest('.card-end-alt');
+                                                                                    if (!card) return;
+        
+                                                                                    const enderecoText = (card.querySelector('div:first-of-type span') || {}).textContent ? card.querySelector('div:first-of-type span').textContent.trim() : '';
+                                                                                    const numeroText = (card.querySelector('div:nth-of-type(2) span') || {}).textContent ? card.querySelector('div:nth-of-type(2) span').textContent.trim() : '';
+                                                                                    const complementoText = (card.querySelector('div:nth-of-type(3) span') || {}).textContent ? card.querySelector('div:nth-of-type(3) span').textContent.trim() : '';
+                                                                                    const observacaoText = (card.querySelector('div:nth-of-type(4) span') || {}).textContent ? card.querySelector('div:nth-of-type(4) span').textContent.trim() : '';
+        
+                                                                                    const inpEndereco = document.getElementById(`inp-endereco-${iwid}`);
+                                                                                    const inpNumero = document.getElementById(`inp-numero-${iwid}`);
+                                                                                    const inpComplemento = document.getElementById(`inp-complemento-${iwid}`);
+                                                                                    const inpObservacao = document.getElementById(`inp-observacao-${iwid}`);
+        
+                                                                                    if (inpEndereco) inpEndereco.value = enderecoText;
+                                                                                    if (inpNumero) inpNumero.value = numeroText;
+                                                                                    if (inpComplemento) inpComplemento.value = complementoText;
+                                                                                    if (inpObservacao) inpObservacao.value = observacaoText;
+        
+                                                                                    const formBox = document.getElementById(`form-endereco-${iwid}`);
+                                                                                    if (formBox) {
+                                                                                        formBox.style.display = 'block';
+                                                                                        formBox.dataset.editId = idEnd;
+                                                                                    }
+        
+                                                                                    const btnSalvar = document.getElementById(`btn-salvar-endereco-${iwid}`);
+                                                                                    if (btnSalvar) {
+                                                                                        btnSalvar.textContent = 'Atualizar';
+                                                                                        btnSalvar.dataset.editId = idEnd;
+                                                                                    }
+                                                                                });
+                                                                            });
+        
+                                                                            // Excluir
+                                                                            lista.querySelectorAll('.btn-del-end-alt').forEach(btnDel => {
+                                                                                btnDel.addEventListener('click', function (ev) {
+                                                                                    ev.preventDefault();
+                                                                                    ev.stopPropagation();
+        
+                                                                                    const idEnd = this.getAttribute('data-id');
+                                                                                    if (!idEnd) return;
+        
+                                                                                    if (!confirm('Deseja realmente excluir este endereço?')) return;
+        
+                                                                                    const btnRef = this;
+                                                                                    btnRef.disabled = true;
+                                                                                    btnRef.textContent = '...';
+        
+                                                                                    $.ajax({
+                                                                                        url: 'deletarEnderecoAlternativo.php',
+                                                                                        method: 'POST',
+                                                                                        dataType: 'json',
+                                                                                        data: { id: idEnd },
+                                                                                        success: function (resDel) {
+                                                                                            if (resDel && resDel.status === 'sucesso') {
+                                                                                                const card = btnRef.closest('.card-end-alt');
+                                                                                                if (card) card.remove();
+                                                                                                if (!lista.querySelector('.card-end-alt')) {
+                                                                                                    lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhum endereço alternativo cadastrado.</div>';
+                                                                                                }
+                                                                                            } else {
+                                                                                                alert((resDel && resDel.mensagem) ? resDel.mensagem : 'Falha ao excluir o endereço.');
+                                                                                                btnRef.disabled = false;
+                                                                                                btnRef.textContent = '×';
+                                                                                            }
+                                                                                        },
+                                                                                        error: function () {
+                                                                                            alert('Erro ao excluir o endereço.');
+                                                                                            btnRef.disabled = false;
+                                                                                            btnRef.textContent = '×';
+                                                                                        }
+                                                                                    });
+                                                                                });
+                                                                            });
+                                                                        } else {
+                                                                            lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhum endereço alternativo cadastrado.</div>';
+                                                                        }
+        
+                                                                        // Form (add/salvar/cancelar)
+                                                                        const btnAdd = document.getElementById(`btn-add-endereco-${iwid}`);
+                                                                        const formBox = document.getElementById(`form-endereco-${iwid}`);
+                                                                        const btnSalvar = document.getElementById(`btn-salvar-endereco-${iwid}`);
+                                                                        const btnCancelar = document.getElementById(`btn-cancelar-endereco-${iwid}`);
+        
+                                                                        if (btnAdd && formBox) {
+                                                                            btnAdd.onclick = function (ev) {
+                                                                                ev.preventDefault();
+        
+                                                                                const isShowing = formBox.style.display !== 'none' && formBox.style.display !== '';
+                                                                                formBox.style.display = isShowing ? 'none' : 'block';
+        
+                                                                                if (!isShowing) {
+                                                                                    delete formBox.dataset.editId;
+                                                                                    if (btnSalvar) {
+                                                                                        btnSalvar.textContent = 'Salvar';
+                                                                                        delete btnSalvar.dataset.editId;
+                                                                                    }
+        
+                                                                                    ['endereco', 'numero', 'complemento', 'observacao'].forEach(suf => {
+                                                                                        const inp = document.getElementById(`inp-${suf}-${iwid}`);
+                                                                                        if (inp) inp.value = '';
+                                                                                    });
+                                                                                }
+                                                                            };
+                                                                        }
+        
+                                                                        if (btnCancelar && formBox) {
+                                                                            btnCancelar.onclick = function (ev) {
+                                                                                ev.preventDefault();
+                                                                                formBox.style.display = 'none';
+                                                                                delete formBox.dataset.editId;
+        
+                                                                                if (btnSalvar) {
+                                                                                    btnSalvar.textContent = 'Salvar';
+                                                                                    delete btnSalvar.dataset.editId;
+                                                                                }
+        
+                                                                                ['endereco', 'numero', 'complemento', 'observacao'].forEach(suf => {
+                                                                                    const inp = document.getElementById(`inp-${suf}-${iwid}`);
+                                                                                    if (inp) inp.value = '';
+                                                                                });
+                                                                            };
+                                                                        }
+        
+                                                                        if (btnSalvar && formBox) {
+                                                                            btnSalvar.onclick = function (ev) {
+                                                                                ev.preventDefault();
+        
+                                                                                const endereco = (document.getElementById(`inp-endereco-${iwid}`) || {}).value || '';
+                                                                                const numero = (document.getElementById(`inp-numero-${iwid}`) || {}).value || '';
+                                                                                const complemento = (document.getElementById(`inp-complemento-${iwid}`) || {}).value || '';
+                                                                                const observacao = (document.getElementById(`inp-observacao-${iwid}`) || {}).value || '';
+        
+                                                                                if (!endereco.trim()) {
+                                                                                    alert('Informe o endereço.');
+                                                                                    return;
+                                                                                }
+        
+                                                                                const editId = (btnSalvar.dataset.editId || formBox.dataset.editId || '').trim();
+                                                                                const isEdit = !!editId;
+        
+                                                                                btnSalvar.disabled = true;
+                                                                                btnSalvar.textContent = isEdit ? 'Atualizando...' : 'Salvando...';
+        
+                                                                                const urlAjax = isEdit ? 'atualizarEnderecoAlternativo.php' : 'salvarEnderecoAlternativo.php';
+                                                                                const dataAjax = isEdit
+                                                                                    ? { id: editId, endereco: endereco, numero: numero, complemento: complemento, observacao: observacao }
+                                                                                    : { id_marcador: desenho.id, endereco: endereco, numero: numero, complemento: complemento, observacao: observacao };
+        
+                                                                                $.ajax({
+                                                                                    url: urlAjax,
+                                                                                    method: 'POST',
+                                                                                    dataType: 'json',
+                                                                                    data: dataAjax,
+                                                                                    success: function (res) {
+                                                                                        btnSalvar.disabled = false;
+                                                                                        btnSalvar.textContent = 'Salvar';
+        
+                                                                                        if (res && res.status === 'sucesso') {
+                                                                                            delete formBox.dataset.editId;
+                                                                                            delete btnSalvar.dataset.editId;
+        
+                                                                                            delete tabEnderecos.dataset.loaded;
+                                                                                            const btnEnd = document.querySelector(`button.info-tab-enderecos[data-iwid="${iwid}"]`);
+                                                                                            if (btnEnd) btnEnd.click();
+        
+                                                                                            formBox.style.display = 'none';
+                                                                                            ['endereco', 'numero', 'complemento', 'observacao'].forEach(suf => {
+                                                                                                const inp = document.getElementById(`inp-${suf}-${iwid}`);
+                                                                                                if (inp) inp.value = '';
+                                                                                            });
+                                                                                        } else {
+                                                                                            alert((res && res.mensagem) ? res.mensagem : (isEdit ? 'Falha ao atualizar o endereço.' : 'Falha ao salvar o endereço.'));
+                                                                                        }
+                                                                                    },
+                                                                                    error: function () {
+                                                                                        btnSalvar.disabled = false;
+                                                                                        btnSalvar.textContent = isEdit ? 'Atualizar' : 'Salvar';
+                                                                                        alert(isEdit ? 'Erro ao atualizar o endereço.' : 'Erro ao salvar o endereço.');
+                                                                                    }
+                                                                                });
+                                                                            };
+                                                                        }
+                                                                    },
+                                                                    error: function () {
+                                                                        const lista = document.querySelector(`#lista-enderecos-${iwid}`);
+                                                                        if (lista) {
+                                                                            lista.innerHTML = '<div style="padding: 10px; color: #a00;">Erro ao carregar endereços alternativos.</div>';
+                                                                        }
+                                                                    }
+                                                                });
+                                                            }
+                                                        }
+                                                    } else if (side === 'right') {
+                                                        const tabCadastro = document.querySelector(`#tab-cadastro-${iwid}`);
+                                                        const tabIptu = document.querySelector(`#tab-iptu-${iwid}`);
+        
+                                                        if (tabName === 'cadastro') {
+                                                            if (tabCadastro) tabCadastro.style.display = 'block';
+                                                            if (tabIptu) tabIptu.style.display = 'none';
+                                                        } else if (tabName === 'iptu') {
+                                                            if (tabCadastro) tabCadastro.style.display = 'none';
+                                                            if (tabIptu) tabIptu.style.display = 'block';
+        
+                                                            const imobIdAtual = desenho.dadosMorador ? (desenho.dadosMorador.imob_id || null) : null;
+        
+                                                            if (tabIptu && !tabIptu.dataset.loaded && imobIdAtual) {
+                                                                tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Carregando dados do IPTU...</div>';
+        
+                                                                $.ajax({
+                                                                    url: 'carregarIptus.php',
+                                                                    method: 'GET',
+                                                                    data: { imob_id: imobIdAtual },
+                                                                    dataType: 'json',
+                                                                    success: function (respIptu) {
+                                                                        tabIptu.dataset.loaded = 'true';
+        
+                                                                        let dadosArray = [];
+                                                                        let dadosArray2 = [];
+                                                                        let dicionario = {};
+                                                                        let dicionario2 = {};
+        
+                                                                        if (respIptu && typeof respIptu === 'object') {
+                                                                            if (respIptu.dados && Array.isArray(respIptu.dados)) {
+                                                                                dadosArray = respIptu.dados;
+                                                                                dadosArray2 = respIptu.dados2 || [];
+                                                                                dicionario = respIptu.dicionario || {};
+                                                                                dicionario2 = respIptu.dicionario2 || {};
+                                                                            } else if (Array.isArray(respIptu)) {
+                                                                                dadosArray = respIptu;
+                                                                            }
+                                                                        }
+        
+                                                                        if (dadosArray && dadosArray.length > 0) {
+                                                                            let content = '<div style="margin-bottom: 15px;">';
+        
+                                                                            dadosArray.forEach(function (iptu, index) {
+                                                                                if (index > 0) content += '<hr style="margin: 15px 0; border: 0; border-top: 1px solid #ddd;">';
+        
+                                                                                Object.keys(iptu).forEach(function (key) {
+                                                                                    const value = iptu[key];
+                                                                                    if (value !== null && value !== '' && key !== 'erro') {
+                                                                                        const fieldName = dicionario[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                                                                        content += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${fieldName}:</strong> <span style="color: #666;">${value}</span></div>`;
+                                                                                    }
+                                                                                });
+                                                                            });
+        
+                                                                            content += '</div>';
+        
+                                                                            // Composição da área construída
+                                                                            content += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                                                                            content += '<h4 style="margin-bottom: 10px; font-size: 14px; font-weight: bold; color: #333;">Composição da área construída</h4>';
+                                                                            content += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;">';
+        
+                                                                            content += '<thead><tr style="background-color: #f5f5f5; border-bottom: 2px solid #ddd;">';
+                                                                            const colunas = ['area', 'area_construida', 'utilizacao', 'construcao', 'classificacao'];
+                                                                            colunas.forEach(function (col) {
+                                                                                const label = dicionario2[col] || col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                                                                content += `<th style="padding: 8px; text-align: left; font-weight: bold; color: #333; border: 1px solid #ddd;">${label}</th>`;
+                                                                            });
+                                                                            content += '</tr></thead>';
+        
+                                                                            content += '<tbody>';
+                                                                            if (dadosArray2 && dadosArray2.length > 0) {
+                                                                                dadosArray2.forEach(function (area) {
+                                                                                    content += '<tr>';
+                                                                                    colunas.forEach(function (col) {
+                                                                                        const value = (area[col] !== null && area[col] !== '') ? area[col] : '';
+                                                                                        content += `<td style="padding: 8px; border: 1px solid #ddd; color: #666;">${value}</td>`;
+                                                                                    });
+                                                                                    content += '</tr>';
+                                                                                });
+                                                                            } else {
+                                                                                for (let i = 0; i < 3; i++) {
+                                                                                    content += '<tr>';
+                                                                                    colunas.forEach(function () {
+                                                                                        content += `<td style="padding: 8px; border: 1px solid #ddd;"></td>`;
+                                                                                    });
+                                                                                    content += '</tr>';
+                                                                                }
+                                                                            }
+                                                                            content += '</tbody>';
+        
+                                                                            content += '</table>';
+                                                                            content += '</div>';
+        
+                                                                            tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + content;
+                                                                        } else {
+                                                                            if (respIptu && respIptu.erro) {
+                                                                                tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #dc3545; padding: 10px;">Erro: ' + respIptu.erro + '<br><strong>ID buscado: ' + imobIdAtual + '</strong></div>';
+                                                                            } else {
+                                                                                tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #666; font-style: italic; padding: 10px;">Nenhum dado encontrado na tabela IPTU para este imóvel<br><strong>ID buscado: ' + imobIdAtual + '</strong></div>';
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    error: function (xhr, status, error) {
+                                                                        console.error('Erro ao carregar dados do IPTU:', error);
+                                                                        tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #dc3545; padding: 10px;">Erro ao carregar dados do IPTU. Tente novamente.<br><strong>ID buscado: ' + imobIdAtual + '</strong></div>';
+                                                                    }
+                                                                });
+                                                            } else if (!imobIdAtual && tabIptu) {
+                                                                tabIptu.innerHTML = gerarBotoesNavegacao(iwid) + '<div style="color: #666; font-style: italic; padding: 10px;">ID Imobiliário não disponível para carregar dados do IPTU</div>';
+                                                            }
+                                                        }
+                                                    }
+                                                });
+                                            });
+                                            
+                                            // Se não tem múltiplos cadastros, carrega automaticamente os endereços após 1 segundo
+                                            if (!temMultiplosCadastros) {
+                                                setTimeout(() => {
+                                                    const btnEnderecos = document.querySelector(`button.info-tab-enderecos[data-iwid="${currentInfoWindowId}"]`);
+                                                    if (btnEnderecos) {
+                                                        btnEnderecos.click();
+                                                    }
+                                                }, 1000);
+                                            }
+                                        }, 100);
+
+                                        // Docs (UMA vez)
+                                        const btnDocs = document.querySelector('.btn-docs-morador');
+                                        if (btnDocs) {
+                                            btnDocs.addEventListener('click', function (e) {
                                                 e.preventDefault();
                                                 e.stopPropagation();
-    
-                                                const direction = target.getAttribute('data-direction');
-                                                if (direction === 'anterior' && desenho.indiceMoradorAtual > 0) {
-                                                    desenho.indiceMoradorAtual--;
-                                                    atualizarConteudoMorador();
-                                                } else if (direction === 'proximo' && desenho.indiceMoradorAtual < todosMoradores.length - 1) {
-                                                    desenho.indiceMoradorAtual++;
-                                                    atualizarConteudoMorador();
+        
+                                                const dadosMoradorAtual2 = desenho.dadosMorador;
+                                                const imobId = dadosMoradorAtual2 ? dadosMoradorAtual2.imob_id : null;
+        
+                                                if (imobId) {
+                                                    if (typeof abrirModalGerenciarDocsImovel === 'function') {
+                                                        abrirModalGerenciarDocsImovel(imobId, {
+                                                            desenhos: desenho,
+                                                            cadastro: dadosMoradorAtual2
+                                                        });
+                                                    }
+                                                } else {
+                                                    const identificadorUnico = `${desenho.quarteirao}_${desenho.quadra}_${desenho.lote}`;
+                                                    if (typeof abrirModalGerenciarDocsImovel === 'function') {
+                                                        abrirModalGerenciarDocsImovel(identificadorUnico, {
+                                                            desenhos: desenho,
+                                                            cadastro: dadosMoradorAtual2
+                                                        });
+                                                    }
+                                                }
+                                            });
+                                        }
+        
+                                        // Navegação múltiplos cadastros (UMA vez)
+                                        if (temMultiplosCadastros && todosMoradores.length > 1) {
+                                            const identificarCamposComuns = (todos) => {
+                                                if (!todos || todos.length === 0) return {};
+                                                if (todos.length === 1) return {};
+        
+                                                const camposComuns = {};
+                                                const primeiro = todos[0];
+        
+                                                Object.keys(primeiro).forEach(campo => {
+                                                    const valorPrimeiro = primeiro[campo];
+                                                    const todosIguais = todos.every(m => {
+                                                        const valorAtual = m[campo];
+                                                        if (valorPrimeiro === null || valorPrimeiro === undefined || valorPrimeiro === '') {
+                                                            return (valorAtual === null || valorAtual === undefined || valorAtual === '');
+                                                        }
+                                                        return String(valorPrimeiro).trim() === String(valorAtual).trim();
+                                                    });
+        
+                                                    if (todosIguais && (valorPrimeiro !== null && valorPrimeiro !== undefined && valorPrimeiro !== '')) {
+                                                        camposComuns[campo] = valorPrimeiro;
+                                                    }
+                                                });
+        
+                                                return camposComuns;
+                                            };
+        
+                                            const atualizarConteudoMorador = () => {
+                                                const indiceAtual = desenho.indiceMoradorAtual;
+                                                const moradorAtual = todosMoradores[indiceAtual];
+                                                if (!moradorAtual) return;
+        
+                                                desenho.dadosMorador = moradorAtual;
+        
+                                                const camposComuns = identificarCamposComuns(todosMoradores);
+        
+                                                const contadores = document.querySelectorAll(`#contador-morador-${infoWindowId}`);
+                                                contadores.forEach(contador => {
+                                                    contador.textContent = `${indiceAtual + 1} de ${todosMoradores.length}`;
+                                                });
+        
+                                                let camposEspecificosHTML = '';
+                                                Object.keys(moradorAtual).forEach(campo => {
+                                                    if (Object.prototype.hasOwnProperty.call(camposComuns, campo)) return;
+        
+                                                    const valor = moradorAtual[campo];
+                                                    if (valor !== null && valor !== undefined && valor !== '') {
+                                                        const nomeCampo = campo.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                                        camposEspecificosHTML += `<div style="margin-bottom: 3px;"><strong style="font-weight: bold; color: #333;">${nomeCampo}:</strong> <span style="color: #666;">${valor}</span></div>`;
+                                                    }
+                                                });
+        
+                                                let botoesHTML = `
+                                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">
+                                                        <button type="button" class="btn-nav-morador btn-nav-anterior" data-iwid="${infoWindowId}" data-direction="anterior"
+                                                            style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: ${indiceAtual === 0 ? 'not-allowed' : 'pointer'}; opacity: ${indiceAtual === 0 ? '0.5' : '1'};"
+                                                            ${indiceAtual === 0 ? 'disabled' : ''}>
+                                                            ← Anterior
+                                                        </button>
+                                                        <span id="contador-morador-${infoWindowId}" style="font-size: 12px; color: #333; font-weight: bold;">
+                                                            ${indiceAtual + 1} de ${todosMoradores.length}
+                                                        </span>
+                                                        <button type="button" class="btn-nav-morador btn-nav-proximo" data-iwid="${infoWindowId}" data-direction="proximo"
+                                                            style="padding: 4px 10px; font-size: 12px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: ${indiceAtual === todosMoradores.length - 1 ? 'not-allowed' : 'pointer'}; opacity: ${indiceAtual === todosMoradores.length - 1 ? '0.5' : '1'};"
+                                                            ${indiceAtual === todosMoradores.length - 1 ? 'disabled' : ''}>
+                                                            Próximo →
+                                                        </button>
+                                                    </div>
+                                                `;
+        
+                                                const tabCadastro = document.querySelector(`#tab-cadastro-${infoWindowId}`);
+                                                if (tabCadastro) {
+                                                    tabCadastro.innerHTML = botoesHTML + (camposEspecificosHTML || '<p style="color: #888; font-style: italic;">Nenhum dado específico encontrado.</p>');
+                                                }
+        
+                                                const tabIptu = document.querySelector(`#tab-iptu-${infoWindowId}`);
+                                                if (tabIptu) {
+                                                    tabIptu.innerHTML = botoesHTML + '<div style="text-align: center; padding: 20px; color: #666;"><i class="fas fa-spinner fa-spin"></i> Clique na aba IPTU para carregar os dados</div>';
+                                                    delete tabIptu.dataset.loaded;
                                                 }
                                             };
-    
-                                            if (tabCadastroContainer) tabCadastroContainer.addEventListener('click', handlerNav);
-                                            if (tabIptuContainer) tabIptuContainer.addEventListener('click', handlerNav);
-    
-                                            atualizarConteudoMorador();
-                                        }, 100);
+        
+                                            setTimeout(function () {
+                                                const tabCadastroContainer = document.querySelector(`#tab-cadastro-${infoWindowId}`);
+                                                const tabIptuContainer = document.querySelector(`#tab-iptu-${infoWindowId}`);
+        
+                                                const handlerNav = function (e) {
+                                                    const target = e.target.closest('.btn-nav-morador');
+                                                    if (!target) return;
+        
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+        
+                                                    const direction = target.getAttribute('data-direction');
+                                                    if (direction === 'anterior' && desenho.indiceMoradorAtual > 0) {
+                                                        desenho.indiceMoradorAtual--;
+                                                        atualizarConteudoMorador();
+                                                    } else if (direction === 'proximo' && desenho.indiceMoradorAtual < todosMoradores.length - 1) {
+                                                        desenho.indiceMoradorAtual++;
+                                                        atualizarConteudoMorador();
+                                                    }
+                                                };
+        
+                                                if (tabCadastroContainer) tabCadastroContainer.addEventListener('click', handlerNav);
+                                                if (tabIptuContainer) tabIptuContainer.addEventListener('click', handlerNav);
+        
+                                                atualizarConteudoMorador();
+                                            }, 100);
+                                        }
                                     }
-                                }
-                            });
+                                });
+                            }
                         });
     
                         arrayCamadas['marcador_quadra'].push(marker);

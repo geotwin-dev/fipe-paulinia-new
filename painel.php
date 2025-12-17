@@ -84,6 +84,7 @@ if (isset($_GET['pesquisar'])) {
         $cacheData = null;
         $allResults = null;
         $allDesenhosPorImobId = null;
+        $marcadoresOrfaos = []; // Array para armazenar marcadores órfãos (apenas para cadastros_nao_desenhados)
         
         if (file_exists($file)) {
             $cacheData = json_decode(file_get_contents($file), true);
@@ -117,6 +118,10 @@ if (isset($_GET['pesquisar'])) {
                     $usarCache = true;
                     $allResults = $cacheData['results']['allResults'];
                     $allDesenhosPorImobId = $cacheData['results']['allDesenhosPorImobId'];
+                    // Carregar marcadores órfãos do cache se existirem (apenas para cadastros_nao_desenhados)
+                    if ($type === 'cadastros_nao_desenhados' && isset($cacheData['results']['marcadoresOrfaos'])) {
+                        $marcadoresOrfaos = $cacheData['results']['marcadoresOrfaos'];
+                    }
                 }
             }
         }
@@ -127,27 +132,59 @@ if (isset($_GET['pesquisar'])) {
         
         // Só construir query SQL se não usar cache (pesquisa diferente ou sem cache)
         if (!$usarCache) {
-            // Construir query SQL baseada no tipo de pesquisa usando JOIN otimizado
-            // Selecionar todas as colunas do cadastro e colunas necessárias do desenhos
-            $sql = "SELECT cad.*, 
-                           des.id as desenho_id, 
-                           des.tipo as desenho_tipo, 
-                           des.coordenadas as desenho_coordenadas, 
-                           des.quarteirao as desenho_quarteirao, 
-                           des.quadra as desenho_quadra, 
-                           des.lote as desenho_lote, 
-                           des.cor_usuario as desenho_cor_usuario, 
-                           des.cor as desenho_cor
-                    FROM cadastro cad 
-                    LEFT JOIN desenhos des ON (des.camada = 'poligono lote' OR des.camada = 'poligono_lote') 
-                                          AND des.status > 0 
-                                          AND des.quarteirao = cad.cara_quarteirao 
-                                          AND des.quadra = cad.quadra 
-                                          AND des.lote = cad.lote
-                    WHERE cad.imob_id = cad.imob_id_principal";
-            $params = [];
+            // Para cadastros_nao_desenhados, usar query especial sem JOIN
+            if ($type === 'cadastros_nao_desenhados') {
+                $sql = "SELECT cad.* 
+                        FROM cadastro cad 
+                        WHERE cad.imob_id = cad.imob_id_principal 
+                        AND NOT EXISTS ( 
+                            SELECT 1 FROM desenhos des 
+                            WHERE des.camada = 'marcador_quadra' 
+                            AND des.quarteirao = cad.cara_quarteirao 
+                            AND des.quadra = cad.quadra 
+                            AND des.lote = cad.lote 
+                        )";
+                $params = [];
+                
+                // Adicionar condição de loteamento se preenchido
+                if (!empty($values['loteamento'])) {
+                    $sql .= " AND cad.nome_loteamento LIKE :loteamento";
+                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                }
+                
+                // Adicionar condição de quarteirão se preenchido (tratar como int)
+                if (!empty($values['quarteirao'])) {
+                    $quarteiraoInt = intval($values['quarteirao']);
+                    if ($quarteiraoInt > 0) {
+                        $sql .= " AND cad.cara_quarteirao = :quarteirao";
+                        $params[':quarteirao'] = $quarteiraoInt;
+                    }
+                }
+                
+                $sql .= " ORDER BY cad.nome_loteamento, cad.cara_quarteirao";
+                // Não há switch para este tipo, pular direto para execução
+            } else {
+                // Construir query SQL baseada no tipo de pesquisa usando JOIN otimizado
+                // Selecionar todas as colunas do cadastro e colunas necessárias do desenhos
+                $sql = "SELECT cad.*, 
+                               des.id as desenho_id, 
+                               des.tipo as desenho_tipo, 
+                               des.coordenadas as desenho_coordenadas, 
+                               des.quarteirao as desenho_quarteirao, 
+                               des.quadra as desenho_quadra, 
+                               des.lote as desenho_lote, 
+                               des.cor_usuario as desenho_cor_usuario, 
+                               des.cor as desenho_cor
+                        FROM cadastro cad 
+                        LEFT JOIN desenhos des ON (des.camada = 'poligono lote' OR des.camada = 'poligono_lote') 
+                                              AND des.status > 0 
+                                              AND des.quarteirao = cad.cara_quarteirao 
+                                              AND des.quadra = cad.quadra 
+                                              AND des.lote = cad.lote
+                        WHERE cad.imob_id = cad.imob_id_principal";
+                $params = [];
 
-            switch ($type) {
+                switch ($type) {
             case 'endereco_numero':
                 if (!empty($values['endereco'])) {
                     $sql .= " AND cad.logradouro LIKE :endereco";
@@ -307,6 +344,7 @@ if (isset($_GET['pesquisar'])) {
                 echo json_encode(['error' => 'Tipo de pesquisa não implementado']);
                 exit;
             }
+            }
         }
 
         // Paginação
@@ -331,22 +369,51 @@ if (isset($_GET['pesquisar'])) {
             foreach ($allDesenhosPorImobId as $imobDesenhos) {
                 $desenhos = array_merge($desenhos, $imobDesenhos);
             }
+            
+            // Marcadores órfãos já foram carregados do cache acima (se existirem)
         } else {
             // Fazer pesquisa no banco usando JOIN otimizado
-            // Primeiro, contar o total de resultados (sem JOIN, apenas cadastro com mesmos filtros)
-            // Extrair a parte WHERE da query (tudo após WHERE até o fim, removendo possíveis ORDER BY)
-            $wherePart = '';
-            if (preg_match('/WHERE\s+(.+?)(?:\s+ORDER\s+BY|$)/is', $sql, $matches)) {
-                $wherePart = trim($matches[1]);
-            } else if (preg_match('/WHERE\s+(.+)$/is', $sql, $matches)) {
-                $wherePart = trim($matches[1]);
+            // Primeiro, contar o total de resultados
+            // Para cadastros_nao_desenhados, usar NOT EXISTS
+            if ($type === 'cadastros_nao_desenhados') {
+                $countSql = "SELECT COUNT(*) as total 
+                            FROM cadastro cad 
+                            WHERE cad.imob_id = cad.imob_id_principal 
+                            AND NOT EXISTS ( 
+                                SELECT 1 FROM desenhos des 
+                                WHERE des.camada = 'marcador_quadra' 
+                                AND des.quarteirao = cad.cara_quarteirao 
+                                AND des.quadra = cad.quadra 
+                                AND des.lote = cad.lote 
+                            )";
+                
+                // Adicionar condição de loteamento se preenchido
+                if (!empty($values['loteamento'])) {
+                    $countSql .= " AND cad.nome_loteamento LIKE :loteamento";
+                }
+                
+                // Adicionar condição de quarteirão se preenchido (tratar como int)
+                if (!empty($values['quarteirao'])) {
+                    $quarteiraoInt = intval($values['quarteirao']);
+                    if ($quarteiraoInt > 0) {
+                        $countSql .= " AND cad.cara_quarteirao = :quarteirao";
+                    }
+                }
+            } else {
+                // Extrair a parte WHERE da query (tudo após WHERE até o fim, removendo possíveis ORDER BY)
+                $wherePart = '';
+                if (preg_match('/WHERE\s+(.+?)(?:\s+ORDER\s+BY|$)/is', $sql, $matches)) {
+                    $wherePart = trim($matches[1]);
+                } else if (preg_match('/WHERE\s+(.+)$/is', $sql, $matches)) {
+                    $wherePart = trim($matches[1]);
+                }
+                
+                if (empty($wherePart)) {
+                    $wherePart = '1=1';
+                }
+                
+                $countSql = "SELECT COUNT(*) as total FROM cadastro cad WHERE " . $wherePart;
             }
-            
-            if (empty($wherePart)) {
-                $wherePart = '1=1';
-            }
-            
-            $countSql = "SELECT COUNT(*) as total FROM cadastro cad WHERE " . $wherePart;
             
             $countStmt = $pdo->prepare($countSql);
             foreach ($params as $key => $value) {
@@ -355,7 +422,7 @@ if (isset($_GET['pesquisar'])) {
             $countStmt->execute();
             $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
 
-            // Buscar TODOS os resultados com JOIN (sem paginação) para cache
+            // Buscar TODOS os resultados (sem paginação) para cache
             $stmtTodos = $pdo->prepare($sql);
             foreach ($params as $key => $value) {
                 $stmtTodos->bindValue($key, $value);
@@ -363,12 +430,36 @@ if (isset($_GET['pesquisar'])) {
             $stmtTodos->execute();
             $allRowsWithDesenhos = $stmtTodos->fetchAll(PDO::FETCH_ASSOC);
             
-            // Processar resultados do JOIN: separar dados do cadastro dos desenhos
-            $allResults = []; // Array de registros únicos do cadastro
-            $allDesenhosPorImobId = []; // Mapa de imob_id => array de desenhos (TODOS)
-            $seenImobIds = []; // Para rastrear quais imob_ids já foram processados
-            
-            foreach ($allRowsWithDesenhos as $row) {
+            // Para cadastros_nao_desenhados, os resultados já vêm diretos (sem JOIN)
+            if ($type === 'cadastros_nao_desenhados') {
+                $allResults = $allRowsWithDesenhos;
+                $allDesenhosPorImobId = []; // Não há desenhos para este tipo de pesquisa
+                
+                // Buscar quarteirões distintos dos marcadores "órfãos" (marcadores com quarteirao mas sem quadra e lote)
+                $quarteiroesOrfaosSql = "SELECT DISTINCT quarteirao
+                                       FROM desenhos
+                                       WHERE camada = 'marcador_quadra'
+                                       AND status = 1
+                                       AND TRIM(quarteirao) != ''
+                                       AND (quadra IS NULL OR quadra = '' OR quadra = '0' OR TRIM(quadra) = '')
+                                       AND (lote IS NULL OR lote = '' OR lote = '0' OR TRIM(lote) = '')";
+                $quarteiroesOrfaosStmt = $pdo->prepare($quarteiroesOrfaosSql);
+                $quarteiroesOrfaosStmt->execute();
+                $quarteiroesOrfaos = $quarteiroesOrfaosStmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // Converter para array simples de quarteirões (strings)
+                $marcadoresOrfaos = array_map(function($row) {
+                    return $row['quarteirao'];
+                }, $quarteiroesOrfaos);
+            } else {
+                // Para outros tipos, não há quarteirões órfãos
+                $marcadoresOrfaos = [];
+                // Processar resultados do JOIN: separar dados do cadastro dos desenhos
+                $allResults = []; // Array de registros únicos do cadastro
+                $allDesenhosPorImobId = []; // Mapa de imob_id => array de desenhos (TODOS)
+                $seenImobIds = []; // Para rastrear quais imob_ids já foram processados
+                
+                foreach ($allRowsWithDesenhos as $row) {
                 $imob_id = isset($row['imob_id']) ? $row['imob_id'] : null;
                 
                 // Se é a primeira vez que vemos este imob_id, adicionar aos resultados
@@ -383,7 +474,7 @@ if (isset($_GET['pesquisar'])) {
                     $allResults[] = $cadastroRow;
                     $seenImobIds[$imob_id] = true;
                     $allDesenhosPorImobId[$imob_id] = [];
-                }
+                        }
                 
                 // Se há um desenho associado (desenho_id não é NULL)
                 if ($imob_id && isset($row['desenho_id']) && $row['desenho_id'] !== null) {
@@ -409,17 +500,18 @@ if (isset($_GET['pesquisar'])) {
                                 break;
                             }
                         }
-                    }
-                    
+                }
+                
                     if (!$desenhoExists) {
                         $allDesenhosPorImobId[$imob_id][] = $desenho;
                     }
+                }
                 }
             }
             
             // Aplicar paginação APENAS na exibição dos dados da tabela
             $results = array_slice($allResults, $offset, $limit);
-            
+                            
             // IMPORTANTE: Retornar TODOS os desenhos, não apenas os da página atual
             // Os desenhos devem aparecer todos no mapa, independente da paginação
             $desenhosPorImobId = $allDesenhosPorImobId; // TODOS os desenhos de TODOS os resultados
@@ -445,7 +537,8 @@ if (isset($_GET['pesquisar'])) {
                 'usuario_email' => isset($_SESSION['usuario']) && is_array($_SESSION['usuario']) && isset($_SESSION['usuario'][1]) ? $_SESSION['usuario'][1] : null,
                 'results' => [
                     'allResults' => $allResults, // TODOS os resultados
-                    'allDesenhosPorImobId' => $allDesenhosPorImobId // TODOS os desenhos
+                    'allDesenhosPorImobId' => $allDesenhosPorImobId, // TODOS os desenhos
+                    'marcadoresOrfaos' => $marcadoresOrfaos // Marcadores órfãos (apenas para cadastros_nao_desenhados)
                 ]
             ];
             file_put_contents($file, json_encode($cacheData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
@@ -460,7 +553,8 @@ if (isset($_GET['pesquisar'])) {
             'totalPages' => $totalPages,
             'dados' => $results,
             'desenhos' => $desenhos,
-            'desenhosPorImobId' => $desenhosPorImobId // Mapa de imob_id => desenhos
+            'desenhosPorImobId' => $desenhosPorImobId, // Mapa de imob_id => desenhos
+            'marcadoresOrfaos' => $marcadoresOrfaos // Marcadores órfãos (apenas para cadastros_nao_desenhados)
         ]);
     } catch (PDOException $e) {
         echo json_encode([
@@ -680,6 +774,29 @@ if (isset($_GET['pesquisar'])) {
             display: inline-flex;
             align-items: center;
             gap: 8px;
+        }
+
+        /* Div flutuante para contador de marcadores órfãos */
+        #marcadoresOrfaosCounter {
+            position: absolute;
+            top: 80px;
+            left: 15px;
+            z-index: 1000;
+            background: rgba(255, 0, 0, 0.9);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            font-weight: bold;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        #marcadoresOrfaosCounter i {
+            font-size: 18px;
         }
 
         /* Container da tabela de resultados - QUADRO SEPARADO */
@@ -929,6 +1046,12 @@ if (isset($_GET['pesquisar'])) {
 
         <div id="map"></div>
 
+        <!-- Div flutuante para contador de quarteirões órfãos -->
+        <div id="marcadoresOrfaosCounter" style="display: none;">
+            <i class="fas fa-map-marked-alt"></i>
+            <span id="marcadoresOrfaosCount">0</span> quarteirões
+        </div>
+
         <!-- Quadrinho de Pesquisa -->
         <div id="searchBox">
             <div id="searchControls">
@@ -1018,6 +1141,8 @@ if (isset($_GET['pesquisar'])) {
         let quadriculasRotulos = [];
         let searchResultPolygons = []; // Array para armazenar polígonos dos resultados da pesquisa
         let polygonsByImobId = {}; // Mapa de imob_id => array de polígonos
+        let searchResultMarkers = []; // Array para armazenar marcadores órfãos dos resultados da pesquisa
+        let quarteiraoPolygon = null; // Polígono do quarteirão pesquisado (do JSON)
         let selectedPolygon = null;
         let selectedQuadricula = null;
         let limitePolyline = null;
@@ -1499,8 +1624,72 @@ if (isset($_GET['pesquisar'])) {
 
         // =================== Pesquisa dinâmica ===================
 
-        // Opções de pesquisa
+        // Opções de pesquisa (ordenadas alfabeticamente)
         const searchOptions = [{
+                value: 'area_construida',
+                label: 'Área Construída',
+                fields: [{
+                        name: 'area_construida_min',
+                        placeholder: 'Área Mínima (m²)'
+                    },
+                    {
+                        name: 'area_construida_max',
+                        placeholder: 'Área Máxima (m²)'
+                    }
+                ]
+            },
+            {
+                value: 'area_terreno',
+                label: 'Área do Terreno',
+                fields: [{
+                        name: 'area_terreno_min',
+                        placeholder: 'Área Mínima (m²)'
+                    },
+                    {
+                        name: 'area_terreno_max',
+                        placeholder: 'Área Máxima (m²)'
+                    }
+                ]
+            },
+            {
+                value: 'bairro',
+                label: 'Bairro',
+                fields: [{
+                    name: 'bairro',
+                    placeholder: 'Bairro'
+                }]
+            },
+            {
+                value: 'cadastros_nao_desenhados',
+                label: 'Cadastros não desenhados',
+                fields: [
+                    {
+                        name: 'loteamento',
+                        placeholder: 'Loteamento (opcional)'
+                    },
+                    {
+                        name: 'quarteirao',
+                        placeholder: 'Quarteirão (opcional)'
+                    }
+                ]
+            },
+            {
+                value: 'cat_via',
+                label: 'Categoria de Via',
+                fields: [{
+                    name: 'cat_via',
+                    placeholder: 'Categoria de Via'
+                }]
+            },
+            {
+                value: 'cnpj',
+                label: 'CNPJ',
+                fields: [{
+                    name: 'cnpj',
+                    placeholder: 'CNPJ'
+                }]
+            },
+            {
                 value: 'endereco_numero',
                 label: 'Endereço e Número',
                 fields: [{
@@ -1510,6 +1699,60 @@ if (isset($_GET['pesquisar'])) {
                     {
                         name: 'numero',
                         placeholder: 'Número'
+                    }
+                ]
+            },
+            {
+                value: 'imob_id',
+                label: 'ID Imobiliário',
+                fields: [{
+                    name: 'imob_id',
+                    placeholder: 'ID Imobiliário'
+                }]
+            },
+            {
+                value: 'inscricao',
+                label: 'Inscrição',
+                fields: [{
+                    name: 'inscricao',
+                    placeholder: 'Inscrição'
+                }]
+            },
+            {
+                value: 'loteamento',
+                label: 'Loteamento',
+                fields: [{
+                    name: 'loteamento',
+                    placeholder: 'Loteamento'
+                }]
+            },
+            {
+                value: 'loteamento_quadra',
+                label: 'Loteamento e Quadra',
+                fields: [{
+                        name: 'loteamento',
+                        placeholder: 'Loteamento'
+                    },
+                    {
+                        name: 'quadra',
+                        placeholder: 'Quadra'
+                    }
+                ]
+            },
+            {
+                value: 'loteamento_quadra_lote',
+                label: 'Loteamento, Quadra e Lote',
+                fields: [{
+                        name: 'loteamento',
+                        placeholder: 'Loteamento'
+                    },
+                    {
+                        name: 'quadra',
+                        placeholder: 'Quadra'
+                    },
+                    {
+                        name: 'lote',
+                        placeholder: 'Lote'
                     }
                 ]
             },
@@ -1552,49 +1795,11 @@ if (isset($_GET['pesquisar'])) {
                 ]
             },
             {
-                value: 'loteamento',
-                label: 'Loteamento',
+                value: 'tipo_edificacao',
+                label: 'Tipo de Edificação',
                 fields: [{
-                    name: 'loteamento',
-                    placeholder: 'Loteamento'
-                }]
-            },
-            {
-                value: 'loteamento_quadra',
-                label: 'Loteamento e Quadra',
-                fields: [{
-                        name: 'loteamento',
-                        placeholder: 'Loteamento'
-                    },
-                    {
-                        name: 'quadra',
-                        placeholder: 'Quadra'
-                    }
-                ]
-            },
-            {
-                value: 'loteamento_quadra_lote',
-                label: 'Loteamento, Quadra e Lote',
-                fields: [{
-                        name: 'loteamento',
-                        placeholder: 'Loteamento'
-                    },
-                    {
-                        name: 'quadra',
-                        placeholder: 'Quadra'
-                    },
-                    {
-                        name: 'lote',
-                        placeholder: 'Lote'
-                    }
-                ]
-            },
-            {
-                value: 'cnpj',
-                label: 'CNPJ',
-                fields: [{
-                    name: 'cnpj',
-                    placeholder: 'CNPJ'
+                    name: 'tipo_edificacao',
+                    placeholder: 'Tipo de Edificação'
                 }]
             },
             {
@@ -1606,78 +1811,12 @@ if (isset($_GET['pesquisar'])) {
                 }]
             },
             {
-                value: 'bairro',
-                label: 'Bairro',
-                fields: [{
-                    name: 'bairro',
-                    placeholder: 'Bairro'
-                }]
-            },
-            {
-                value: 'inscricao',
-                label: 'Inscrição',
-                fields: [{
-                    name: 'inscricao',
-                    placeholder: 'Inscrição'
-                }]
-            },
-            {
-                value: 'imob_id',
-                label: 'ID Imobiliário',
-                fields: [{
-                    name: 'imob_id',
-                    placeholder: 'ID Imobiliário'
-                }]
-            },
-            {
                 value: 'zona',
                 label: 'Zona',
                 fields: [{
                     name: 'zona',
                     placeholder: 'Zona'
                 }]
-            },
-            {
-                value: 'cat_via',
-                label: 'Categoria de Via',
-                fields: [{
-                    name: 'cat_via',
-                    placeholder: 'Categoria de Via'
-                }]
-            },
-            {
-                value: 'tipo_edificacao',
-                label: 'Tipo de Edificação',
-                fields: [{
-                    name: 'tipo_edificacao',
-                    placeholder: 'Tipo de Edificação'
-                }]
-            },
-            {
-                value: 'area_construida',
-                label: 'Área Construída',
-                fields: [{
-                        name: 'area_construida_min',
-                        placeholder: 'Área Mínima (m²)'
-                    },
-                    {
-                        name: 'area_construida_max',
-                        placeholder: 'Área Máxima (m²)'
-                    }
-                ]
-            },
-            {
-                value: 'area_terreno',
-                label: 'Área do Terreno',
-                fields: [{
-                        name: 'area_terreno_min',
-                        placeholder: 'Área Mínima (m²)'
-                    },
-                    {
-                        name: 'area_terreno_max',
-                        placeholder: 'Área Máxima (m²)'
-                    }
-                ]
             }
         ];
 
@@ -1757,7 +1896,7 @@ if (isset($_GET['pesquisar'])) {
                     currentPage = result.page;
                     totalPages = result.totalPages;
                     totalResults = result.total;
-                    displaySearchResults(result.dados, result.total, result.page, result.totalPages, result.desenhos || [], result.desenhosPorImobId || {});
+                    displaySearchResults(result.dados, result.total, result.page, result.totalPages, result.desenhos || [], result.desenhosPorImobId || {}, result.marcadoresOrfaos || []);
                 }
             } catch (err) {
                 alert('Erro ao realizar pesquisa: ' + err.message);
@@ -1803,6 +1942,10 @@ if (isset($_GET['pesquisar'])) {
                 buildSearchInputs(select.value);
                 // Sincronizar largura após mudar os inputs
                 setTimeout(syncToggleButtonWidth, 0);
+                // Limpar marcadores órfãos quando mudar o tipo de pesquisa
+                limparMarcadoresOrfaos();
+                // Limpar polígono do quarteirão quando mudar o tipo de pesquisa
+                limparQuarteiraoPolygon();
             });
 
             // Botão pesquisar
@@ -1845,7 +1988,7 @@ if (isset($_GET['pesquisar'])) {
                         currentPage = result.page;
                         totalPages = result.totalPages;
                         totalResults = result.total;
-                        displaySearchResults(result.dados, result.total, result.page, result.totalPages, result.desenhos || [], result.desenhosPorImobId || {});
+                        displaySearchResults(result.dados, result.total, result.page, result.totalPages, result.desenhos || [], result.desenhosPorImobId || {}, result.marcadoresOrfaos || []);
                     }
                 } catch (err) {
                     console.error('Erro ao realizar pesquisa:', err);
@@ -1907,6 +2050,13 @@ if (isset($_GET['pesquisar'])) {
                     input.min = '0';
                 }
                 
+                // Definir tipo numérico para campo quarteirão (quando for cadastros_nao_desenhados)
+                if (field.name === 'quarteirao' && selectedValue === 'cadastros_nao_desenhados') {
+                    input.type = 'number';
+                    input.min = '1';
+                    input.step = '1';
+                }
+                
                 if (savedValues[field.name]) input.value = savedValues[field.name];
                 container.appendChild(input);
             });
@@ -1961,6 +2111,382 @@ if (isset($_GET['pesquisar'])) {
             });
             searchResultPolygons = [];
             polygonsByImobId = {};
+        }
+
+        // Função para limpar polígono do quarteirão pesquisado
+        function limparQuarteiraoPolygon() {
+            if (quarteiraoPolygon && quarteiraoPolygon.setMap) {
+                quarteiraoPolygon.setMap(null);
+            }
+            quarteiraoPolygon = null;
+        }
+
+        // Função para limpar marcadores/polígonos órfãos dos resultados anteriores
+        function limparMarcadoresOrfaos() {
+            searchResultMarkers.forEach(item => {
+                if (item && item.setMap) {
+                    item.setMap(null);
+                }
+            });
+            searchResultMarkers = [];
+            // Ocultar contador quando não houver marcadores
+            const counterDiv = document.getElementById('marcadoresOrfaosCounter');
+            if (counterDiv) {
+                counterDiv.style.display = 'none';
+            }
+        }
+
+        // Função para limpar polígonos de quarteirões desenhados (não órfãos, mas dos resultados)
+        function limparQuarteiroesDoJSON() {
+            // Limpar apenas os polígonos que foram adicionados via desenharQuarteiroesDoJSON
+            // Eles estão em searchResultMarkers, então limparMarcadoresOrfaos já faz isso
+            // Mas vamos garantir que não conflite com o polígono único do quarteirão pesquisado
+        }
+
+        // Variável global para armazenar o JSON de quarteirões
+        let quarteiroesJSON = null;
+
+        // Função para normalizar número de quarteirão (41 = 0041 = '41' = '0041')
+        function normalizarQuarteirao(quarteirao) {
+            if (!quarteirao) return null;
+            // Converter para string e remover espaços
+            let str = String(quarteirao).trim();
+            // Remover zeros à esquerda
+            let num = parseInt(str, 10);
+            if (isNaN(num)) return str; // Se não for número, retornar string original
+            return num.toString();
+        }
+
+        // Função para buscar quarteirão no JSON (com busca flexível)
+        function buscarQuarteiraoNoJSON(quarteirao, jsonData) {
+            if (!quarteirao || !jsonData || !jsonData.features) return null;
+            
+            const quarteiraoNormalizado = normalizarQuarteirao(quarteirao);
+            
+            // Buscar no JSON
+            for (let feature of jsonData.features) {
+                if (feature.properties && feature.properties.name) {
+                    const nameNormalizado = normalizarQuarteirao(feature.properties.name);
+                    if (nameNormalizado === quarteiraoNormalizado) {
+                        return feature;
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Função para carregar JSON de quarteirões
+        async function carregarQuarteiroesJSON() {
+            if (quarteiroesJSON) {
+                return quarteiroesJSON; // Já carregado
+            }
+            
+            try {
+                const response = await fetch('painel_quarteiroes.json');
+                if (!response.ok) {
+                    console.error('Erro ao carregar JSON de quarteirões:', response.statusText);
+                    return null;
+                }
+                quarteiroesJSON = await response.json();
+                return quarteiroesJSON;
+            } catch (error) {
+                console.error('Erro ao carregar JSON de quarteirões:', error);
+                return null;
+            }
+        }
+
+        // Função para desenhar polígonos de quarteirões órfãos no mapa
+        async function desenharMarcadoresOrfaos(quarteiroesOrfaos) {
+            if (!map || !quarteiroesOrfaos || quarteiroesOrfaos.length === 0) {
+                return;
+            }
+
+            // Limpar marcadores anteriores (agora são polígonos)
+            limparMarcadoresOrfaos();
+
+            // Carregar JSON de quarteirões
+            const jsonData = await carregarQuarteiroesJSON();
+            if (!jsonData) {
+                console.error('Não foi possível carregar o JSON de quarteirões');
+                return;
+            }
+
+            const bounds = new google.maps.LatLngBounds();
+            let poligonosDesenhados = 0;
+
+            // Para cada quarteirão órfão, buscar no JSON e desenhar
+            for (let quarteirao of quarteiroesOrfaos) {
+                try {
+                    // Buscar quarteirão no JSON
+                    const feature = buscarQuarteiraoNoJSON(quarteirao, jsonData);
+                    
+                    if (!feature || !feature.geometry || !feature.geometry.coordinates) {
+                        console.warn('Quarteirão não encontrado no JSON:', quarteirao);
+                        continue;
+                    }
+
+                    // Obter coordenadas (formato GeoJSON: [lng, lat])
+                    const coordinates = feature.geometry.coordinates;
+                    if (!Array.isArray(coordinates) || !Array.isArray(coordinates[0])) {
+                        console.warn('Coordenadas inválidas para quarteirão:', quarteirao);
+                        continue;
+                    }
+
+                    // Converter coordenadas GeoJSON [lng, lat] para formato Google Maps {lat, lng}
+                    const paths = coordinates[0].map(coord => {
+                        if (Array.isArray(coord) && coord.length >= 2) {
+                            return {
+                                lat: parseFloat(coord[1]), // GeoJSON usa [lng, lat]
+                                lng: parseFloat(coord[0])
+                            };
+                        }
+                        return null;
+                    }).filter(coord => coord !== null && !isNaN(coord.lat) && !isNaN(coord.lng));
+
+                    if (paths.length < 3) {
+                        console.warn('Polígono com menos de 3 pontos válidos para quarteirão:', quarteirao);
+                        continue;
+                    }
+
+                    // Obter cor do JSON (properties.fill_color)
+                    let cor = '#FF0000'; // Padrão: vermelho
+                    if (feature.properties && feature.properties.fill_color) {
+                        cor = String(feature.properties.fill_color).trim();
+                        // Garantir que começa com #
+                        if (!cor.startsWith('#')) {
+                            cor = '#' + cor;
+                        }
+                    }
+
+                    // Criar polígono
+                    const polygon = new google.maps.Polygon({
+                        paths: paths,
+                        strokeColor: cor,
+                        strokeOpacity: 1,
+                        strokeWeight: 3,
+                        fillColor: cor,
+                        fillOpacity: 0.35,
+                        map: map,
+                        zIndex: 1001, // Z-index alto para ficar acima de outros elementos
+                        clickable: false
+                    });
+
+                    // Adicionar tooltip ao polígono
+                    const quarteiraoNome = feature.properties && feature.properties.name ? feature.properties.name : quarteirao;
+                    polygon.quarteirao = quarteiraoNome;
+
+                    // Adicionar ao array (usando searchResultMarkers para manter compatibilidade com limparMarcadoresOrfaos)
+                    searchResultMarkers.push(polygon);
+
+                    // Adicionar ao bounds para ajustar o zoom
+                    paths.forEach(path => bounds.extend(path));
+                    poligonosDesenhados++;
+
+                } catch (error) {
+                    console.error('Erro ao desenhar polígono do quarteirão ' + quarteirao + ':', error);
+                }
+            }
+
+            // Ajustar zoom do mapa para mostrar todos os polígonos (se houver outros elementos, não forçar zoom)
+            if (poligonosDesenhados > 0 && !bounds.isEmpty() && searchResultPolygons.length === 0) {
+                // Só ajustar zoom se não houver polígonos de pesquisa (para não conflitar)
+                map.fitBounds(bounds);
+                const padding = 50;
+                map.fitBounds(bounds, padding);
+            }
+
+            // Atualizar contador de marcadores órfãos (agora são polígonos)
+            const counterDiv = document.getElementById('marcadoresOrfaosCounter');
+            const countSpan = document.getElementById('marcadoresOrfaosCount');
+            if (counterDiv && countSpan) {
+                if (poligonosDesenhados > 0) {
+                    countSpan.textContent = poligonosDesenhados.toLocaleString('pt-BR');
+                    counterDiv.style.display = 'flex';
+                } else {
+                    counterDiv.style.display = 'none';
+                }
+            }
+        }
+
+        // Função para desenhar polígonos de múltiplos quarteirões (do JSON)
+        async function desenharQuarteiroesDoJSON(quarteiroes) {
+            if (!map || !quarteiroes || quarteiroes.length === 0) {
+                return;
+            }
+
+            // Carregar JSON de quarteirões
+            const jsonData = await carregarQuarteiroesJSON();
+            if (!jsonData) {
+                console.error('Não foi possível carregar o JSON de quarteirões');
+                return;
+            }
+
+            const bounds = new google.maps.LatLngBounds();
+            let poligonosDesenhados = 0;
+
+            // Para cada quarteirão, buscar no JSON e desenhar
+            for (let quarteirao of quarteiroes) {
+                try {
+                    // Buscar quarteirão no JSON
+                    const feature = buscarQuarteiraoNoJSON(quarteirao, jsonData);
+                    
+                    if (!feature || !feature.geometry || !feature.geometry.coordinates) {
+                        console.warn('Quarteirão não encontrado no JSON:', quarteirao);
+                        continue;
+                    }
+
+                    // Obter coordenadas (formato GeoJSON: [lng, lat])
+                    const coordinates = feature.geometry.coordinates;
+                    if (!Array.isArray(coordinates) || !Array.isArray(coordinates[0])) {
+                        console.warn('Coordenadas inválidas para quarteirão:', quarteirao);
+                        continue;
+                    }
+
+                    // Converter coordenadas GeoJSON [lng, lat] para formato Google Maps {lat, lng}
+                    const paths = coordinates[0].map(coord => {
+                        if (Array.isArray(coord) && coord.length >= 2) {
+                            return {
+                                lat: parseFloat(coord[1]), // GeoJSON usa [lng, lat]
+                                lng: parseFloat(coord[0])
+                            };
+                        }
+                        return null;
+                    }).filter(coord => coord !== null && !isNaN(coord.lat) && !isNaN(coord.lng));
+
+                    if (paths.length < 3) {
+                        console.warn('Polígono com menos de 3 pontos válidos para quarteirão:', quarteirao);
+                        continue;
+                    }
+
+                    // Obter cor do JSON (properties.fill_color)
+                    let cor = '#4285F4'; // Padrão: azul do Google Maps
+                    if (feature.properties && feature.properties.fill_color) {
+                        cor = String(feature.properties.fill_color).trim();
+                        // Garantir que começa com #
+                        if (!cor.startsWith('#')) {
+                            cor = '#' + cor;
+                        }
+                    }
+
+                    // Criar polígono do quarteirão
+                    const polygon = new google.maps.Polygon({
+                        paths: paths,
+                        strokeColor: cor,
+                        strokeOpacity: 0.8,
+                        strokeWeight: 3,
+                        fillColor: cor,
+                        fillOpacity: 0.2,
+                        map: map,
+                        zIndex: 500, // Z-index médio para ficar visível mas não sobrepor outros elementos
+                        clickable: false
+                    });
+
+                    // Adicionar tooltip ao polígono
+                    const quarteiraoNome = feature.properties && feature.properties.name ? feature.properties.name : quarteirao;
+                    polygon.quarteirao = quarteiraoNome;
+
+                    // Adicionar ao array de marcadores (para manter compatibilidade)
+                    searchResultMarkers.push(polygon);
+
+                    // Adicionar ao bounds para ajustar o zoom
+                    paths.forEach(path => bounds.extend(path));
+                    poligonosDesenhados++;
+
+                } catch (error) {
+                    console.error('Erro ao desenhar polígono do quarteirão ' + quarteirao + ':', error);
+                }
+            }
+
+            // Ajustar zoom do mapa para mostrar todos os polígonos (se houver outros elementos, não forçar zoom)
+            if (poligonosDesenhados > 0 && !bounds.isEmpty() && searchResultPolygons.length === 0) {
+                // Só ajustar zoom se não houver polígonos de pesquisa (para não conflitar)
+                map.fitBounds(bounds);
+                const padding = 50;
+                map.fitBounds(bounds, padding);
+            }
+        }
+
+        // Função para desenhar polígono do quarteirão pesquisado (do JSON)
+        async function desenharQuarteiraoPesquisado(quarteirao) {
+            if (!map || !quarteirao) {
+                return;
+            }
+
+            // Limpar polígono anterior
+            limparQuarteiraoPolygon();
+
+            // Carregar JSON de quarteirões
+            const jsonData = await carregarQuarteiroesJSON();
+            if (!jsonData) {
+                console.error('Não foi possível carregar o JSON de quarteirões');
+                return;
+            }
+
+            // Buscar quarteirão no JSON
+            const feature = buscarQuarteiraoNoJSON(quarteirao, jsonData);
+            
+            if (!feature || !feature.geometry || !feature.geometry.coordinates) {
+                console.warn('Quarteirão não encontrado no JSON:', quarteirao);
+                return;
+            }
+
+            try {
+                // Obter coordenadas (formato GeoJSON: [lng, lat])
+                const coordinates = feature.geometry.coordinates;
+                if (!Array.isArray(coordinates) || !Array.isArray(coordinates[0])) {
+                    console.warn('Coordenadas inválidas para quarteirão:', quarteirao);
+                    return;
+                }
+
+                // Converter coordenadas GeoJSON [lng, lat] para formato Google Maps {lat, lng}
+                const paths = coordinates[0].map(coord => {
+                    if (Array.isArray(coord) && coord.length >= 2) {
+                        return {
+                            lat: parseFloat(coord[1]), // GeoJSON usa [lng, lat]
+                            lng: parseFloat(coord[0])
+                        };
+                    }
+                    return null;
+                }).filter(coord => coord !== null && !isNaN(coord.lat) && !isNaN(coord.lng));
+
+                if (paths.length < 3) {
+                    console.warn('Polígono com menos de 3 pontos válidos para quarteirão:', quarteirao);
+                    return;
+                }
+
+                // Obter cor do JSON (properties.fill_color)
+                let cor = '#4285F4'; // Padrão: azul do Google Maps
+                if (feature.properties && feature.properties.fill_color) {
+                    cor = String(feature.properties.fill_color).trim();
+                    // Garantir que começa com #
+                    if (!cor.startsWith('#')) {
+                        cor = '#' + cor;
+                    }
+                }
+
+                // Criar polígono do quarteirão
+                quarteiraoPolygon = new google.maps.Polygon({
+                    paths: paths,
+                    strokeColor: cor,
+                    strokeOpacity: 0.8,
+                    strokeWeight: 4,
+                    fillColor: cor,
+                    fillOpacity: 0.2,
+                    map: map,
+                    zIndex: 500, // Z-index médio para ficar visível mas não sobrepor outros elementos
+                    clickable: false
+                });
+
+                // Ajustar zoom para mostrar o quarteirão
+                const bounds = new google.maps.LatLngBounds();
+                paths.forEach(path => bounds.extend(path));
+                if (!bounds.isEmpty()) {
+                    map.fitBounds(bounds, { padding: 50 });
+                }
+
+            } catch (error) {
+                console.error('Erro ao desenhar polígono do quarteirão ' + quarteirao + ':', error);
+            }
         }
 
         // Função para desenhar polígonos no mapa
@@ -2123,7 +2649,7 @@ if (isset($_GET['pesquisar'])) {
         }
 
         // Função para exibir resultados da pesquisa
-        function displaySearchResults(dados, total, page = 1, totalPages = 1, desenhos = [], desenhosPorImobId = {}) {
+        function displaySearchResults(dados, total, page = 1, totalPages = 1, desenhos = [], desenhosPorImobId = {}, marcadoresOrfaos = []) {
             const resultsTableHead = document.getElementById('resultsTableHead');
             const resultsTableBody = document.getElementById('resultsTableBody');
             const resultsCount = document.getElementById('resultsCount');
@@ -2450,6 +2976,62 @@ if (isset($_GET['pesquisar'])) {
             } else {
                 // Se não houver desenhos, limpar polígonos anteriores
                 limparPoligonosPesquisa();
+            }
+
+            // Desenhar marcadores órfãos se houver (apenas para pesquisa cadastros_nao_desenhados)
+            if (marcadoresOrfaos && Array.isArray(marcadoresOrfaos) && marcadoresOrfaos.length > 0) {
+                desenharMarcadoresOrfaos(marcadoresOrfaos);
+            } else {
+                // Se não houver marcadores órfãos, limpar marcadores anteriores
+                limparMarcadoresOrfaos();
+            }
+
+            // Desenhar polígono do quarteirão pesquisado (apenas para pesquisa de quarteirão)
+            if (currentSearchPayload && currentSearchPayload.type === 'quarteirao' && 
+                currentSearchPayload.values && currentSearchPayload.values.quarteirao) {
+                desenharQuarteiraoPesquisado(currentSearchPayload.values.quarteirao);
+            } else {
+                // Se não for pesquisa de quarteirão, limpar polígono do quarteirão
+                limparQuarteiraoPolygon();
+            }
+
+            // Desenhar polígonos de quarteirões para pesquisa "cadastros_nao_desenhados"
+            if (currentSearchPayload && currentSearchPayload.type === 'cadastros_nao_desenhados') {
+                const values = currentSearchPayload.values || {};
+                
+                // Se tiver quarteirão preenchido, desenhar apenas esse quarteirão (prioridade)
+                if (values.quarteirao && values.quarteirao !== '' && values.quarteirao !== null) {
+                    const quarteiraoInt = parseInt(values.quarteirao);
+                    if (quarteiraoInt > 0) {
+                        // Limpar polígonos múltiplos antes de desenhar o único
+                        limparMarcadoresOrfaos();
+                        desenharQuarteiraoPesquisado(quarteiraoInt);
+                    }
+                } 
+                // Se tiver loteamento preenchido (sem quarteirão), desenhar quarteirões dos resultados
+                else if (values.loteamento && values.loteamento !== '' && values.loteamento !== null && dados && dados.length > 0) {
+                    // Limpar polígono único antes de desenhar múltiplos
+                    limparQuarteiraoPolygon();
+                    // Extrair quarteirões únicos dos resultados
+                    const quarteiroesUnicos = [...new Set(dados
+                        .map(row => row.cara_quarteirao)
+                        .filter(q => q !== null && q !== undefined && q !== '' && q !== '0')
+                        .map(q => {
+                            // Converter para número, tratando strings numéricas
+                            const num = parseInt(q);
+                            return isNaN(num) ? null : num;
+                        })
+                        .filter(q => q !== null && q > 0)
+                    )];
+                    
+                    if (quarteiroesUnicos.length > 0) {
+                        desenharQuarteiroesDoJSON(quarteiroesUnicos);
+                    }
+                } else {
+                    // Se não tiver nenhum campo preenchido, limpar tudo
+                    limparQuarteiraoPolygon();
+                    limparMarcadoresOrfaos();
+                }
             }
         }
     </script>

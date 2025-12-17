@@ -38,6 +38,18 @@ try {
 
     $quarteirao = $_POST['quarteirao'];
 
+    //fazer uma function que verifica se tem alguma letra no quarteirao
+    //caso tiver letra, a variavel é tratada como string, se não tiver é numerico
+    function verificarSeQuarteiraoTemLetra($quarteirao) {
+        return preg_match('/[a-zA-Z]/', $quarteirao);
+    }
+    
+    if (verificarSeQuarteiraoTemLetra($quarteirao)) {
+        $quarteirao = strval($quarteirao);
+    } else {
+        $quarteirao = intval($quarteirao);
+    }
+
     // Preparar a query
     $sql = "SELECT id, inscricao, imob_id, cnpj, bairro,nome_loteamento, cara_quarteirao, quadra, lote, logradouro, numero, zona, cat_via, area_terreno, tipo_utilizacao, area_construida_a, utilizacao_area_a, multiplo
             FROM cadastro 

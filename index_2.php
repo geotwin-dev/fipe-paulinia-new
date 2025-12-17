@@ -69,9 +69,9 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
     <!-- Interact.js para manipulação -->
     <script src="bibliotecas/interact.min.js" defer></script>
 
-    <!-- PDF Viewer Integrado -->
+    <!-- PDF Viewer Integrado || NA DATA DE 17-12-25 PERCEBI QUE SUMIU DAQUI ENTAO COMENTEI.
     <script src="pdfViewerIntegrado.js"></script>
-
+    -->
     <!--CSS GERAL DA PAGINA DE MAPA -->
     <link href="styleMap.css" rel="stylesheet">
 
@@ -2719,13 +2719,15 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                         // Desabilita o clique para evitar abrir infowindows
                         marker.gmpClickable = false;
                         
-                        // Desabilita pointer-events no elemento HTML do marcador para evitar cliques
+                        // Ajusta pointer-events no elemento HTML do marcador
+                        // Mantém 'auto' para permitir clique direito (soft delete) mesmo com gmpClickable = false
                         if (marker.content && marker.content.style) {
                             // Salva o estado original do pointer-events
                             if (marker.pointerEventsOriginal === undefined) {
                                 marker.pointerEventsOriginal = marker.content.style.pointerEvents || 'auto';
                             }
-                            marker.content.style.pointerEvents = 'none';
+                            // Mantém 'auto' para permitir eventos de mouse (incluindo clique direito)
+                            marker.content.style.pointerEvents = 'auto';
                         }
                         
                         // Adiciona listener para quando o marcador for arrastado
@@ -2763,6 +2765,35 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                                 console.log('Marcador movido - ID:', idBanco, 'Nova posição:', lat, lng);
                             }
                         });
+
+                        // Adiciona evento de clique direito para deletar (soft delete) - apenas no modo edição
+                        if (marker.content) {
+                            // Remove listener anterior se existir
+                            if (marker.rightClickListener) {
+                                marker.content.removeEventListener('contextmenu', marker.rightClickListener);
+                            }
+                            
+                            // Cria novo listener de clique direito
+                            marker.rightClickListener = function(event) {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                
+                                // Verifica se o marcador tem ID do banco
+                                const idBanco = marker.identificadorBanco || marker.identificador || marker.id;
+                                
+                                if (idBanco) {
+                                    if (confirm('Tem certeza que deseja deletar este marcador?')) {
+                                        softDeleteMarcador(idBanco, marker);
+                                    }
+                                } else {
+                                    alert('Marcador não pode ser deletado: ID não encontrado');
+                                }
+                            };
+                            
+                            marker.content.addEventListener('contextmenu', marker.rightClickListener);
+                            // Reabilita pointer-events para permitir clique direito
+                            marker.content.style.pointerEvents = 'auto';
+                        }
                     }
                 });
             }
@@ -2820,6 +2851,17 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 arrayCamadas.marcador_quadra.forEach(function(marker) {
                     if (marker) {
                         marker.gmpDraggable = false;
+                        
+                        // Remove o listener de clique direito (soft delete)
+                        if (marker.rightClickListener && marker.content) {
+                            marker.content.removeEventListener('contextmenu', marker.rightClickListener);
+                            marker.rightClickListener = null;
+                        }
+                        
+                        // Restaura pointer-events original
+                        if (marker.content && marker.pointerEventsOriginal !== undefined) {
+                            marker.content.style.pointerEvents = marker.pointerEventsOriginal;
+                        }
                         
                         // Reabilita o clique (restaura o estado original)
                         if (marker.gmpClickableOriginal !== undefined) {
@@ -4855,6 +4897,52 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
 
             deletarMarcador(marcadorIdAtual, marcadorAtualTooltip);
         });
+
+        // Função para soft delete de marcador (apenas no modo edição)
+        function softDeleteMarcador(idMarcador, marcadorElement) {
+            $.ajax({
+                url: 'softDeleteMarcador.php',
+                method: 'POST',
+                data: {
+                    id: idMarcador
+                },
+                success: function(response) {
+                    try {
+                        let resultado = response;
+                        if (typeof response === 'string') {
+                            resultado = JSON.parse(response);
+                        }
+
+                        if (resultado.status === 'sucesso') {
+                            // Remove o marcador do mapa
+                            marcadorElement.setMap(null);
+
+                            // Remove da camada
+                            const index = arrayCamadas['marcador_quadra'].indexOf(marcadorElement);
+                            if (index > -1) {
+                                arrayCamadas['marcador_quadra'].splice(index, 1);
+                            }
+
+                            // Remove o listener de clique direito se existir
+                            if (marcadorElement.rightClickListener && marcadorElement.content) {
+                                marcadorElement.content.removeEventListener('contextmenu', marcadorElement.rightClickListener);
+                            }
+
+                            console.log('Marcador deletado com sucesso (soft delete)');
+                        } else {
+                            alert('Erro ao deletar marcador: ' + (resultado.mensagem || 'Erro desconhecido'));
+                        }
+                    } catch (e) {
+                        alert('Erro ao processar resposta do servidor');
+                        console.error('Erro:', e);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('Erro na comunicação com o servidor');
+                    console.error('Erro AJAX:', error);
+                }
+            });
+        }
 
         // Função para deletar marcador via AJAX
         function deletarMarcador(idMarcador, marcadorElement) {

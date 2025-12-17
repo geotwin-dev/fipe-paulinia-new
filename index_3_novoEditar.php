@@ -384,6 +384,21 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             height: 100%;
         }
 
+        #areaPoligonoDisplay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 10px 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            z-index: 1000;
+            font-weight: bold;
+            font-size: 14px;
+            color: #333;
+            pointer-events: none;
+        }
+
         .tabela-cadastros-container {
             min-height: 100vh;
             padding: 30px;
@@ -473,6 +488,13 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
         .linha-vermelha,
         .linha-vermelha td {
             background-color: #FF0000 !important;
+        }
+
+        .linha-azul-ciano,
+        .linha-azul-ciano td {
+            color:rgb(0, 0, 0) !important; /* Azul ciano no texto */
+            font-weight: bold;
+            font-style: italic;
         }
 
         /* Estilos para o quadro de documentos */
@@ -706,6 +728,10 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     <i class="fas fa-map-marked-alt"></i> Situação pretendida
                 </div>
                 <div id="map2" class="mapa"></div>
+                <!-- Elemento para exibir área do polígono selecionado -->
+                <div id="areaPoligonoDisplay" style="display: none;">
+                    <i class="fas fa-ruler-combined"></i> <span id="areaPoligonoValor">0</span> m²
+                </div>
             </div>
         </div>
     </div>
@@ -716,6 +742,9 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             <i class="fas fa-list"></i> Cadastros do Quarteirão <span id="numeroQuarteiraoTabela"><?php echo htmlspecialchars($quarteirao); ?></span>
             <button class="btn btn-primary btn-sm ml-3" id="btnAssociar" style="display: none; margin-left: 15px;">
                 <i class="fas fa-link"></i> Associar
+            </button>
+            <button class="btn btn-danger btn-sm ml-3" id="btnDesassociar" style="display: none; margin-left: 15px;">
+                <i class="fas fa-unlink"></i> Desassociar
             </button>
         </div>
         <div id="loadingCadastros" class="text-center" style="display: none;">
@@ -925,13 +954,22 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                             const estaNoMapa = registroEstaNoMapa(item);
                             const classeLinha = estaNoMapa ? 'linha-verde' : 'linha-vermelha';
                             
+                            // Verificar se o CNPJ é '45.751.435/0001-06' para aplicar cor azul ciano no texto
+                            const cnpjEspecial = '45.751.435/0001-06';
+                            const temCnpjEspecial = item.cnpj && item.cnpj.toString().trim() === cnpjEspecial;
+                            const classeCnpjEspecial = temCnpjEspecial ? 'linha-azul-ciano' : '';
+                            
+                            // Normalizar valores para data attributes: se for null/undefined/vazio, usar 'N/A'
+                            const quadraData = (item.quadra && item.quadra.toString().trim() !== '') ? item.quadra : 'N/A';
+                            const loteData = (item.lote && item.lote.toString().trim() !== '') ? item.lote : 'N/A';
+                            
                             tabelaHTML += `
-                                <tr class="linha-cadastro ${classeLinha}" 
+                                <tr class="linha-cadastro ${classeLinha} ${classeCnpjEspecial}" 
                                     data-index="${index}"
                                     data-id="${item.id || ''}"
                                     data-quarteirao="${item.cara_quarteirao || ''}"
-                                    data-quadra="${item.quadra || ''}"
-                                    data-lote="${item.lote || ''}"
+                                    data-quadra="${quadraData}"
+                                    data-lote="${loteData}"
                                     data-esta-no-mapa="${estaNoMapa}"
                                     style="cursor: pointer;">
                                     <td style="text-align: center;">${item.multiplo || 'N/A'}</td>
@@ -972,8 +1010,11 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                             const estaNoMapa = $linha.data('esta-no-mapa') === true;
                             const idCadastro = $linha.data('id');
                             const quarteirao = $linha.data('quarteirao');
-                            const quadra = $linha.data('quadra');
-                            const lote = $linha.data('lote');
+                            // Normalizar quadra e lote: se forem vazios/null, usar "N/A"
+                            const quadraRaw = $linha.data('quadra');
+                            const quadra = (quadraRaw && quadraRaw.toString().trim() !== '') ? quadraRaw.toString().trim() : 'N/A';
+                            const loteRaw = $linha.data('lote');
+                            const lote = (loteRaw && loteRaw.toString().trim() !== '') ? loteRaw.toString().trim() : 'N/A';
                             const isVermelho = !estaNoMapa;
                             
                             // Lógica de limpeza inteligente
@@ -1022,6 +1063,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                             }
                             
                             verificarBotaoAssociar();
+                            verificarBotaoDesassociar();
                         });
                     } else {
                         $('#conteudoCadastros').html(`
@@ -1643,6 +1685,73 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
         // FUNÇÕES DE SELEÇÃO PARA ASSOCIAÇÃO
         // ============================================================================
 
+        // Função para converter coordenadas lat/lng para UTM
+        function latLngToUtm(lat, lng) {
+            try {
+                // Converter de WGS84 (EPSG:4326) para UTM Zone 23S (EPSG:32723)
+                // Proj4js espera [lng, lat] para EPSG:4326
+                const [easting, northing] = proj4("EPSG:4326", "EPSG:32723", [lng, lat]);
+                return { easting, northing };
+            } catch (error) {
+                console.error('Erro ao converter coordenadas para UTM:', error);
+                return { easting: 0, northing: 0 };
+            }
+        }
+
+        // Função para calcular área do polígono em metros quadrados usando coordenadas UTM
+        function calcularAreaPoligono(poligono) {
+            if (!poligono) return 0;
+            
+            try {
+                const path = poligono.getPath();
+                const pontosUtm = [];
+                
+                // Obter todos os pontos do polígono e converter para UTM
+                for (let i = 0; i < path.getLength(); i++) {
+                    const ponto = path.getAt(i);
+                    const utm = latLngToUtm(ponto.lat(), ponto.lng());
+                    pontosUtm.push({ x: utm.easting, y: utm.northing });
+                }
+                
+                // Verificar se tem pelo menos 3 pontos
+                if (pontosUtm.length < 3) return 0;
+                
+                // Calcular área usando fórmula de Shoelace (mais precisa para coordenadas planas UTM)
+                let area = 0;
+                const n = pontosUtm.length;
+                
+                for (let i = 0; i < n; i++) {
+                    const j = (i + 1) % n; // Próximo índice (fecha o polígono)
+                    area += pontosUtm[i].x * pontosUtm[j].y;
+                    area -= pontosUtm[j].x * pontosUtm[i].y;
+                }
+                
+                // Área absoluta em metros quadrados
+                area = Math.abs(area) / 2;
+                
+                return area;
+            } catch (error) {
+                console.error('Erro ao calcular área do polígono:', error);
+                return 0;
+            }
+        }
+
+        // Função para atualizar display da área
+        function atualizarDisplayArea(poligono) {
+            const areaDisplay = document.getElementById('areaPoligonoDisplay');
+            const areaValor = document.getElementById('areaPoligonoValor');
+            
+            if (!areaDisplay || !areaValor) return;
+            
+            if (poligono) {
+                const area = calcularAreaPoligono(poligono);
+                areaValor.textContent = area.toFixed(2);
+                areaDisplay.style.display = 'block';
+            } else {
+                areaDisplay.style.display = 'none';
+            }
+        }
+
         // Destacar desenho no modo de associação
         function destacarDesenhoAssociacao(poligono, marcador, isVermelho) {
             console.log(poligono.idDesenho, marcador.idDesenho);
@@ -1666,6 +1775,12 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             
             // Limpar seleção anterior do mapa (se houver outro desenho selecionado)
             if (desenhoSelecionadoAssociacao.poligono && desenhoSelecionadoAssociacao.poligono !== poligono) {
+                // Remover listeners do polígono anterior antes de limpar
+                const poligonoAnterior = desenhoSelecionadoAssociacao.poligono;
+                if (poligonoAnterior.listenerArea) {
+                    google.maps.event.removeListener(poligonoAnterior.listenerArea);
+                    poligonoAnterior.listenerArea = null;
+                }
                 limparSelecaoAssociacaoMapa();
             }
             
@@ -1690,6 +1805,41 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                 isVermelho: isVermelho
             };
             
+            // Atualizar display da área do polígono
+            atualizarDisplayArea(poligono);
+            
+            // Adicionar listeners para atualizar área quando o polígono for editado
+            // Remover listeners anteriores se existirem
+            if (poligono.listenersArea) {
+                poligono.listenersArea.forEach(listener => {
+                    google.maps.event.removeListener(listener);
+                });
+            }
+            
+            // Armazenar listeners em um array
+            poligono.listenersArea = [];
+            
+            // Adicionar listeners para atualizar área quando o path mudar
+            const path = poligono.getPath();
+            
+            poligono.listenersArea.push(path.addListener('set_at', function() {
+                if (desenhoSelecionadoAssociacao.poligono === poligono) {
+                    atualizarDisplayArea(poligono);
+                }
+            }));
+            
+            poligono.listenersArea.push(path.addListener('insert_at', function() {
+                if (desenhoSelecionadoAssociacao.poligono === poligono) {
+                    atualizarDisplayArea(poligono);
+                }
+            }));
+            
+            poligono.listenersArea.push(path.addListener('remove_at', function() {
+                if (desenhoSelecionadoAssociacao.poligono === poligono) {
+                    atualizarDisplayArea(poligono);
+                }
+            }));
+            
             // Se for verde, destacar linha correspondente na tabela
             if (!isVermelho && poligono.desenhoCompleto) {
                 const desenho = poligono.desenhoCompleto;
@@ -1704,9 +1854,12 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     
                     if (quarteiraoLinha === quarteiraoNorm && loteLinha === loteNorm) {
                         $linha.addClass('linha-selecionada');
+                        // Normalizar quadra: se for vazio/null, usar "N/A"
+                        const quadraLinha = $linha.data('quadra');
+                        const quadraNormalizada = (quadraLinha && quadraLinha.toString().trim() !== '') ? quadraLinha.toString().trim() : 'N/A';
                         linhaSelecionadaAssociacao = {
                             elemento: $linha[0],
-                            dados: { quarteirao: quarteiraoLinha, quadra: $linha.data('quadra'), lote: loteLinha },
+                            dados: { quarteirao: quarteiraoLinha, quadra: quadraNormalizada, lote: loteLinha },
                             isVermelho: false
                         };
                         return false; // Sair do loop
@@ -1715,6 +1868,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             }
             
             verificarBotaoAssociar();
+            verificarBotaoDesassociar();
         }
 
         // Limpar seleção de associação no mapa
@@ -1727,6 +1881,14 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     fillColor: poligono.corOriginal,
                     strokeWeight: 2
                 });
+                
+                // Remover listeners de área se existirem
+                if (poligono.listenersArea && Array.isArray(poligono.listenersArea)) {
+                    poligono.listenersArea.forEach(listener => {
+                        google.maps.event.removeListener(listener);
+                    });
+                    poligono.listenersArea = null;
+                }
             }
             
             if (desenhoSelecionadoAssociacao.marcador && desenhoSelecionadoAssociacao.marcador.elementoHTML) {
@@ -1735,6 +1897,9 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                 marcador.elementoHTML.style.color = marcador.corTextoOriginal;
                 marcador.elementoHTML.style.border = '2px solid ' + marcador.corTextoOriginal;
             }
+            
+            // Ocultar display da área
+            atualizarDisplayArea(null);
             
             desenhoSelecionadoAssociacao = {
                 poligono: null,
@@ -1765,6 +1930,19 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             }
         }
 
+        // Verificar se deve mostrar botão Desassociar
+        function verificarBotaoDesassociar() {
+            const temDesenhoVerde = desenhoSelecionadoAssociacao.poligono && !desenhoSelecionadoAssociacao.isVermelho;
+            const temLinhaVerde = linhaSelecionadaAssociacao.elemento && !linhaSelecionadaAssociacao.isVermelho;
+            
+            // Mostrar botão se houver desenho verde OU linha verde selecionada
+            if (temDesenhoVerde || temLinhaVerde) {
+                $('#btnDesassociar').show();
+            } else {
+                $('#btnDesassociar').hide();
+            }
+        }
+
         // Função para associar desenho ao cadastro
         async function associarDesenho() {
             if (!desenhoSelecionadoAssociacao.poligono || !linhaSelecionadaAssociacao.dados) {
@@ -1782,14 +1960,22 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             const marcador = desenhoSelecionadoAssociacao.marcador;
             const dadosLinha = linhaSelecionadaAssociacao.dados;
             
+            // Normalizar valores: se quadra ou lote forem vazios/null/undefined, usar string "N/A"
+            const quadraNormalizada = (dadosLinha.quadra && dadosLinha.quadra.toString().trim() !== '' && dadosLinha.quadra !== 'N/A') 
+                ? dadosLinha.quadra.toString().trim() 
+                : 'N/A';
+            const loteNormalizado = (dadosLinha.lote && dadosLinha.lote.toString().trim() !== '' && dadosLinha.lote !== 'N/A') 
+                ? dadosLinha.lote.toString().trim() 
+                : 'N/A';
+            
             // Preparar dados para envio
             const dadosAssociacao = {
                 id_poligono: poligono.idDesenho,
                 id_marcador: marcador ? marcador.idDesenho : null,
                 id_cadastro: dadosLinha.id,
                 quarteirao: dadosLinha.quarteirao,
-                quadra: dadosLinha.quadra,
-                lote: dadosLinha.lote
+                quadra: quadraNormalizada,
+                lote: loteNormalizado
             };
             
             // Enviar para o servidor
@@ -1863,6 +2049,113 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                     // Reabilitar botão e restaurar texto original
                     $btnAssociar.prop('disabled', false);
                     $btnAssociar.html(textoOriginal);
+                }
+            });
+        }
+
+        // Função para desassociar desenho
+        async function desassociarDesenho() {
+            // Verificar se há um desenho verde selecionado
+            if (!desenhoSelecionadoAssociacao.poligono || desenhoSelecionadoAssociacao.isVermelho) {
+                alert('Selecione um desenho verde (associado) para desassociar');
+                return;
+            }
+            
+            // Confirmar ação
+            if (!confirm('Tem certeza que deseja desassociar este desenho? O polígono e marcador ficarão vermelhos e perderão o lote e a quadra (o quarteirão será mantido).')) {
+                return;
+            }
+            
+            // Desabilitar botão e mostrar loading
+            const $btnDesassociar = $('#btnDesassociar');
+            const textoOriginal = $btnDesassociar.html();
+            $btnDesassociar.prop('disabled', true);
+            $btnDesassociar.html('<i class="fas fa-spinner fa-spin"></i> Desassociando...');
+            
+            const poligono = desenhoSelecionadoAssociacao.poligono;
+            const marcador = desenhoSelecionadoAssociacao.marcador;
+            
+            // Preparar dados para envio
+            const dadosDesassociacao = {
+                id_poligono: poligono.idDesenho,
+                id_marcador: marcador ? marcador.idDesenho : null
+            };
+            
+            // Enviar para o servidor
+            $.ajax({
+                url: 'index_3_novo_desassociar_desenho.php',
+                method: 'POST',
+                data: JSON.stringify(dadosDesassociacao),
+                contentType: 'application/json',
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success) {
+                        // Atualizar cores no mapa para vermelho
+                        poligono.setOptions({
+                            strokeColor: '#FF0000',
+                            fillColor: '#FF0000',
+                            strokeWeight: 2
+                        });
+                        poligono.corOriginal = '#FF0000';
+                        
+                        // Atualizar marcador para vermelho e remover rótulo
+                        if (marcador && marcador.elementoHTML) {
+                            marcador.elementoHTML.style.background = '#FF0000';
+                            marcador.elementoHTML.style.color = 'white';
+                            marcador.elementoHTML.style.border = '2px solid white';
+                            marcador.elementoHTML.textContent = ''; // Remover rótulo
+                            marcador.corOriginal = '#FF0000';
+                            marcador.corTextoOriginal = 'white';
+                            marcador.lote = null;
+                            
+                            // Atualizar desenho completo - manter quarteirao, limpar apenas quadra e lote
+                            if (marcador.desenhoCompleto) {
+                                marcador.desenhoCompleto.lote = null;
+                                marcador.desenhoCompleto.quadra = null;
+                                // quarteirao é mantido
+                            }
+                        }
+                        
+                        // Atualizar polígono completo - manter quarteirao, limpar apenas quadra e lote
+                        if (poligono.desenhoCompleto) {
+                            poligono.desenhoCompleto.lote = null;
+                            poligono.desenhoCompleto.quadra = null;
+                            // quarteirao é mantido
+                            poligono.lote = null;
+                        }
+                        
+                        // Atualizar linha na tabela (mudar de verde para vermelho)
+                        if (linhaSelecionadaAssociacao.elemento) {
+                            const $linha = $(linhaSelecionadaAssociacao.elemento);
+                            $linha.removeClass('linha-verde').addClass('linha-vermelha');
+                            $linha.css('background-color', '#f8d7da');
+                            $linha.data('esta-no-mapa', false);
+                        }
+                        
+                        // Limpar seleções
+                        limparSelecaoAssociacaoMapa();
+                        limparSelecaoAssociacaoTabela();
+                        
+                        alert('Desenho desassociado com sucesso!');
+                    } else {
+                        alert('Erro ao desassociar: ' + response.message);
+                    }
+                    
+                    // Reabilitar botão e restaurar texto original
+                    $btnDesassociar.prop('disabled', false);
+                    $btnDesassociar.html(textoOriginal);
+                    
+                    // Atualizar visibilidade dos botões
+                    verificarBotaoAssociar();
+                    verificarBotaoDesassociar();
+                },
+                error: function(xhr, status, error) {
+                    console.error('Erro no AJAX:', error);
+                    alert('Erro ao comunicar com o servidor');
+                    
+                    // Reabilitar botão e restaurar texto original
+                    $btnDesassociar.prop('disabled', false);
+                    $btnDesassociar.html(textoOriginal);
                 }
             });
         }
@@ -3619,6 +3912,12 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
             if (btnAssociar) {
                 btnAssociar.addEventListener('click', associarDesenho);
             }
+            
+            // Event listener do botão Desassociar
+            const btnDesassociar = document.getElementById('btnDesassociar');
+            if (btnDesassociar) {
+                btnDesassociar.addEventListener('click', desassociarDesenho);
+            }
 
             // Clique no mapa remove destaque
             setTimeout(function() {
@@ -3629,6 +3928,7 @@ $marcadorQuadraPosteriorJSON = json_encode($marcadorQuadraPosterior);
                             limparSelecaoAssociacaoMapa();
                             limparSelecaoAssociacaoTabela();
                             verificarBotaoAssociar();
+                            verificarBotaoDesassociar();
                         } else if (modoAtivo && !objetoDestacado.poligono) {
                             // Se estiver em modo ativo, remover destaque
                             removerDestaque();

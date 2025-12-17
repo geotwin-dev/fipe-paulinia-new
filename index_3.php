@@ -7,16 +7,16 @@ include("connection.php");
 // Endpoint para buscar IDs dos desenhos filtrados pela pesquisa salva
 if (isset($_GET['buscarDesenhosFiltrados'])) {
     header('Content-Type: application/json');
-    
+
     try {
         // Verificar se quadrícula foi fornecida
         if (!isset($_GET['quadricula']) || empty($_GET['quadricula'])) {
             echo json_encode(['error' => 'Quadrícula não fornecida']);
             exit;
         }
-        
+
         $quadricula = $_GET['quadricula'];
-        
+
         // Buscar pesquisa salva (mesmo sistema do painel)
         $userId = null;
         if (isset($_SESSION['usuario']) && is_array($_SESSION['usuario']) && isset($_SESSION['usuario'][1])) {
@@ -24,194 +24,212 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
         } else {
             $userId = md5(session_id());
         }
-        
+
         $dir = __DIR__ . '/jsonPesquisa';
         $file = $dir . '/' . $userId . '.json';
-        
+
         if (!file_exists($file)) {
             echo json_encode(['ids' => []]);
             exit;
         }
-        
+
         $pesquisaData = json_decode(file_get_contents($file), true);
         if (!is_array($pesquisaData) || !isset($pesquisaData['type']) || !isset($pesquisaData['values'])) {
             echo json_encode(['ids' => []]);
             exit;
         }
-        
+
         $type = $pesquisaData['type'];
         $values = $pesquisaData['values'];
-        
+
         // Verificar se há cache de resultados - mesma pesquisa com resultados
         $usarCache = false;
         $allResults = null;
-        
-        if (isset($pesquisaData['results']) && 
+
+        if (
+            isset($pesquisaData['results']) &&
             is_array($pesquisaData['results']) &&
             isset($pesquisaData['results']['allResults']) &&
             is_array($pesquisaData['results']['allResults']) &&
-            count($pesquisaData['results']['allResults']) > 0) {
+            count($pesquisaData['results']['allResults']) > 0
+        ) {
             // Cache válido encontrado - mesma pesquisa com resultados
             $usarCache = true;
             $allResults = $pesquisaData['results']['allResults'];
         }
-        
+
         // Se não usar cache, fazer pesquisa no banco (pesquisa diferente ou sem cache)
         if (!$usarCache) {
-            // Construir query SQL baseada no tipo de pesquisa (igual ao painel.php)
-            $sql = "SELECT * FROM cadastro WHERE 1=1 AND imob_id = imob_id_principal";
-            $params = [];
-        
-        switch ($type) {
-            case 'endereco_numero':
-                if (!empty($values['endereco'])) {
-                    $sql .= " AND logradouro LIKE :endereco";
-                    $params[':endereco'] = '%' . $values['endereco'] . '%';
+            // Para cadastros_nao_desenhados, usar query especial com NOT EXISTS
+            if ($type === 'cadastros_nao_desenhados') {
+                $sql = "SELECT cad.* 
+                        FROM cadastro cad 
+                        WHERE cad.imob_id = cad.imob_id_principal 
+                        AND NOT EXISTS ( 
+                            SELECT 1 FROM desenhos des 
+                            WHERE des.camada = 'marcador_quadra' 
+                            AND des.quarteirao = cad.cara_quarteirao 
+                            AND des.quadra = cad.quadra 
+                            AND des.lote = cad.lote 
+                        ) 
+                        ORDER BY cad.nome_loteamento, cad.cara_quarteirao";
+                $params = [];
+                // Não há switch para este tipo, pular direto para execução
+            } else {
+                $sql = "SELECT * FROM cadastro WHERE 1=1 AND imob_id = imob_id_principal";
+                $params = [];
+
+                switch ($type) {
+                    case 'endereco_numero':
+                        if (!empty($values['endereco'])) {
+                            $sql .= " AND logradouro LIKE :endereco";
+                            $params[':endereco'] = '%' . $values['endereco'] . '%';
+                        }
+                        if (!empty($values['numero'])) {
+                            $sql .= " AND numero = :numero";
+                            $params[':numero'] = $values['numero'];
+                        }
+                        break;
+                    case 'quarteirao':
+                        if (!empty($values['quarteirao'])) {
+                            $sql .= " AND cara_quarteirao = :quarteirao";
+                            $params[':quarteirao'] = $values['quarteirao'];
+                        }
+                        break;
+                    case 'quarteirao_quadra':
+                        if (!empty($values['quarteirao'])) {
+                            $sql .= " AND cara_quarteirao = :quarteirao";
+                            $params[':quarteirao'] = $values['quarteirao'];
+                        }
+                        if (!empty($values['quadra'])) {
+                            $sql .= " AND quadra = :quadra";
+                            $params[':quadra'] = $values['quadra'];
+                        }
+                        break;
+                    case 'quarteirao_quadra_lote':
+                        if (!empty($values['quarteirao'])) {
+                            $sql .= " AND cara_quarteirao = :quarteirao";
+                            $params[':quarteirao'] = $values['quarteirao'];
+                        }
+                        if (!empty($values['quadra'])) {
+                            $sql .= " AND quadra = :quadra";
+                            $params[':quadra'] = $values['quadra'];
+                        }
+                        if (!empty($values['lote'])) {
+                            $sql .= " AND lote = :lote";
+                            $params[':lote'] = $values['lote'];
+                        }
+                        break;
+                    case 'loteamento':
+                        if (!empty($values['loteamento'])) {
+                            $sql .= " AND nome_loteamento LIKE :loteamento";
+                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                        }
+                        break;
+                    case 'loteamento_quadra':
+                        if (!empty($values['loteamento'])) {
+                            $sql .= " AND nome_loteamento LIKE :loteamento";
+                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                        }
+                        if (!empty($values['quadra'])) {
+                            $sql .= " AND quadra = :quadra";
+                            $params[':quadra'] = $values['quadra'];
+                        }
+                        break;
+                    case 'loteamento_quadra_lote':
+                        if (!empty($values['loteamento'])) {
+                            $sql .= " AND nome_loteamento LIKE :loteamento";
+                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                        }
+                        if (!empty($values['quadra'])) {
+                            $sql .= " AND quadra = :quadra";
+                            $params[':quadra'] = $values['quadra'];
+                        }
+                        if (!empty($values['lote'])) {
+                            $sql .= " AND lote = :lote";
+                            $params[':lote'] = $values['lote'];
+                        }
+                        break;
+                    case 'cnpj':
+                        if (!empty($values['cnpj'])) {
+                            $sql .= " AND cnpj = :cnpj";
+                            $params[':cnpj'] = $values['cnpj'];
+                        }
+                        break;
+                    case 'uso_imovel':
+                        if (!empty($values['uso_imovel'])) {
+                            $sql .= " AND uso_imovel LIKE :uso_imovel";
+                            $params[':uso_imovel'] = '%' . $values['uso_imovel'] . '%';
+                        }
+                        break;
+                    case 'bairro':
+                        if (!empty($values['bairro'])) {
+                            $sql .= " AND bairro LIKE :bairro";
+                            $params[':bairro'] = '%' . $values['bairro'] . '%';
+                        }
+                        break;
+                    case 'inscricao':
+                        if (!empty($values['inscricao'])) {
+                            $sql .= " AND inscricao = :inscricao";
+                            $params[':inscricao'] = $values['inscricao'];
+                        }
+                        break;
+                    case 'imob_id':
+                        if (!empty($values['imob_id'])) {
+                            $sql .= " AND imob_id = :imob_id";
+                            $params[':imob_id'] = $values['imob_id'];
+                        }
+                        break;
+                    case 'zona':
+                        if (!empty($values['zona'])) {
+                            $sql .= " AND zona = :zona";
+                            $params[':zona'] = $values['zona'];
+                        }
+                        break;
+                    case 'cat_via':
+                        if (!empty($values['cat_via'])) {
+                            $sql .= " AND cat_via LIKE :cat_via";
+                            $params[':cat_via'] = '%' . $values['cat_via'] . '%';
+                        }
+                        break;
+                    case 'tipo_edificacao':
+                        if (!empty($values['tipo_edificacao'])) {
+                            $sql .= " AND tipo_edificacao LIKE :tipo_edificacao";
+                            $params[':tipo_edificacao'] = '%' . $values['tipo_edificacao'] . '%';
+                        }
+                        break;
+                    case 'tipo_utilizacao':
+                        if (!empty($values['tipo_utilizacao'])) {
+                            $sql .= " AND tipo_utilizacao LIKE :tipo_utilizacao";
+                            $params[':tipo_utilizacao'] = '%' . $values['tipo_utilizacao'] . '%';
+                        }
+                        break;
+                    case 'area_construida':
+                        if (!empty($values['area_construida_min'])) {
+                            $sql .= " AND total_construido >= :area_construida_min";
+                            $params[':area_construida_min'] = floatval($values['area_construida_min']);
+                        }
+                        if (!empty($values['area_construida_max'])) {
+                            $sql .= " AND total_construido <= :area_construida_max";
+                            $params[':area_construida_max'] = floatval($values['area_construida_max']);
+                        }
+                        break;
+                    case 'area_terreno':
+                        if (!empty($values['area_terreno_min'])) {
+                            $sql .= " AND area_terreno >= :area_terreno_min";
+                            $params[':area_terreno_min'] = floatval($values['area_terreno_min']);
+                        }
+                        if (!empty($values['area_terreno_max'])) {
+                            $sql .= " AND area_terreno <= :area_terreno_max";
+                            $params[':area_terreno_max'] = floatval($values['area_terreno_max']);
+                        }
+                        break;
+                    default:
+                        echo json_encode(['ids' => []]);
+                        exit;
                 }
-                if (!empty($values['numero'])) {
-                    $sql .= " AND numero = :numero";
-                    $params[':numero'] = $values['numero'];
-                }
-                break;
-            case 'quarteirao':
-                if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cara_quarteirao = :quarteirao";
-                    $params[':quarteirao'] = $values['quarteirao'];
-                }
-                break;
-            case 'quarteirao_quadra':
-                if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cara_quarteirao = :quarteirao";
-                    $params[':quarteirao'] = $values['quarteirao'];
-                }
-                if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
-                    $params[':quadra'] = $values['quadra'];
-                }
-                break;
-            case 'quarteirao_quadra_lote':
-                if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cara_quarteirao = :quarteirao";
-                    $params[':quarteirao'] = $values['quarteirao'];
-                }
-                if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
-                    $params[':quadra'] = $values['quadra'];
-                }
-                if (!empty($values['lote'])) {
-                    $sql .= " AND lote = :lote";
-                    $params[':lote'] = $values['lote'];
-                }
-                break;
-            case 'loteamento':
-                if (!empty($values['loteamento'])) {
-                    $sql .= " AND nome_loteamento LIKE :loteamento";
-                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
-                }
-                break;
-            case 'loteamento_quadra':
-                if (!empty($values['loteamento'])) {
-                    $sql .= " AND nome_loteamento LIKE :loteamento";
-                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
-                }
-                if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
-                    $params[':quadra'] = $values['quadra'];
-                }
-                break;
-            case 'loteamento_quadra_lote':
-                if (!empty($values['loteamento'])) {
-                    $sql .= " AND nome_loteamento LIKE :loteamento";
-                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
-                }
-                if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
-                    $params[':quadra'] = $values['quadra'];
-                }
-                if (!empty($values['lote'])) {
-                    $sql .= " AND lote = :lote";
-                    $params[':lote'] = $values['lote'];
-                }
-                break;
-            case 'cnpj':
-                if (!empty($values['cnpj'])) {
-                    $sql .= " AND cnpj = :cnpj";
-                    $params[':cnpj'] = $values['cnpj'];
-                }
-                break;
-            case 'uso_imovel':
-                if (!empty($values['uso_imovel'])) {
-                    $sql .= " AND uso_imovel LIKE :uso_imovel";
-                    $params[':uso_imovel'] = '%' . $values['uso_imovel'] . '%';
-                }
-                break;
-            case 'bairro':
-                if (!empty($values['bairro'])) {
-                    $sql .= " AND bairro LIKE :bairro";
-                    $params[':bairro'] = '%' . $values['bairro'] . '%';
-                }
-                break;
-            case 'inscricao':
-                if (!empty($values['inscricao'])) {
-                    $sql .= " AND inscricao = :inscricao";
-                    $params[':inscricao'] = $values['inscricao'];
-                }
-                break;
-            case 'imob_id':
-                if (!empty($values['imob_id'])) {
-                    $sql .= " AND imob_id = :imob_id";
-                    $params[':imob_id'] = $values['imob_id'];
-                }
-                break;
-            case 'zona':
-                if (!empty($values['zona'])) {
-                    $sql .= " AND zona = :zona";
-                    $params[':zona'] = $values['zona'];
-                }
-                break;
-            case 'cat_via':
-                if (!empty($values['cat_via'])) {
-                    $sql .= " AND cat_via LIKE :cat_via";
-                    $params[':cat_via'] = '%' . $values['cat_via'] . '%';
-                }
-                break;
-            case 'tipo_edificacao':
-                if (!empty($values['tipo_edificacao'])) {
-                    $sql .= " AND tipo_edificacao LIKE :tipo_edificacao";
-                    $params[':tipo_edificacao'] = '%' . $values['tipo_edificacao'] . '%';
-                }
-                break;
-            case 'tipo_utilizacao':
-                if (!empty($values['tipo_utilizacao'])) {
-                    $sql .= " AND tipo_utilizacao LIKE :tipo_utilizacao";
-                    $params[':tipo_utilizacao'] = '%' . $values['tipo_utilizacao'] . '%';
-                }
-                break;
-            case 'area_construida':
-                if (!empty($values['area_construida_min'])) {
-                    $sql .= " AND total_construido >= :area_construida_min";
-                    $params[':area_construida_min'] = floatval($values['area_construida_min']);
-                }
-                if (!empty($values['area_construida_max'])) {
-                    $sql .= " AND total_construido <= :area_construida_max";
-                    $params[':area_construida_max'] = floatval($values['area_construida_max']);
-                }
-                break;
-            case 'area_terreno':
-                if (!empty($values['area_terreno_min'])) {
-                    $sql .= " AND area_terreno >= :area_terreno_min";
-                    $params[':area_terreno_min'] = floatval($values['area_terreno_min']);
-                }
-                if (!empty($values['area_terreno_max'])) {
-                    $sql .= " AND area_terreno <= :area_terreno_max";
-                    $params[':area_terreno_max'] = floatval($values['area_terreno_max']);
-                }
-                break;
-            default:
-                echo json_encode(['ids' => []]);
-                exit;
             }
-            
+
             // Executar pesquisa (SEM paginação - todos os resultados)
             $stmt = $pdo->prepare($sql);
             foreach ($params as $key => $value) {
@@ -219,27 +237,27 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
             }
             $stmt->execute();
             $allResults = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             // Salvar no cache
             $pesquisaData['results'] = [
                 'allResults' => $allResults
             ];
             file_put_contents($file, json_encode($pesquisaData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         }
-        
+
         // Coletar combinações únicas de (quarteirao, quadra, lote) dos resultados (cache ou banco)
         $combinacoesComLetras = [];
         $combinacoesSemLetras = [];
-        
+
         foreach ($allResults as $resultado) {
             $cara_quarteirao = isset($resultado['cara_quarteirao']) ? $resultado['cara_quarteirao'] : null;
             $quadra = isset($resultado['quadra']) ? $resultado['quadra'] : null;
             $lote = isset($resultado['lote']) ? $resultado['lote'] : null;
-            
+
             if ($cara_quarteirao && $quadra && $lote) {
                 $temLetras = preg_match('/[^0-9]/', (string)$cara_quarteirao) === 1;
                 $key = $cara_quarteirao . '|' . $quadra . '|' . $lote;
-                
+
                 if ($temLetras) {
                     if (!isset($combinacoesComLetras[$key])) {
                         $combinacoesComLetras[$key] = [
@@ -259,16 +277,16 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
                 }
             }
         }
-        
+
         // Buscar IDs dos desenhos FILTRADOS pela quadrícula
         $idsDesenhos = [];
-        
+
         // Desenhos com letras
         if (!empty($combinacoesComLetras)) {
             $conditions = [];
             $paramsDesenhos = [':quadricula' => $quadricula];
             $paramIndex = 0;
-            
+
             foreach ($combinacoesComLetras as $comb) {
                 $conditions[] = "(quarteirao = :q{$paramIndex} AND quadra = :quad{$paramIndex} AND lote = :lot{$paramIndex})";
                 $paramsDesenhos[":q{$paramIndex}"] = $comb['quarteirao'];
@@ -276,14 +294,14 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
                 $paramsDesenhos[":lot{$paramIndex}"] = $comb['lote'];
                 $paramIndex++;
             }
-            
+
             if (!empty($conditions)) {
                 $sqlDesenhos = "SELECT id FROM desenhos 
                                 WHERE quadricula = :quadricula
                                 AND (" . implode(' OR ', $conditions) . ")
                                 AND (camada = 'poligono lote' OR camada = 'poligono_lote')
                                 AND status > 0";
-                
+
                 $stmtDesenhos = $pdo->prepare($sqlDesenhos);
                 $stmtDesenhos->execute($paramsDesenhos);
                 $poligonos = $stmtDesenhos->fetchAll(PDO::FETCH_ASSOC);
@@ -292,13 +310,13 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
                 }
             }
         }
-        
+
         // Desenhos sem letras
         if (!empty($combinacoesSemLetras)) {
             $conditions = [];
             $paramsDesenhos = [':quadricula' => $quadricula];
             $paramIndex = 0;
-            
+
             foreach ($combinacoesSemLetras as $comb) {
                 $conditions[] = "(CAST(quarteirao AS UNSIGNED) = CAST(:q{$paramIndex} AS UNSIGNED) AND quadra = :quad{$paramIndex} AND lote = :lot{$paramIndex})";
                 $paramsDesenhos[":q{$paramIndex}"] = $comb['quarteirao'];
@@ -306,14 +324,14 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
                 $paramsDesenhos[":lot{$paramIndex}"] = $comb['lote'];
                 $paramIndex++;
             }
-            
+
             if (!empty($conditions)) {
                 $sqlDesenhos = "SELECT id FROM desenhos 
                                 WHERE quadricula = :quadricula
                                 AND (" . implode(' OR ', $conditions) . ")
                                 AND (camada = 'poligono lote' OR camada = 'poligono_lote')
                                 AND status > 0";
-                
+
                 $stmtDesenhos = $pdo->prepare($sqlDesenhos);
                 $stmtDesenhos->execute($paramsDesenhos);
                 $poligonos = $stmtDesenhos->fetchAll(PDO::FETCH_ASSOC);
@@ -325,13 +343,12 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
                 }
             }
         }
-        
+
         // Buscar também marcadores (se houver na pesquisa)
         // Por enquanto, retornar apenas IDs de polígonos
-        
+
         echo json_encode(['ids' => $idsDesenhos]);
         exit;
-        
     } catch (Exception $e) {
         echo json_encode(['error' => $e->getMessage()]);
         exit;
@@ -351,7 +368,7 @@ if (isset($_GET['pesquisar'])) {
 
         $type = $input['type'];
         $values = $input['values'];
-        
+
         // Verificar se há cache de resultados salvos
         $userId = null;
         if (isset($_SESSION['usuario']) && is_array($_SESSION['usuario']) && isset($_SESSION['usuario'][1])) {
@@ -359,216 +376,236 @@ if (isset($_GET['pesquisar'])) {
         } else {
             $userId = md5(session_id());
         }
-        
+
         $dir = __DIR__ . '/jsonPesquisa';
         $file = $dir . '/' . $userId . '.json';
-        
+
         $usarCache = false;
         $cacheData = null;
         $allResults = null;
-        
+
         if (file_exists($file)) {
             $cacheData = json_decode(file_get_contents($file), true);
             // Verificar se o cache corresponde à pesquisa atual
-            if (is_array($cacheData) && 
+            if (
+                is_array($cacheData) &&
                 isset($cacheData['type']) && $cacheData['type'] === $type &&
                 isset($cacheData['values']) && is_array($cacheData['values']) &&
-                is_array($values)) {
-                
+                is_array($values)
+            ) {
+
                 // Comparar valores de forma mais robusta
                 $cacheValuesNormalized = $cacheData['values'];
                 $currentValuesNormalized = $values;
-                
+
                 // Normalizar arrays para comparação (ordenar chaves e converter tipos)
                 ksort($cacheValuesNormalized);
                 ksort($currentValuesNormalized);
-                
+
                 // Converter valores para string para comparação
                 $cacheValuesStr = json_encode($cacheValuesNormalized, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK);
                 $currentValuesStr = json_encode($currentValuesNormalized, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK);
-                
-                if ($cacheValuesStr === $currentValuesStr &&
-                    isset($cacheData['results']) && 
+
+                if (
+                    $cacheValuesStr === $currentValuesStr &&
+                    isset($cacheData['results']) &&
                     is_array($cacheData['results']) &&
                     isset($cacheData['results']['allResults']) &&
                     is_array($cacheData['results']['allResults']) &&
-                    count($cacheData['results']['allResults']) > 0) {
+                    count($cacheData['results']['allResults']) > 0
+                ) {
                     // Cache válido encontrado - mesma pesquisa com resultados
                     $usarCache = true;
                     $allResults = $cacheData['results']['allResults'];
                 }
             }
         }
-        
+
         if (!is_dir($dir)) {
             @mkdir($dir, 0775, true);
         }
-        
+
         // Só construir query SQL se não usar cache (pesquisa diferente ou sem cache)
         if (!$usarCache) {
-            // Construir query SQL baseada no tipo de pesquisa (SEM JOIN com desenhos)
-            $sql = "SELECT * FROM cadastro WHERE 1=1 AND imob_id = imob_id_principal";
-            $params = [];
+            // Para cadastros_nao_desenhados, usar query especial com NOT EXISTS
+            if ($type === 'cadastros_nao_desenhados') {
+                $sql = "SELECT cad.* 
+                        FROM cadastro cad 
+                        WHERE cad.imob_id = cad.imob_id_principal 
+                        AND NOT EXISTS ( 
+                            SELECT 1 FROM desenhos des 
+                            WHERE des.camada = 'marcador_quadra' 
+                            AND des.quarteirao = cad.cara_quarteirao 
+                            AND des.quadra = cad.quadra 
+                            AND des.lote = cad.lote 
+                        ) 
+                        ORDER BY cad.nome_loteamento, cad.cara_quarteirao";
+                $params = [];
+                // Não há switch para este tipo, pular direto para execução
+            } else {
+                $sql = "SELECT * FROM cadastro WHERE 1=1 AND imob_id = imob_id_principal";
+                $params = [];
 
-            switch ($type) {
-            case 'endereco_numero':
-                if (!empty($values['endereco'])) {
-                    $sql .= " AND logradouro LIKE :endereco";
-                    $params[':endereco'] = '%' . $values['endereco'] . '%';
-                }
-                if (!empty($values['numero'])) {
-                    $sql .= " AND numero = :numero";
-                    $params[':numero'] = $values['numero'];
-                }
-                break;
+                switch ($type) {
+                    case 'endereco_numero':
+                        if (!empty($values['endereco'])) {
+                            $sql .= " AND logradouro LIKE :endereco";
+                            $params[':endereco'] = '%' . $values['endereco'] . '%';
+                        }
+                        if (!empty($values['numero'])) {
+                            $sql .= " AND numero = :numero";
+                            $params[':numero'] = $values['numero'];
+                        }
+                        break;
 
-            case 'quarteirao':
-                if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cara_quarteirao = :quarteirao";
-                    $params[':quarteirao'] = $values['quarteirao'];
-                }
-                break;
+                    case 'quarteirao':
+                        if (!empty($values['quarteirao'])) {
+                            $sql .= " AND cara_quarteirao = :quarteirao";
+                            $params[':quarteirao'] = $values['quarteirao'];
+                        }
+                        break;
 
-            case 'quarteirao_quadra':
-                if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cara_quarteirao = :quarteirao";
-                    $params[':quarteirao'] = $values['quarteirao'];
-                }
-                if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
-                    $params[':quadra'] = $values['quadra'];
-                }
-                break;
+                    case 'quarteirao_quadra':
+                        if (!empty($values['quarteirao'])) {
+                            $sql .= " AND cara_quarteirao = :quarteirao";
+                            $params[':quarteirao'] = $values['quarteirao'];
+                        }
+                        if (!empty($values['quadra'])) {
+                            $sql .= " AND quadra = :quadra";
+                            $params[':quadra'] = $values['quadra'];
+                        }
+                        break;
 
-            case 'quarteirao_quadra_lote':
-                if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cara_quarteirao = :quarteirao";
-                    $params[':quarteirao'] = $values['quarteirao'];
-                }
-                if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
-                    $params[':quadra'] = $values['quadra'];
-                }
-                if (!empty($values['lote'])) {
-                    $sql .= " AND lote = :lote";
-                    $params[':lote'] = $values['lote'];
-                }
-                break;
+                    case 'quarteirao_quadra_lote':
+                        if (!empty($values['quarteirao'])) {
+                            $sql .= " AND cara_quarteirao = :quarteirao";
+                            $params[':quarteirao'] = $values['quarteirao'];
+                        }
+                        if (!empty($values['quadra'])) {
+                            $sql .= " AND quadra = :quadra";
+                            $params[':quadra'] = $values['quadra'];
+                        }
+                        if (!empty($values['lote'])) {
+                            $sql .= " AND lote = :lote";
+                            $params[':lote'] = $values['lote'];
+                        }
+                        break;
 
-            case 'loteamento':
-                if (!empty($values['loteamento'])) {
-                    $sql .= " AND nome_loteamento LIKE :loteamento";
-                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
-                }
-                break;
+                    case 'loteamento':
+                        if (!empty($values['loteamento'])) {
+                            $sql .= " AND nome_loteamento LIKE :loteamento";
+                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                        }
+                        break;
 
-            case 'loteamento_quadra':
-                if (!empty($values['loteamento'])) {
-                    $sql .= " AND nome_loteamento LIKE :loteamento";
-                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
-                }
-                if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
-                    $params[':quadra'] = $values['quadra'];
-                }
-                break;
+                    case 'loteamento_quadra':
+                        if (!empty($values['loteamento'])) {
+                            $sql .= " AND nome_loteamento LIKE :loteamento";
+                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                        }
+                        if (!empty($values['quadra'])) {
+                            $sql .= " AND quadra = :quadra";
+                            $params[':quadra'] = $values['quadra'];
+                        }
+                        break;
 
-            case 'loteamento_quadra_lote':
-                if (!empty($values['loteamento'])) {
-                    $sql .= " AND nome_loteamento LIKE :loteamento";
-                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
-                }
-                if (!empty($values['quadra'])) {
-                    $sql .= " AND quadra = :quadra";
-                    $params[':quadra'] = $values['quadra'];
-                }
-                if (!empty($values['lote'])) {
-                    $sql .= " AND lote = :lote";
-                    $params[':lote'] = $values['lote'];
-                }
-                break;
+                    case 'loteamento_quadra_lote':
+                        if (!empty($values['loteamento'])) {
+                            $sql .= " AND nome_loteamento LIKE :loteamento";
+                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                        }
+                        if (!empty($values['quadra'])) {
+                            $sql .= " AND quadra = :quadra";
+                            $params[':quadra'] = $values['quadra'];
+                        }
+                        if (!empty($values['lote'])) {
+                            $sql .= " AND lote = :lote";
+                            $params[':lote'] = $values['lote'];
+                        }
+                        break;
 
-            case 'cnpj':
-                if (!empty($values['cnpj'])) {
-                    $sql .= " AND cnpj = :cnpj";
-                    $params[':cnpj'] = $values['cnpj'];
-                }
-                break;
+                    case 'cnpj':
+                        if (!empty($values['cnpj'])) {
+                            $sql .= " AND cnpj = :cnpj";
+                            $params[':cnpj'] = $values['cnpj'];
+                        }
+                        break;
 
-            case 'uso_imovel':
-                if (!empty($values['uso_imovel'])) {
-                    $sql .= " AND uso_imovel LIKE :uso_imovel";
-                    $params[':uso_imovel'] = '%' . $values['uso_imovel'] . '%';
-                }
-                break;
+                    case 'uso_imovel':
+                        if (!empty($values['uso_imovel'])) {
+                            $sql .= " AND uso_imovel LIKE :uso_imovel";
+                            $params[':uso_imovel'] = '%' . $values['uso_imovel'] . '%';
+                        }
+                        break;
 
-            case 'bairro':
-                if (!empty($values['bairro'])) {
-                    $sql .= " AND bairro LIKE :bairro";
-                    $params[':bairro'] = '%' . $values['bairro'] . '%';
-                }
-                break;
+                    case 'bairro':
+                        if (!empty($values['bairro'])) {
+                            $sql .= " AND bairro LIKE :bairro";
+                            $params[':bairro'] = '%' . $values['bairro'] . '%';
+                        }
+                        break;
 
-            case 'inscricao':
-                if (!empty($values['inscricao'])) {
-                    $sql .= " AND inscricao = :inscricao";
-                    $params[':inscricao'] = $values['inscricao'];
-                }
-                break;
+                    case 'inscricao':
+                        if (!empty($values['inscricao'])) {
+                            $sql .= " AND inscricao = :inscricao";
+                            $params[':inscricao'] = $values['inscricao'];
+                        }
+                        break;
 
-            case 'imob_id':
-                if (!empty($values['imob_id'])) {
-                    $sql .= " AND imob_id = :imob_id";
-                    $params[':imob_id'] = $values['imob_id'];
-                }
-                break;
+                    case 'imob_id':
+                        if (!empty($values['imob_id'])) {
+                            $sql .= " AND imob_id = :imob_id";
+                            $params[':imob_id'] = $values['imob_id'];
+                        }
+                        break;
 
-            case 'zona':
-                if (!empty($values['zona'])) {
-                    $sql .= " AND zona = :zona";
-                    $params[':zona'] = $values['zona'];
-                }
-                break;
+                    case 'zona':
+                        if (!empty($values['zona'])) {
+                            $sql .= " AND zona = :zona";
+                            $params[':zona'] = $values['zona'];
+                        }
+                        break;
 
-            case 'cat_via':
-                if (!empty($values['cat_via'])) {
-                    $sql .= " AND cat_via LIKE :cat_via";
-                    $params[':cat_via'] = '%' . $values['cat_via'] . '%';
-                }
-                break;
+                    case 'cat_via':
+                        if (!empty($values['cat_via'])) {
+                            $sql .= " AND cat_via LIKE :cat_via";
+                            $params[':cat_via'] = '%' . $values['cat_via'] . '%';
+                        }
+                        break;
 
-            case 'tipo_edificacao':
-                if (!empty($values['tipo_edificacao'])) {
-                    $sql .= " AND tipo_edificacao LIKE :tipo_edificacao";
-                    $params[':tipo_edificacao'] = '%' . $values['tipo_edificacao'] . '%';
-                }
-                break;
+                    case 'tipo_edificacao':
+                        if (!empty($values['tipo_edificacao'])) {
+                            $sql .= " AND tipo_edificacao LIKE :tipo_edificacao";
+                            $params[':tipo_edificacao'] = '%' . $values['tipo_edificacao'] . '%';
+                        }
+                        break;
 
-            case 'area_construida':
-                if (!empty($values['area_construida_min'])) {
-                    $sql .= " AND total_construido >= :area_construida_min";
-                    $params[':area_construida_min'] = floatval($values['area_construida_min']);
-                }
-                if (!empty($values['area_construida_max'])) {
-                    $sql .= " AND total_construido <= :area_construida_max";
-                    $params[':area_construida_max'] = floatval($values['area_construida_max']);
-                }
-                break;
+                    case 'area_construida':
+                        if (!empty($values['area_construida_min'])) {
+                            $sql .= " AND total_construido >= :area_construida_min";
+                            $params[':area_construida_min'] = floatval($values['area_construida_min']);
+                        }
+                        if (!empty($values['area_construida_max'])) {
+                            $sql .= " AND total_construido <= :area_construida_max";
+                            $params[':area_construida_max'] = floatval($values['area_construida_max']);
+                        }
+                        break;
 
-            case 'area_terreno':
-                if (!empty($values['area_terreno_min'])) {
-                    $sql .= " AND area_terreno >= :area_terreno_min";
-                    $params[':area_terreno_min'] = floatval($values['area_terreno_min']);
-                }
-                if (!empty($values['area_terreno_max'])) {
-                    $sql .= " AND area_terreno <= :area_terreno_max";
-                    $params[':area_terreno_max'] = floatval($values['area_terreno_max']);
-                }
-                break;
+                    case 'area_terreno':
+                        if (!empty($values['area_terreno_min'])) {
+                            $sql .= " AND area_terreno >= :area_terreno_min";
+                            $params[':area_terreno_min'] = floatval($values['area_terreno_min']);
+                        }
+                        if (!empty($values['area_terreno_max'])) {
+                            $sql .= " AND area_terreno <= :area_terreno_max";
+                            $params[':area_terreno_max'] = floatval($values['area_terreno_max']);
+                        }
+                        break;
 
-            default:
-                echo json_encode(['error' => 'Tipo de pesquisa não implementado']);
-                exit;
+                    default:
+                        echo json_encode(['error' => 'Tipo de pesquisa não implementado']);
+                        exit;
+                }
             }
         }
 
@@ -581,25 +618,39 @@ if (isset($_GET['pesquisar'])) {
         if ($usarCache && $allResults !== null) {
             // Usar o totalCount salvo no cache (total real do banco)
             $totalCount = isset($cacheData['totalCount']) ? intval($cacheData['totalCount']) : count($allResults);
-            
+
             // Aplicar paginação APENAS na exibição dos dados da tabela
             $results = array_slice($allResults, $offset, $limit);
         } else {
-            // Fazer pesquisa no banco (SEM JOIN)
+            // Fazer pesquisa no banco
             // Primeiro, contar o total de resultados
-            $wherePart = '';
-            if (preg_match('/WHERE\s+(.+?)(?:\s+ORDER\s+BY|$)/is', $sql, $matches)) {
-                $wherePart = trim($matches[1]);
-            } else if (preg_match('/WHERE\s+(.+)$/is', $sql, $matches)) {
-                $wherePart = trim($matches[1]);
+            // Para cadastros_nao_desenhados, usar NOT EXISTS
+            if ($type === 'cadastros_nao_desenhados') {
+                $countSql = "SELECT COUNT(*) as total 
+                            FROM cadastro cad 
+                            WHERE cad.imob_id = cad.imob_id_principal 
+                            AND NOT EXISTS ( 
+                                SELECT 1 FROM desenhos des 
+                                WHERE des.camada = 'marcador_quadra' 
+                                AND des.quarteirao = cad.cara_quarteirao 
+                                AND des.quadra = cad.quadra 
+                                AND des.lote = cad.lote 
+                            )";
+            } else {
+                $wherePart = '';
+                if (preg_match('/WHERE\s+(.+?)(?:\s+ORDER\s+BY|$)/is', $sql, $matches)) {
+                    $wherePart = trim($matches[1]);
+                } else if (preg_match('/WHERE\s+(.+)$/is', $sql, $matches)) {
+                    $wherePart = trim($matches[1]);
+                }
+
+                if (empty($wherePart)) {
+                    $wherePart = '1=1';
+                }
+
+                $countSql = "SELECT COUNT(*) as total FROM cadastro WHERE " . $wherePart;
             }
-            
-            if (empty($wherePart)) {
-                $wherePart = '1=1';
-            }
-            
-            $countSql = "SELECT COUNT(*) as total FROM cadastro WHERE " . $wherePart;
-            
+
             $countStmt = $pdo->prepare($countSql);
             foreach ($params as $key => $value) {
                 $countStmt->bindValue($key, $value);
@@ -614,7 +665,7 @@ if (isset($_GET['pesquisar'])) {
             }
             $stmtTodos->execute();
             $allResults = $stmtTodos->fetchAll(PDO::FETCH_ASSOC);
-            
+
             // Aplicar paginação APENAS na exibição dos dados da tabela
             $results = array_slice($allResults, $offset, $limit);
         }
@@ -637,7 +688,7 @@ if (isset($_GET['pesquisar'])) {
             ];
             file_put_contents($file, json_encode($cacheData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         }
-        
+
         // Retornar resultados (SEM desenhos)
         echo json_encode([
             'success' => true,
@@ -662,20 +713,20 @@ if (isset($_GET['pesquisar'])) {
 // Endpoint simples para salvar/carregar última pesquisa do usuário
 if (isset($_GET['searchApi'])) {
     header('Content-Type: application/json');
-    
+
     $userId = null;
     if (isset($_SESSION['usuario']) && is_array($_SESSION['usuario']) && isset($_SESSION['usuario'][1])) {
         $userId = md5($_SESSION['usuario'][1]);
     } else {
         $userId = md5(session_id());
     }
-    
+
     $dir = __DIR__ . '/jsonPesquisa';
     if (!is_dir($dir)) {
         @mkdir($dir, 0775, true);
     }
     $file = $dir . '/' . $userId . '.json';
-    
+
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $input = json_decode(file_get_contents('php://input'), true);
         if (is_array($input) && isset($input['type']) && isset($input['values'])) {
@@ -1649,7 +1700,7 @@ if (isset($_GET['quadricula'])) {
             font-weight: bold;
             color: #333;
             white-space: nowrap;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
             pointer-events: none;
         }
 
@@ -1662,7 +1713,7 @@ if (isset($_GET['quadricula'])) {
             font-size: 14px;
             font-weight: bold;
             white-space: nowrap;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
             pointer-events: none;
         }
 
@@ -1675,11 +1726,11 @@ if (isset($_GET['quadricula'])) {
             font-size: 14px;
             font-weight: bold;
             white-space: nowrap;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
             pointer-events: none;
         }
 
-        #dropCamadas{
+        #dropCamadas {
             max-height: 600px;
             overflow-y: auto;
         }
@@ -1718,6 +1769,7 @@ if (isset($_GET['quadricula'])) {
             font-weight: 600;
             color: #007bff;
         }
+
         /* ==================== QUADRINHO DE PESQUISA ==================== */
         #searchBox {
             position: absolute;
@@ -1731,8 +1783,10 @@ if (isset($_GET['quadricula'])) {
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             display: inline-block;
             max-width: calc(100% - 30px);
-            width: fit-content; /* Largura baseada no conteúdo (searchControls) */
-            min-width: fit-content; /* Garantir que sempre seja baseado no conteúdo */
+            width: fit-content;
+            /* Largura baseada no conteúdo (searchControls) */
+            min-width: fit-content;
+            /* Garantir que sempre seja baseado no conteúdo */
         }
 
         #searchControls {
@@ -2118,7 +2172,7 @@ if (isset($_GET['quadricula'])) {
                         </button>
                         <ul id="dropCamadas" class="dropdown-menu p-2">
                             <!-- Checkbox da Ortofoto fixo -->
-                            
+
                             <li id="liFiltradoCheckbox" style="display: none;">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="chkFiltrado">
@@ -2325,8 +2379,8 @@ if (isset($_GET['quadricula'])) {
                                     <label for="rangeOpacidadeCamadas" class="form-label" style="font-size: 12px; font-weight: 500; color: #495057; margin-bottom: 8px; display: block;">
                                         Opacidade: <span id="valorOpacidadeCamadas">0.5</span>
                                     </label>
-                                    <input type="range" class="form-range" id="rangeOpacidadeCamadas" 
-                                           min="0" max="2" step="0.1" value="0.5">
+                                    <input type="range" class="form-range" id="rangeOpacidadeCamadas"
+                                        min="0" max="2" step="0.1" value="0.5">
                                 </div>
                             </li>
                         </ul>
@@ -2362,7 +2416,7 @@ if (isset($_GET['quadricula'])) {
                     <button class="btn btn-info" id="btnPesquisa">
                         <i class="fas fa-search"></i> Pesquisa
                     </button>-->
-                    
+
                     <!-- Botão Sair do Modo Pesquisa (TEMPORÁRIO - aparece quando em modo pesquisa) 
                     <button class="btn btn-secondary d-none" id="btnSairModoPesquisa">
                         <i class="fas fa-times"></i> Sair do Modo Pesquisa
@@ -2385,21 +2439,23 @@ if (isset($_GET['quadricula'])) {
                         </button>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="#" onclick="iniciarMedicaoArea(); event.preventDefault();">
-                                <i class="fas fa-draw-polygon"></i> Medir Área
-                            </a></li>
+                                    <i class="fas fa-draw-polygon"></i> Medir Área
+                                </a></li>
                             <li><a class="dropdown-item" href="#" onclick="iniciarMedicaoDistancia(); event.preventDefault();">
-                                <i class="fas fa-ruler"></i> Medir Distância
-                            </a></li>
+                                    <i class="fas fa-ruler"></i> Medir Distância
+                                </a></li>
                             <li><a class="dropdown-item" href="#" onclick="iniciarMedicaoCirculo(); event.preventDefault();">
-                                <i class="fas fa-circle"></i> Medir Círculo
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
+                                    <i class="fas fa-circle"></i> Medir Círculo
+                                </a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
                             <li><a class="dropdown-item text-warning d-none" href="#" id="btnLimparMedicoes" onclick="limparTodasMedicoes(); event.preventDefault();">
-                                <i class="fas fa-trash"></i> Limpar Todas as Medições
-                            </a></li>
+                                    <i class="fas fa-trash"></i> Limpar Todas as Medições
+                                </a></li>
                             <li><a class="dropdown-item text-danger d-none" href="#" id="btnCancelarMedicao" onclick="cancelarMedicao(); event.preventDefault();">
-                                <i class="fas fa-times"></i> Sair do Modo Régua
-                            </a></li>
+                                    <i class="fas fa-times"></i> Sair do Modo Régua
+                                </a></li>
                         </ul>
                     </div>
 
@@ -2410,11 +2466,11 @@ if (isset($_GET['quadricula'])) {
                         </button>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="#" onclick="abrirLocalExterno('earth_web'); event.preventDefault();">
-                                <i class="fas fa-globe"></i> Google Earth Web
-                            </a></li>
+                                    <i class="fas fa-globe"></i> Google Earth Web
+                                </a></li>
                             <li><a class="dropdown-item" href="#" onclick="abrirLocalExterno('maps'); event.preventDefault();">
-                                <i class="fas fa-map-marked-alt"></i> Google Maps
-                            </a></li>
+                                    <i class="fas fa-map-marked-alt"></i> Google Maps
+                                </a></li>
                         </ul>
                     </div>
 
@@ -2511,9 +2567,63 @@ if (isset($_GET['quadricula'])) {
         const userControl = <?php echo json_encode($_SESSION['usuario'][2]); ?>;
 
         // =================== SISTEMA DE PESQUISA (SEM DESENHOS) ===================
-        
-        // Opções de pesquisa (igual ao painel.php)
-        const searchOptions = [
+
+        // Opções de pesquisa (ordenadas alfabeticamente)
+        const searchOptions = [{
+                value: 'area_construida',
+                label: 'Área Construída',
+                fields: [{
+                        name: 'area_construida_min',
+                        placeholder: 'Área Mínima (m²)'
+                    },
+                    {
+                        name: 'area_construida_max',
+                        placeholder: 'Área Máxima (m²)'
+                    }
+                ]
+            },
+            {
+                value: 'area_terreno',
+                label: 'Área do Terreno',
+                fields: [{
+                        name: 'area_terreno_min',
+                        placeholder: 'Área Mínima (m²)'
+                    },
+                    {
+                        name: 'area_terreno_max',
+                        placeholder: 'Área Máxima (m²)'
+                    }
+                ]
+            },
+            {
+                value: 'bairro',
+                label: 'Bairro',
+                fields: [{
+                    name: 'bairro',
+                    placeholder: 'Bairro'
+                }]
+            },
+            {
+                value: 'cadastros_nao_desenhados',
+                label: 'Cadastros não desenhados',
+                fields: []
+            },
+            {
+                value: 'cat_via',
+                label: 'Categoria de Via',
+                fields: [{
+                    name: 'cat_via',
+                    placeholder: 'Categoria de Via'
+                }]
+            },
+            {
+                value: 'cnpj',
+                label: 'CNPJ',
+                fields: [{
+                    name: 'cnpj',
+                    placeholder: 'CNPJ'
+                }]
+            },
             {
                 value: 'endereco_numero',
                 label: 'Endereço e Número',
@@ -2524,6 +2634,60 @@ if (isset($_GET['quadricula'])) {
                     {
                         name: 'numero',
                         placeholder: 'Número'
+                    }
+                ]
+            },
+            {
+                value: 'imob_id',
+                label: 'ID Imobiliário',
+                fields: [{
+                    name: 'imob_id',
+                    placeholder: 'ID Imobiliário'
+                }]
+            },
+            {
+                value: 'inscricao',
+                label: 'Inscrição',
+                fields: [{
+                    name: 'inscricao',
+                    placeholder: 'Inscrição'
+                }]
+            },
+            {
+                value: 'loteamento',
+                label: 'Loteamento',
+                fields: [{
+                    name: 'loteamento',
+                    placeholder: 'Loteamento'
+                }]
+            },
+            {
+                value: 'loteamento_quadra',
+                label: 'Loteamento e Quadra',
+                fields: [{
+                        name: 'loteamento',
+                        placeholder: 'Loteamento'
+                    },
+                    {
+                        name: 'quadra',
+                        placeholder: 'Quadra'
+                    }
+                ]
+            },
+            {
+                value: 'loteamento_quadra_lote',
+                label: 'Loteamento, Quadra e Lote',
+                fields: [{
+                        name: 'loteamento',
+                        placeholder: 'Loteamento'
+                    },
+                    {
+                        name: 'quadra',
+                        placeholder: 'Quadra'
+                    },
+                    {
+                        name: 'lote',
+                        placeholder: 'Lote'
                     }
                 ]
             },
@@ -2566,49 +2730,11 @@ if (isset($_GET['quadricula'])) {
                 ]
             },
             {
-                value: 'loteamento',
-                label: 'Loteamento',
+                value: 'tipo_edificacao',
+                label: 'Tipo de Edificação',
                 fields: [{
-                    name: 'loteamento',
-                    placeholder: 'Loteamento'
-                }]
-            },
-            {
-                value: 'loteamento_quadra',
-                label: 'Loteamento e Quadra',
-                fields: [{
-                        name: 'loteamento',
-                        placeholder: 'Loteamento'
-                    },
-                    {
-                        name: 'quadra',
-                        placeholder: 'Quadra'
-                    }
-                ]
-            },
-            {
-                value: 'loteamento_quadra_lote',
-                label: 'Loteamento, Quadra e Lote',
-                fields: [{
-                        name: 'loteamento',
-                        placeholder: 'Loteamento'
-                    },
-                    {
-                        name: 'quadra',
-                        placeholder: 'Quadra'
-                    },
-                    {
-                        name: 'lote',
-                        placeholder: 'Lote'
-                    }
-                ]
-            },
-            {
-                value: 'cnpj',
-                label: 'CNPJ',
-                fields: [{
-                    name: 'cnpj',
-                    placeholder: 'CNPJ'
+                    name: 'tipo_edificacao',
+                    placeholder: 'Tipo de Edificação'
                 }]
             },
             {
@@ -2620,78 +2746,12 @@ if (isset($_GET['quadricula'])) {
                 }]
             },
             {
-                value: 'bairro',
-                label: 'Bairro',
-                fields: [{
-                    name: 'bairro',
-                    placeholder: 'Bairro'
-                }]
-            },
-            {
-                value: 'inscricao',
-                label: 'Inscrição',
-                fields: [{
-                    name: 'inscricao',
-                    placeholder: 'Inscrição'
-                }]
-            },
-            {
-                value: 'imob_id',
-                label: 'ID Imobiliário',
-                fields: [{
-                    name: 'imob_id',
-                    placeholder: 'ID Imobiliário'
-                }]
-            },
-            {
                 value: 'zona',
                 label: 'Zona',
                 fields: [{
                     name: 'zona',
                     placeholder: 'Zona'
                 }]
-            },
-            {
-                value: 'cat_via',
-                label: 'Categoria de Via',
-                fields: [{
-                    name: 'cat_via',
-                    placeholder: 'Categoria de Via'
-                }]
-            },
-            {
-                value: 'tipo_edificacao',
-                label: 'Tipo de Edificação',
-                fields: [{
-                    name: 'tipo_edificacao',
-                    placeholder: 'Tipo de Edificação'
-                }]
-            },
-            {
-                value: 'area_construida',
-                label: 'Área Construída',
-                fields: [{
-                        name: 'area_construida_min',
-                        placeholder: 'Área Mínima (m²)'
-                    },
-                    {
-                        name: 'area_construida_max',
-                        placeholder: 'Área Máxima (m²)'
-                    }
-                ]
-            },
-            {
-                value: 'area_terreno',
-                label: 'Área do Terreno',
-                fields: [{
-                        name: 'area_terreno_min',
-                        placeholder: 'Área Mínima (m²)'
-                    },
-                    {
-                        name: 'area_terreno_max',
-                        placeholder: 'Área Máxima (m²)'
-                    }
-                ]
             }
         ];
 
@@ -2901,13 +2961,13 @@ if (isset($_GET['quadricula'])) {
                 input.name = field.name;
                 input.placeholder = field.placeholder;
                 input.style.maxWidth = '220px';
-                
+
                 if (field.name.includes('area_') || field.name.includes('min') || field.name.includes('max')) {
                     input.type = 'number';
                     input.step = '0.01';
                     input.min = '0';
                 }
-                
+
                 if (savedValues[field.name]) input.value = savedValues[field.name];
                 container.appendChild(input);
             });
@@ -2915,8 +2975,11 @@ if (isset($_GET['quadricula'])) {
 
         function collectSearchData() {
             const select = document.getElementById('searchType');
-            if (!select) return { type: '', values: {} };
-            
+            if (!select) return {
+                type: '',
+                values: {}
+            };
+
             const type = select.value;
             const inputs = document.querySelectorAll('#searchInputs input');
             const values = {};
@@ -3182,7 +3245,10 @@ if (isset($_GET['quadricula'])) {
             const lat = latValor.toFixed(8);
             const lng = lngValor.toFixed(8);
             const altitudeBase = converterZoomParaAltitude(zoomMap, latValor);
-            const { altitude: altitudeEarthWeb, range: rangeEarthWeb } = calcularParametrosEarthWeb(zoomMap, latValor);
+            const {
+                altitude: altitudeEarthWeb,
+                range: rangeEarthWeb
+            } = calcularParametrosEarthWeb(zoomMap, latValor);
             const altitudePro = Math.max(50, Math.round(altitudeBase));
 
             let url = '';
@@ -3216,7 +3282,7 @@ if (isset($_GET['quadricula'])) {
             // Valores testados e validados pelo usuário
             // A altitude (parâmetro 'a') é sempre ~595 para essa localização
             const altitudeFixa = 594.81286735;
-            
+
             const zoomRangeMap = {
                 21: 3405.18688813,
                 20: 7353.01885773,
@@ -3226,7 +3292,10 @@ if (isset($_GET['quadricula'])) {
 
             // Se o zoom está na tabela, usa o valor exato
             if (zoomRangeMap[zoom] !== undefined) {
-                return { altitude: altitudeFixa, range: zoomRangeMap[zoom] };
+                return {
+                    altitude: altitudeFixa,
+                    range: zoomRangeMap[zoom]
+                };
             }
 
             // Para zooms fora da tabela, calcula usando interpolação exponencial
@@ -3239,11 +3308,14 @@ if (isset($_GET['quadricula'])) {
             const fatorMultiplicacao = 2.121; // Média dos fatores entre os zooms testados
             const exponent = referenceZoom - zoom;
             const rangeCalculado = baseRange * Math.pow(fatorMultiplicacao, exponent);
-            
+
             // Garante valores mínimos e máximos razoáveis
             const range = Math.max(100, Math.min(rangeCalculado, 500000));
-            
-            return { altitude: altitudeFixa, range };
+
+            return {
+                altitude: altitudeFixa,
+                range
+            };
         }
 
         // Sistema de medição de régua
@@ -3319,8 +3391,10 @@ if (isset($_GET['quadricula'])) {
                 this.pontos = [];
                 this.ativa = false;
                 this.tipo = null;
-                MapFramework.map.setOptions({ draggableCursor: 'default' });
-                
+                MapFramework.map.setOptions({
+                    draggableCursor: 'default'
+                });
+
                 // Reabilita interatividade de todos os objetos do mapa
                 if (MapFramework && MapFramework.atualizarInteratividadeObjetos) {
                     MapFramework.atualizarInteratividadeObjetos(true);
@@ -3349,11 +3423,11 @@ if (isset($_GET['quadricula'])) {
                     this.labelTemporaria.setMap(null);
                     this.labelTemporaria = null;
                 }
-                
+
                 // Remove labels temporárias
                 this.labels.forEach(l => l.setMap(null));
                 this.labels = [];
-                
+
                 this.pontos = [];
                 this.centroCirculo = null;
             },
@@ -3362,7 +3436,9 @@ if (isset($_GET['quadricula'])) {
                 // Usa a biblioteca Turf.js para calcular distância em metros
                 const from = turf.point([ponto1.lng(), ponto1.lat()]);
                 const to = turf.point([ponto2.lng(), ponto2.lat()]);
-                return turf.distance(from, to, { units: 'kilometers' }) * 1000; // Converte km para metros
+                return turf.distance(from, to, {
+                    units: 'kilometers'
+                }) * 1000; // Converte km para metros
             },
 
             formatarDistancia: function(metros) {
@@ -3383,7 +3459,7 @@ if (isset($_GET['quadricula'])) {
                 // Calcula o ponto médio entre os dois pontos
                 const lat = (ponto1.lat() + ponto2.lat()) / 2;
                 const lng = (ponto1.lng() + ponto2.lng()) / 2;
-                
+
                 // Aplica um pequeno offset vertical (sobe a label)
                 const offsetVertical = 0.0000015; // Aproximadamente 1.5 metros para cima
                 const posicao = new google.maps.LatLng(lat + offsetVertical, lng);
@@ -3429,7 +3505,7 @@ if (isset($_GET['quadricula'])) {
 
                 const polygon = turf.polygon([coords]);
                 const centroid = turf.centroid(polygon);
-                
+
                 return new google.maps.LatLng(
                     centroid.geometry.coordinates[1],
                     centroid.geometry.coordinates[0]
@@ -3486,7 +3562,7 @@ if (isset($_GET['quadricula'])) {
 
                     const polygon = turf.polygon([coords]);
                     const area = turf.area(polygon);
-                    
+
                     const centroide = this.calcularCentroide(this.pontos);
                     this.adicionarLabelCentral(area.toFixed(1) + ' m²', centroide, 'measurement-area-label');
                 }
@@ -3543,7 +3619,7 @@ if (isset($_GET['quadricula'])) {
                     // Se está iniciando pela primeira vez, limpa tudo
                     this.limpar();
                 }
-                
+
                 // Remove listeners antigos antes de criar novos
                 if (this.listenerClick) {
                     google.maps.event.removeListener(this.listenerClick);
@@ -3557,10 +3633,12 @@ if (isset($_GET['quadricula'])) {
                     google.maps.event.removeListener(this.listenerMouseMove);
                     this.listenerMouseMove = null;
                 }
-                
+
                 this.ativa = true;
                 this.tipo = tipo;
-                MapFramework.map.setOptions({ draggableCursor: 'crosshair' });
+                MapFramework.map.setOptions({
+                    draggableCursor: 'crosshair'
+                });
 
                 // Desabilita interatividade de todos os objetos do mapa
                 MapFramework.atualizarInteratividadeObjetos(false);
@@ -3594,7 +3672,7 @@ if (isset($_GET['quadricula'])) {
                         alert('É necessário pelo menos 2 pontos para medir distância.');
                         return;
                     }
-                    
+
                     // Finaliza a medição
                     this.finalizar();
                 });
@@ -3616,7 +3694,7 @@ if (isset($_GET['quadricula'])) {
                     // Preview para círculo
                     if (this.tipo === 'circulo' && this.centroCirculo) {
                         const raioAtual = this.calcularDistancia(this.centroCirculo, e.latLng);
-                        
+
                         // Círculo temporário
                         if (this.circulo) {
                             this.circulo.setMap(null);
@@ -3688,17 +3766,17 @@ if (isset($_GET['quadricula'])) {
 
                 // Torna o polígono/polilinha/círculo editável
                 if (this.poligono) {
-                    this.poligono.setOptions({ 
+                    this.poligono.setOptions({
                         editable: true,
                         draggable: false,
                         clickable: false
                     });
-                    
+
                     // Recria as labels uma vez
                     this.atualizarMedidasPoligono();
                     medicaoSalva.labels = [...this.labels];
                     medicaoSalva.objeto = this.poligono;
-                    
+
                     const poligonoSalvo = this.poligono;
                     const medicaoRef = medicaoSalva;
                     const path = this.poligono.getPath();
@@ -3714,17 +3792,17 @@ if (isset($_GET['quadricula'])) {
                 }
 
                 if (this.polilinha) {
-                    this.polilinha.setOptions({ 
+                    this.polilinha.setOptions({
                         editable: true,
                         draggable: false,
                         clickable: false
                     });
-                    
+
                     // Recria as labels uma vez
                     this.atualizarMedidasPolilinha();
                     medicaoSalva.labels = [...this.labels];
                     medicaoSalva.objeto = this.polilinha;
-                    
+
                     const polilinhaSalva = this.polilinha;
                     const medicaoRef = medicaoSalva;
                     const path = this.polilinha.getPath();
@@ -3740,17 +3818,17 @@ if (isset($_GET['quadricula'])) {
                 }
 
                 if (this.circulo) {
-                    this.circulo.setOptions({ 
+                    this.circulo.setOptions({
                         editable: true,
                         draggable: true,
                         clickable: false
                     });
-                    
+
                     // Recria as labels uma vez
                     this.atualizarMedidasCirculo();
                     medicaoSalva.labels = [...this.labels];
                     medicaoSalva.objeto = this.circulo;
-                    
+
                     const circuloSalvo = this.circulo;
                     const medicaoRef = medicaoSalva;
                     google.maps.event.addListener(this.circulo, 'radius_changed', () => {
@@ -3797,7 +3875,7 @@ if (isset($_GET['quadricula'])) {
                 if (tipo === 'poligono') {
                     const path = objeto.getPath();
                     const pontos = [];
-                    
+
                     for (let i = 0; i < path.getLength(); i++) {
                         pontos.push(path.getAt(i));
                     }
@@ -3806,7 +3884,7 @@ if (isset($_GET['quadricula'])) {
                         for (let i = 0; i < pontos.length; i++) {
                             const proximoIndice = (i + 1) % pontos.length;
                             const distancia = this.calcularDistancia(pontos[i], pontos[proximoIndice]);
-                            
+
                             const lat = (pontos[i].lat() + pontos[proximoIndice].lat()) / 2;
                             const lng = (pontos[i].lng() + pontos[proximoIndice].lng()) / 2;
                             const offsetVertical = 0.0000015;
@@ -3832,7 +3910,7 @@ if (isset($_GET['quadricula'])) {
                             coords.push([pontos[0].lng(), pontos[0].lat()]);
                             const polygon = turf.polygon([coords]);
                             const area = turf.area(polygon);
-                            
+
                             const centroide = this.calcularCentroide(pontos);
                             const elArea = document.createElement('div');
                             elArea.className = 'measurement-area-label';
@@ -3852,14 +3930,14 @@ if (isset($_GET['quadricula'])) {
                 } else if (tipo === 'polilinha') {
                     const path = objeto.getPath();
                     const pontos = [];
-                    
+
                     for (let i = 0; i < path.getLength(); i++) {
                         pontos.push(path.getAt(i));
                     }
 
                     for (let i = 0; i < pontos.length - 1; i++) {
                         const distancia = this.calcularDistancia(pontos[i], pontos[i + 1]);
-                        
+
                         const lat = (pontos[i].lat() + pontos[i + 1].lat()) / 2;
                         const lng = (pontos[i].lng() + pontos[i + 1].lng()) / 2;
                         const offsetVertical = 0.0000015;
@@ -3886,7 +3964,7 @@ if (isset($_GET['quadricula'])) {
                         for (let i = 0; i < pontos.length - 1; i++) {
                             distanciaTotal += this.calcularDistancia(pontos[i], pontos[i + 1]);
                         }
-                        
+
                         const ultimoPonto = pontos[pontos.length - 1];
                         const elTotal = document.createElement('div');
                         elTotal.className = 'measurement-distance-label';
@@ -3953,10 +4031,10 @@ if (isset($_GET['quadricula'])) {
                 this.labels = [];
 
                 if (!this.poligono) return;
-                
+
                 const path = this.poligono.getPath();
                 const pontos = [];
-                
+
                 for (let i = 0; i < path.getLength(); i++) {
                     pontos.push(path.getAt(i));
                 }
@@ -3977,7 +4055,7 @@ if (isset($_GET['quadricula'])) {
 
                     const polygon = turf.polygon([coords]);
                     const area = turf.area(polygon);
-                    
+
                     const centroide = this.calcularCentroide(pontos);
                     this.adicionarLabelCentral(area.toFixed(1) + ' m²', centroide, 'measurement-area-label');
                 }
@@ -3989,10 +4067,10 @@ if (isset($_GET['quadricula'])) {
                 this.labels = [];
 
                 if (!this.polilinha) return;
-                
+
                 const path = this.polilinha.getPath();
                 const pontos = [];
-                
+
                 for (let i = 0; i < path.getLength(); i++) {
                     pontos.push(path.getAt(i));
                 }
@@ -4096,7 +4174,7 @@ if (isset($_GET['quadricula'])) {
 
                 // Calcula um ponto na borda do círculo para posicionar a label do raio
                 const pontoRaio = google.maps.geometry.spherical.computeOffset(centro, raio, 45);
-                
+
                 const lat = (centro.lat() + pontoRaio.lat()) / 2;
                 const lng = (centro.lng() + pontoRaio.lng()) / 2;
                 const offsetVertical = 0.0000015;
@@ -4215,11 +4293,11 @@ if (isset($_GET['quadricula'])) {
 
         // Função para carregar o controle de navegação de quadrículas
         function tentarCarregarControleQuadriculas() {
-            
-            if (typeof MapFramework !== 'undefined' && 
+
+            if (typeof MapFramework !== 'undefined' &&
                 MapFramework.carregarControleNavegacaoQuadriculas &&
-                dadosOrto && 
-                dadosOrto.length > 0 && 
+                dadosOrto &&
+                dadosOrto.length > 0 &&
                 dadosOrto[0]['quadricula']) {
                 MapFramework.carregarControleNavegacaoQuadriculas(dadosOrto[0]['quadricula']);
                 return true;
@@ -4230,7 +4308,7 @@ if (isset($_GET['quadricula'])) {
         // Aguarda o carregamento completo da página (incluindo scripts com defer)
         window.addEventListener('load', function() {
             console.log('Página carregada completamente');
-            
+
             // Tenta carregar imediatamente
             if (!tentarCarregarControleQuadriculas()) {
                 // Se não funcionou, tenta novamente com um pequeno delay
@@ -4239,7 +4317,7 @@ if (isset($_GET['quadricula'])) {
                 const intervalo = setInterval(function() {
                     tentativas++;
                     console.log(`Tentativa ${tentativas} de carregar controle...`);
-                    
+
                     if (tentarCarregarControleQuadriculas() || tentativas >= maxTentativas) {
                         clearInterval(intervalo);
                         if (tentativas >= maxTentativas) {
@@ -4539,12 +4617,12 @@ if (isset($_GET['quadricula'])) {
         function normalizarCor(cor) {
             if (!cor) return '';
             cor = cor.trim().toLowerCase();
-            
+
             // Se já é hexadecimal, retorna em minúsculas
             if (cor.startsWith('#')) {
                 return cor;
             }
-            
+
             // Se é RGB, converte para hex
             const rgbMatch = cor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
             if (rgbMatch) {
@@ -4553,7 +4631,7 @@ if (isset($_GET['quadricula'])) {
                 const b = parseInt(rgbMatch[3]).toString(16).padStart(2, '0');
                 return `#${r}${g}${b}`;
             }
-            
+
             // Se é nome de cor conhecido, converte
             const coresNomes = {
                 'red': '#e84646',
@@ -4564,7 +4642,7 @@ if (isset($_GET['quadricula'])) {
                 'gray': '#7c7c7c',
                 'grey': '#7c7c7c'
             };
-            
+
             return coresNomes[cor] || cor;
         }
 
@@ -4586,12 +4664,12 @@ if (isset($_GET['quadricula'])) {
             }
 
             // Verifica se TODOS os checkboxes de cores estão marcados
-            const todosCoresMarcados = $('#chkVermelho').is(':checked') && 
-                                       $('#chkAmarelo').is(':checked') && 
-                                       $('#chkLaranja').is(':checked') && 
-                                       $('#chkVerde').is(':checked') && 
-                                       $('#chkAzul').is(':checked') && 
-                                       $('#chkCinza').is(':checked');
+            const todosCoresMarcados = $('#chkVermelho').is(':checked') &&
+                $('#chkAmarelo').is(':checked') &&
+                $('#chkLaranja').is(':checked') &&
+                $('#chkVerde').is(':checked') &&
+                $('#chkAzul').is(':checked') &&
+                $('#chkCinza').is(':checked');
 
             // Se todos os checkboxes de cores estão marcados, mostra TODOS os marcadores
             if (todosCoresMarcados) {
@@ -4603,12 +4681,12 @@ if (isset($_GET['quadricula'])) {
 
             // Mapeamento de cores para checkboxes (em formato normalizado)
             const coresMap = {
-                '#e84646': 'chkVermelho',      // Vermelho
-                '#eddf47': 'chkAmarelo',      // Amarelo
-                '#ed7947': 'chkLaranja',      // Laranja
-                '#32cd32': 'chkVerde',        // Verde
-                '#47cced': 'chkAzul',         // Azul
-                '#7c7c7c': 'chkCinza'          // Cinza
+                '#e84646': 'chkVermelho', // Vermelho
+                '#eddf47': 'chkAmarelo', // Amarelo
+                '#ed7947': 'chkLaranja', // Laranja
+                '#32cd32': 'chkVerde', // Verde
+                '#47cced': 'chkAzul', // Azul
+                '#7c7c7c': 'chkCinza' // Cinza
             };
 
             arrayCamadas.marcador_quadra.forEach(marker => {
@@ -4618,10 +4696,10 @@ if (isset($_GET['quadricula'])) {
                 if (!corBruta && marker.content && marker.content.style) {
                     corBruta = marker.content.style.backgroundColor || marker.content.style.background || '';
                 }
-                
+
                 // Normaliza a cor para formato hexadecimal
                 const corNormalizada = normalizarCor(corBruta);
-                
+
                 // Verifica se a cor está no mapeamento
                 const checkboxId = coresMap[corNormalizada];
                 let deveMostrar = false;
@@ -4738,11 +4816,11 @@ if (isset($_GET['quadricula'])) {
         async function carregarLoteamentosInvisiveis(quadricula) {
             try {
                 //console.log('📦 Carregando loteamentos em background para:', quadricula);
-                
+
                 const response = await fetch(`loteamentos_quadriculas/json/resultados_quadricula_${quadricula}.json`, {
                     cache: "no-store"
                 });
-                
+
                 if (!response.ok) {
                     console.warn('⚠️ Arquivo de loteamentos não encontrado para quadrícula:', quadricula);
                     return;
@@ -5047,8 +5125,8 @@ if (isset($_GET['quadricula'])) {
 
                 // Adiciona classe visual para destacar a opção selecionada
                 $('.opcao-loteamento').removeClass('selected');
-            const opcaoSelecionada = $(this).closest('.opcao-loteamento').addClass('selected');
-            scrollParaElemento('#divCadastro .div-cadastro-body', opcaoSelecionada);
+                const opcaoSelecionada = $(this).closest('.opcao-loteamento').addClass('selected');
+                scrollParaElemento('#divCadastro .div-cadastro-body', opcaoSelecionada);
 
                 // Habilitar apenas os PDFs do loteamento selecionado (apenas nos controles originais)
                 $('input[name^="pdf_loteamento_"]:not([name*="integrado"])').prop('disabled', true); // Desabilita todos exceto integrados
@@ -5247,7 +5325,7 @@ if (isset($_GET['quadricula'])) {
 
                             // Armazena o nome do loteamento no polígono
                             polygon.nomeLoteamento = loteamento.nome;
-                            
+
                             // Adiciona à camada
                             window.loteamentosLayer.push(polygon);
 
@@ -5298,7 +5376,7 @@ if (isset($_GET['quadricula'])) {
 
                                 // Armazena o nome do loteamento no polígono
                                 polygon.nomeLoteamento = loteamento.nome;
-                                
+
                                 // Adiciona à camada
                                 window.loteamentosLayer.push(polygon);
 
@@ -5331,12 +5409,12 @@ if (isset($_GET['quadricula'])) {
                     }
                 } else {}
             });
-            
+
             // Salva os loteamentos no cache do MapFramework para uso posterior
             if (typeof MapFramework !== 'undefined' && typeof MapFramework.cachearLoteamentos === 'function') {
                 MapFramework.cachearLoteamentos();
             }
-            
+
             /*
             // Ajusta o zoom para mostrar todos os loteamentos
             if (window.loteamentosLayer.length > 0) {
@@ -5496,14 +5574,14 @@ if (isset($_GET['quadricula'])) {
             async function carregarDesenhosFiltrados() {
                 try {
                     if (!dadosOrto || dadosOrto.length === 0) return;
-                    
+
                     const quadricula = dadosOrto[0]['quadricula'];
                     const response = await fetch(`index_3.php?buscarDesenhosFiltrados=1&quadricula=${quadricula}`);
-                    
+
                     if (!response.ok) return;
-                    
+
                     const data = await response.json();
-                    
+
                     if (data.ids && Array.isArray(data.ids) && data.ids.length > 0) {
                         idsDesenhosFiltrados = data.ids.map(id => parseInt(id));
                         temPesquisaSalva = true;
@@ -5571,7 +5649,7 @@ if (isset($_GET['quadricula'])) {
                     'chkStreetview': 'streetview',
                     'chkStreetviewFotos': 'streetview_fotos'
                 };
-                
+
                 // Aplicar visibilidade para cada camada baseado no checkbox
                 Object.keys(mapeamentoCheckboxes).forEach(checkboxId => {
                     const camada = mapeamentoCheckboxes[checkboxId];
@@ -5583,7 +5661,7 @@ if (isset($_GET['quadricula'])) {
                         }
                     }
                 });
-                
+
                 // Tratamento especial para marcadores
                 const chkMarcadores = $('#chkMarcadores');
                 if (chkMarcadores.length > 0) {
@@ -5608,7 +5686,7 @@ if (isset($_GET['quadricula'])) {
                 } else {
                     // Salvar estado atual antes de aplicar filtro
                     salvarEstadoOriginal();
-                    
+
                     // Mostrar apenas desenhos filtrados
                     Object.keys(arrayCamadas).forEach(camada => {
                         if (arrayCamadas[camada] && Array.isArray(arrayCamadas[camada])) {
@@ -5619,7 +5697,7 @@ if (isset($_GET['quadricula'])) {
                                     // Para marcadores: obj.identificadorBanco
                                     const identificador = obj.identificador || obj.id || obj.identificadorBanco;
                                     const estaNaLista = identificador && idsDesenhosFiltrados.includes(parseInt(identificador));
-                                    
+
                                     if (estaNaLista) {
                                         // Mostrar
                                         const mapaParaUsar = obj.mapaRef || MapFramework.map;
@@ -6005,10 +6083,14 @@ if (isset($_GET['quadricula'])) {
             const itemScrollTop = container.scrollTop() + (itemOffsetTop - containerOffsetTop);
 
             if (itemScrollTop < container.scrollTop()) {
-                container.stop().animate({ scrollTop: Math.max(itemScrollTop - 20, 0) }, 200);
+                container.stop().animate({
+                    scrollTop: Math.max(itemScrollTop - 20, 0)
+                }, 200);
             } else if ((itemScrollTop + itemHeight) > (container.scrollTop() + containerHeight)) {
                 const target = itemScrollTop - containerHeight + itemHeight + 20;
-                container.stop().animate({ scrollTop: Math.max(target, 0) }, 200);
+                container.stop().animate({
+                    scrollTop: Math.max(target, 0)
+                }, 200);
             }
         }
 
@@ -6028,10 +6110,14 @@ if (isset($_GET['quadricula'])) {
             const itemScrollTop = container.scrollTop() + (itemOffsetTop - containerOffsetTop);
 
             if (itemScrollTop < container.scrollTop()) {
-                container.stop().animate({ scrollTop: Math.max(itemScrollTop - 20, 0) }, 200);
+                container.stop().animate({
+                    scrollTop: Math.max(itemScrollTop - 20, 0)
+                }, 200);
             } else if ((itemScrollTop + itemHeight) > (container.scrollTop() + containerHeight)) {
                 const target = itemScrollTop - containerHeight + itemHeight + 20;
-                container.stop().animate({ scrollTop: Math.max(target, 0) }, 200);
+                container.stop().animate({
+                    scrollTop: Math.max(target, 0)
+                }, 200);
             }
         }
 
@@ -6067,7 +6153,10 @@ if (isset($_GET['quadricula'])) {
             }
 
             const centro = bounds.getCenter();
-            return centro ? { lat: centro.lat(), lng: centro.lng() } : null;
+            return centro ? {
+                lat: centro.lat(),
+                lng: centro.lng()
+            } : null;
         }
 
         function calcularCentroideMultiPoligono(multiPolygonCoordinates) {
@@ -6094,7 +6183,10 @@ if (isset($_GET['quadricula'])) {
             }
 
             const centro = bounds.getCenter();
-            return centro ? { lat: centro.lat(), lng: centro.lng() } : null;
+            return centro ? {
+                lat: centro.lat(),
+                lng: centro.lng()
+            } : null;
         }
 
         // Função para carregar os dados complementares dos quarteirões
@@ -6117,7 +6209,7 @@ if (isset($_GET['quadricula'])) {
         }
 
         // Função para sincronizar seleção de loteamento/quarteirão ao clicar em marcadores
-        window.sincronizarSelecaoPorMarcador = async function (dadosMarcador = {}) {
+        window.sincronizarSelecaoPorMarcador = async function(dadosMarcador = {}) {
             const camadaMarcadoresAtiva = $('#chkMarcadores').is(':checked');
             const camadaLoteamentosAtiva = $('#chkModoCadastro').is(':checked');
 
@@ -6191,7 +6283,7 @@ if (isset($_GET['quadricula'])) {
             // Tenta selecionar o loteamento correspondente
             if (nomeLoteamentoDestino) {
                 const radiosLoteamentos = $('#opcoesLoteamentos input[name="loteamento"]');
-                const radioLoteamento = radiosLoteamentos.filter(function () {
+                const radioLoteamento = radiosLoteamentos.filter(function() {
                     const valor = ($(this).data('loteamento') || '').toString();
                     return valor === nomeLoteamentoDestino;
                 });
@@ -8961,7 +9053,7 @@ if (isset($_GET['quadricula'])) {
         function alterarDesenhoNovo(idDesenho, quarteirao, loteamento, idDesenho2, quadricula) {
             // Decodifica o loteamento (caso tenha caracteres especiais)
             const loteamentoDecodificado = decodeURIComponent(loteamento);
-            
+
             // Constrói a URL com os parâmetros
             const params = new URLSearchParams({
                 id: idDesenho,
@@ -8970,17 +9062,15 @@ if (isset($_GET['quadricula'])) {
                 id_desenho: idDesenho2 || '',
                 quadricula: quadricula || ''
             });
-            
+
             // Define a página de destino (ALTERE AQUI o nome da página desejada)
             const paginaDestino = 'index_3_novoEditar.php'; // ← ALTERE para o nome da sua página
-            
+
             // Abre em nova aba
             const url = `${paginaDestino}?${params.toString()}`;
             window.open(url, '_blank');
-            
-        }
 
-        
+        }
     </script>
 
     <!-- Modal para gerenciar arquivos dos quarteirões -->
@@ -9191,7 +9281,7 @@ if (isset($_GET['quadricula'])) {
                 arrayCamadas.marcador_quadra.forEach(marker => {
                     let corresponde = false;
 
-                    switch(tipoPesquisa) {
+                    switch (tipoPesquisa) {
                         case 'idLote':
                             // ID Lote = idQuadra (ID do desenho)
                             if (marker.idQuadra && marker.idQuadra.toString() === valorPesquisa) {
@@ -9293,7 +9383,7 @@ if (isset($_GET['quadricula'])) {
                     if (marcadoresEncontrados.length > 0 && tipoPesquisa === 'idMarcador') {
                         marcadoresEncontrados.forEach(marker => {
                             // Para ID Marcador, mostra o polígono relacionado ao marcador
-                            if (poligono.id_desenho && marker.idQuadra && 
+                            if (poligono.id_desenho && marker.idQuadra &&
                                 poligono.id_desenho.toString() === marker.idQuadra.toString()) {
                                 mostrarPoligono = true;
                             }
