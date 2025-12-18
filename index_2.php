@@ -143,6 +143,10 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             background-color: rgba(0, 0, 0, 0.5)
         }
 
+        #modalQuarteirao {
+            background-color: rgba(0, 0, 0, 0.5)
+        }
+
         #dropCamadas {
             width: 230px;
         }
@@ -979,6 +983,25 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
                 <div class="d-flex gap-2 justify-content-end">
                     <button id="btnCancelarCamada" class="btn btn-outline-secondary">Cancelar</button>
                     <button id="btnSalvarCamada" class="btn btn-primary">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para informar quarteirão quando não detectado automaticamente -->
+    <div id="modalQuarteirao" class="modal" style="display:none">
+        <div class="modal-dialog">
+            <div class="modal-content p-3">
+                <h5 class="modal-title mb-3">Quarteirão não detectado</h5>
+                <p class="mb-3">Não foi possível determinar automaticamente o quarteirão para este polígono. Por favor, informe o quarteirão:</p>
+                <label for="inputQuarteirao" class="form-label mb-1">Nome do Quarteirão <span style="color: red;">*</span></label>
+                <input id="inputQuarteirao" class="form-control mb-3" placeholder="Digite o nome do quarteirão" />
+                <div id="alertaQuarteiraoVazio" class="alert alert-danger mb-3" style="display:none;">
+                    <i class="fas fa-exclamation-triangle"></i> O quarteirão é obrigatório. O desenho não será salvo se deixado em branco.
+                </div>
+                <div class="d-flex gap-2 justify-content-end">
+                    <button id="btnCancelarQuarteirao" class="btn btn-outline-secondary">Cancelar</button>
+                    <button id="btnConfirmarQuarteirao" class="btn btn-primary">Confirmar</button>
                 </div>
             </div>
         </div>
@@ -2536,6 +2559,78 @@ echo "<script>let dadosOrto = " . json_encode($dadosOrto) . ";</script>";
             MapFramework.finalizarDesenho({
                 descartarTemporario: true
             });
+        });
+
+        // Modal Quarteirão: CANCELAR
+        $('#btnCancelarQuarteirao').on('click', function() {
+            // Cancela o salvamento e remove o desenho temporário
+            if (MapFramework.desenho.temporario) {
+                MapFramework.desenho.temporario.setMap(null);
+                MapFramework.desenho.temporario = null;
+            }
+            MapFramework.desenho.dadosPendentes = null;
+            MapFramework.desenho.salvando = false;
+            MapFramework.desenho.pontos = [];
+            $('#modalQuarteirao').fadeOut(150);
+            alert('O desenho foi cancelado. O quarteirão é obrigatório para salvar polígonos de lote.');
+        });
+
+        // Modal Quarteirão: CONFIRMAR
+        $('#btnConfirmarQuarteirao').on('click', function() {
+            const quarteirao = $('#inputQuarteirao').val().trim();
+            
+            // Valida se o quarteirão foi preenchido
+            if (!quarteirao || quarteirao === '') {
+                $('#alertaQuarteiraoVazio').fadeIn(200);
+                $('#inputQuarteirao').focus();
+                return;
+            }
+
+            // Obtém os dados pendentes
+            const dadosPendentes = MapFramework.desenho.dadosPendentes;
+            if (!dadosPendentes) {
+                alert('Erro: Dados do salvamento não encontrados.');
+                $('#modalQuarteirao').fadeOut(150);
+                return;
+            }
+
+            // Armazena o quarteirão no desenho temporário
+            if (MapFramework.desenho.temporario) {
+                MapFramework.desenho.temporario.quarteirao = quarteirao;
+            }
+
+            // Fecha o modal
+            $('#modalQuarteirao').fadeOut(150);
+            $('#alertaQuarteiraoVazio').hide();
+
+            // Continua com o salvamento usando o quarteirão informado
+            MapFramework.continuarSalvamentoDesenho(
+                dadosPendentes.coordenadasStr,
+                dadosPendentes.camada,
+                dadosPendentes.tipo,
+                dadosPendentes.cor,
+                dadosPendentes.identificador,
+                quarteirao,
+                dadosPendentes.coordenadas
+            );
+
+            // Limpa os dados pendentes
+            MapFramework.desenho.dadosPendentes = null;
+        });
+
+        // Permitir confirmar com Enter no campo de quarteirão
+        $('#inputQuarteirao').on('keypress', function(e) {
+            if (e.which === 13) { // Enter
+                $('#btnConfirmarQuarteirao').click();
+            }
+        });
+
+        // Fechar modal ao clicar fora dele (mesmo comportamento do modalCamada)
+        $('#modalQuarteirao').on('click', function(e) {
+            if ($(e.target).is('#modalQuarteirao')) {
+                // Clicou fora do conteúdo do modal - cancela o salvamento
+                $('#btnCancelarQuarteirao').click();
+            }
         });
 
         $('#btnExcluir').on('click', function() {

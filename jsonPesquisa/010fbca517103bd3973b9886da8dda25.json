@@ -1,0 +1,40 @@
+{
+    "type": "quarteirao",
+    "values": {
+        "quarteirao": "1187"
+    },
+    "totalCount": 1,
+    "usuario_email": null,
+    "results": {
+        "allResults": [
+            {
+                "id": 29998,
+                "inscricao": 763598536200000,
+                "imob_id": 115003,
+                "logradouro": "AVN   FERRUCIO FERRAMOLA",
+                "numero": "73",
+                "bairro": "JOAO ARANHA",
+                "cara_quarteirao": "1187",
+                "quadra": "S\/D",
+                "lote": "SL2",
+                "total_construido": 0,
+                "nome_pessoa": "PREFEITURA MUNICIPAL DE PAULINIA",
+                "cnpj": "45.751.435\/0001-06",
+                "area_terreno": "7125.06",
+                "tipo_edificacao": "Vago",
+                "tipo_utilizacao": "Não Informado",
+                "zona": "ZR3",
+                "cat_via": " ECS1",
+                "nome_loteamento": "880200 - RESIDENCIAL SAO JOSE",
+                "imob_id_principal": 115003,
+                "multiplo": 1,
+                "uso_imovel": "S.L.",
+                "historico": null
+            }
+        ],
+        "allDesenhosPorImobId": {
+            "115003": []
+        },
+        "marcadoresOrfaos": []
+    }
+}

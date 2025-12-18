@@ -29,6 +29,7 @@ const MapFramework = {
         temporario: null,
         listenerClick: null,
         listenerRightClick: null,
+        listenerContextMenu: null,
         cliqueEmVertice: false
     },
 
@@ -1709,8 +1710,94 @@ const MapFramework = {
 
         // Request needed libraries.
         const {
-            Map
+            Map,
+            StyledMapType
         } = await google.maps.importLibrary("maps");
+
+        // Define os estilos do mapa personalizado
+        const styledMapType = new StyledMapType(
+            [
+                { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+                { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+                { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+                {
+                    featureType: "administrative.locality",
+                    elementType: "labels.text.fill",
+                    stylers: [{ color: "#d59563" }],
+                },
+                {
+                    featureType: "poi",
+                    elementType: "labels.text.fill",
+                    stylers: [{ color: "#d59563" }],
+                },
+                {
+                    featureType: "poi.park",
+                    elementType: "geometry",
+                    stylers: [{ color: "#263c3f" }],
+                },
+                {
+                    featureType: "poi.park",
+                    elementType: "labels.text.fill",
+                    stylers: [{ color: "#6b9a76" }],
+                },
+                {
+                    featureType: "road",
+                    elementType: "geometry",
+                    stylers: [{ color: "#38414e" }],
+                },
+                {
+                    featureType: "road",
+                    elementType: "geometry.stroke",
+                    stylers: [{ color: "#212a37" }],
+                },
+                {
+                    featureType: "road",
+                    elementType: "labels.text.fill",
+                    stylers: [{ color: "#9ca5b3" }],
+                },
+                {
+                    featureType: "road.highway",
+                    elementType: "geometry",
+                    stylers: [{ color: "#746855" }],
+                },
+                {
+                    featureType: "road.highway",
+                    elementType: "geometry.stroke",
+                    stylers: [{ color: "#1f2835" }],
+                },
+                {
+                    featureType: "road.highway",
+                    elementType: "labels.text.fill",
+                    stylers: [{ color: "#f3d19c" }],
+                },
+                {
+                    featureType: "transit",
+                    elementType: "geometry",
+                    stylers: [{ color: "#2f3948" }],
+                },
+                {
+                    featureType: "transit.station",
+                    elementType: "labels.text.fill",
+                    stylers: [{ color: "#d59563" }],
+                },
+                {
+                    featureType: "water",
+                    elementType: "geometry",
+                    stylers: [{ color: "#17263c" }],
+                },
+                {
+                    featureType: "water",
+                    elementType: "labels.text.fill",
+                    stylers: [{ color: "#515c6d" }],
+                },
+                {
+                    featureType: "water",
+                    elementType: "labels.text.stroke",
+                    stylers: [{ color: "#17263c" }],
+                },
+            ],
+            { name: "Styled Map" },
+        );
 
         const {
             geometry
@@ -1738,9 +1825,15 @@ const MapFramework = {
             streetViewControl: true,
             fullscreenControl: false,
             mapTypeControl: false,
+            mapTypeControlOptions: {
+                mapTypeIds: ["roadmap", "satellite", "styled_map"],
+            },
             styles: [{ featureType: "poi", stylers: [{ visibility: "off" }] }],
             mapId: "7b2f242ba6401996"
         });
+
+        // Registra o styled map type no mapa
+        this.map.mapTypes.set('styled_map', styledMapType);
 
         this.map.setOptions({ draggableCursor: 'default' });
 
@@ -1879,16 +1972,25 @@ const MapFramework = {
         this.ortofotos = [];
     },
 
-    alternarTipoMapa: function () {
-        const tipoAtual = this.map.getMapTypeId();
-
-        if (tipoAtual === 'roadmap') {
-            this.map.setMapTypeId('satellite');
-            $('#btnTipoMapa').text('Satélite');
-        } else {
-            this.map.setMapTypeId('roadmap');
-            $('#btnTipoMapa').text('Mapa');
+    alternarTipoMapa: function (tipoMapa) {
+        if (!tipoMapa) {
+            // Se não passar tipo, alterna entre roadmap e satellite (comportamento antigo)
+            const tipoAtual = this.map.getMapTypeId();
+            tipoMapa = (tipoAtual === 'roadmap') ? 'satellite' : 'roadmap';
         }
+
+        // Define o tipo de mapa
+        this.map.setMapTypeId(tipoMapa);
+
+        // Atualiza o texto do botão dropdown
+        let textoBotao = 'Mapa';
+        if (tipoMapa === 'satellite') {
+            textoBotao = 'Satélite';
+        } else if (tipoMapa === 'styled_map') {
+            textoBotao = 'Mapa Estilizado';
+        }
+
+        $('#btnTipoMapa').text(textoBotao);
     },
 
     ativarModoDesenho: function (tipo) {
@@ -1971,8 +2073,10 @@ const MapFramework = {
         // Remove listeners também para modo marcador
         if (this.desenho.listenerClick) this.desenho.listenerClick.remove();
         if (this.desenho.listenerRightClick) this.desenho.listenerRightClick.remove();
+        if (this.desenho.listenerContextMenu) this.desenho.listenerContextMenu.remove();
         this.desenho.listenerClick = null;
         this.desenho.listenerRightClick = null;
+        this.desenho.listenerContextMenu = null;
 
         this.map.setOptions({ draggableCursor: 'default' });
 
@@ -2834,6 +2938,17 @@ const MapFramework = {
 
         if (this.desenho.listenerClick) this.desenho.listenerClick.remove();
         if (this.desenho.listenerRightClick) this.desenho.listenerRightClick.remove();
+        
+        // Previne o menu de contexto no elemento do mapa durante o desenho
+        if (this.desenho.listenerContextMenu) {
+            this.desenho.listenerContextMenu.remove();
+        }
+        const mapDiv = this.map.getDiv();
+        this.desenho.listenerContextMenu = google.maps.event.addDomListener(mapDiv, 'contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        });
 
         this.desenho.listenerClick = this.map.addListener('click', (e) => {
 
@@ -2890,8 +3005,16 @@ const MapFramework = {
                 alert("Você precisa de pelo menos 3 pontos.");
                 return;
             }
+            
+            // Adiciona um delay antes de salvar para evitar conflito com menu de contexto
+            // O listener de contextmenu já previne o menu, mas o delay garante que o modal não apareça muito rápido
             console.log("Salvando polígono de lote...");
-            this.salvarDesenho('poligono_lote', null);
+            setTimeout(() => {
+                // Verifica novamente se ainda está no modo de desenho antes de salvar
+                if (this.desenho.temporario && !this.desenho.salvando) {
+                    this.salvarDesenho('poligono_lote', null);
+                }
+            }, 200); // Delay de 200ms para evitar conflito com menu de contexto
         });
     },
 
@@ -4440,9 +4563,42 @@ const MapFramework = {
             if (quarteirao) {
                 this.desenho.temporario.quarteirao = quarteirao;
                 console.log('Quarteirão detectado antes de salvar:', quarteirao);
+            } else {
+                // Quarteirão não detectado - solicita ao usuário
+                console.log('Quarteirão não detectado automaticamente, solicitando ao usuário...');
+                this.solicitarQuarteiraoModal(coordenadasStr, camada, tipo, cor, identificador, coordenadas);
+                return; // Sai da função, o salvamento continuará após o usuário informar o quarteirão
             }
         }
 
+        // Continua com o salvamento normal
+        this.continuarSalvamentoDesenho(coordenadasStr, camada, tipo, cor, identificador, quarteirao, coordenadas);
+    },
+
+    solicitarQuarteiraoModal: function(coordenadasStr, camada, tipo, cor, identificador, coordenadas) {
+        // Armazena os dados do salvamento para usar depois
+        this.desenho.dadosPendentes = {
+            coordenadasStr: coordenadasStr,
+            camada: camada,
+            tipo: tipo,
+            cor: cor,
+            identificador: identificador,
+            coordenadas: coordenadas
+        };
+
+        // Limpa o campo e mostra o modal
+        $('#inputQuarteirao').val('');
+        $('#alertaQuarteiraoVazio').hide();
+        $('#modalQuarteirao').fadeIn(150);
+        $('#inputQuarteirao').focus();
+    },
+
+    continuarSalvamentoDesenho: function(coordenadasStr, camada, tipo, cor, identificador, quarteirao, coordenadas) {
+        // Garante que o quarteirão está armazenado no desenho temporário
+        if (quarteirao && this.desenho.temporario) {
+            this.desenho.temporario.quarteirao = quarteirao;
+        }
+        
         console.log("Chamando ajax...");
         $.ajax({
             url: 'salvarDesenho.php',
@@ -8195,9 +8351,14 @@ const MapFramework = {
                     // Configura o evento do slider de opacidade
                     this.configurarSliderOpacidadeCamadas();
                     
-                    // Para cada arquivo KML, carregar e processar
+                    // Inicializa estrutura de dados
+                    if (!this.camadasDinamicas) {
+                        this.camadasDinamicas = {};
+                    }
+                    
+                    // Para cada arquivo KML, apenas criar estrutura vazia no dropdown (lazy loading)
                     response.arquivos.forEach((arquivo, index) => {
-                        this.carregarKMLDinamico(arquivo, index);
+                        this.criarEstruturaVaziaKML(arquivo, index);
                     });
                 }
             },
@@ -8254,6 +8415,31 @@ const MapFramework = {
         });
     },
 
+    criarEstruturaVaziaKML: function(arquivo, index) {
+        const nomeArquivo = arquivo.nome;
+        const nomeCamada = nomeArquivo.replace('.kml', '').replace(/_/g, ' ');
+        const idCamada = `camada_kml_${index}`;
+
+        // Armazena informações do arquivo para carregamento posterior
+        if (!this.camadasDinamicas) {
+            this.camadasDinamicas = {};
+        }
+        
+        this.camadasDinamicas[idCamada] = {
+            nome: nomeCamada,
+            arquivo: arquivo,
+            index: index,
+            carregado: false,
+            geoJson: null,
+            features: [],
+            subcamadas: {},
+            visivel: false
+        };
+
+        // Cria estrutura vazia no dropdown (sem subcamadas ainda)
+        this.criarEstruturaDropdownVazia(idCamada, nomeCamada, index, 'kml');
+    },
+
     carregarKMLDinamico: function(arquivo, index) {
         const nomeArquivo = arquivo.nome;
         const caminhoArquivo = arquivo.caminho;
@@ -8269,24 +8455,462 @@ const MapFramework = {
                 // Parse do KML para GeoJSON usando toGeoJSON
                 const geoJson = toGeoJSON.kml(kmlData);
 
-                // Inicializa a estrutura de dados da camada ANTES de criar o dropdown
-                if (!this.camadasDinamicas) {
-                    this.camadasDinamicas = {};
+                // Atualiza a estrutura de dados da camada
+                if (this.camadasDinamicas[idCamada]) {
+                    this.camadasDinamicas[idCamada].geoJson = geoJson;
+                    this.camadasDinamicas[idCamada].carregado = true;
+                } else {
+                    this.camadasDinamicas[idCamada] = {
+                        nome: nomeCamada,
+                        geoJson: geoJson,
+                        features: [],
+                        subcamadas: {},
+                        visivel: false,
+                        carregado: true
+                    };
                 }
-                
-                this.camadasDinamicas[idCamada] = {
-                    nome: nomeCamada,
-                    geoJson: geoJson,
-                    features: [],
-                    subcamadas: {},
-                    visivel: false
-                };
 
-                // Cria a estrutura de camadas no dropdown (e popula subcamadas)
-                this.criarEstruturaDropdown(idCamada, nomeCamada, geoJson, index);
+                // Popula as subcamadas no dropdown
+                this.popularSubcamadasKML(idCamada, nomeCamada, geoJson, index);
+                
+                // Atualiza o label do checkbox
+                const checkbox = $(`#${idCamada}`);
+                checkbox.prop('disabled', false);
+                checkbox.next('label').text(nomeCamada);
+                
+                // Remove listener lazy e adiciona listener normal
+                checkbox.off('change.lazy');
+                this.adicionarEventListenersCamadas(idCamada);
+                
+                // Se o checkbox estava marcado, mostra a camada
+                if (checkbox.is(':checked')) {
+                    this.mostrarCamada(idCamada);
+                }
             },
             error: (xhr, status, error) => {
                 console.error('❌ Erro ao carregar KML:', error);
+            }
+        });
+    },
+
+    criarEstruturaDropdownVazia: function(idCamada, nomeCamada, index, tipo) {
+        const dropCamadas = $('#dropCamadas');
+        const classePrincipal = tipo === 'dxf' ? 'camada-principal-dxf' : 'camada-principal';
+        
+        // Container principal da camada (sem subcamadas ainda)
+        const containerCamada = $(`
+            <li style="border-bottom: 1px solid #e9ecef;">
+                <div style="padding: 6px 16px;">
+                    <!-- Cabeçalho da camada com checkbox -->
+                    <div class="d-flex align-items-center" style="gap: 8px;">
+                        <span style="width: 20px;"></span>
+                        <div class="form-check m-0">
+                            <input class="form-check-input ${classePrincipal}" 
+                                   type="checkbox" 
+                                   id="${idCamada}" 
+                                   data-camada="${idCamada}"
+                                   data-tipo="${tipo}">
+                            <label class="form-check-label" 
+                                   for="${idCamada}" 
+                                   style="cursor: pointer;">
+                                ${nomeCamada}
+                            </label>
+                        </div>
+                    </div>
+                    <!-- Subcamadas serão inseridas aqui quando carregar -->
+                    <div class="collapse" id="collapse_${idCamada}">
+                        <div class="ms-4 mt-2" id="submenu_${idCamada}">
+                            <!-- Subcamadas serão inseridas aqui -->
+                        </div>
+                    </div>
+                </div>
+            </li>
+        `);
+
+        // Insere na posição correta
+        if (tipo === 'dxf') {
+            const tituloDiv = $('#tituloCamadasDinamicasDXF');
+            const sliderDiv = $('#sliderOpacidadeCamadasDinamicasDXF');
+            let inserido = false;
+            
+            if (tituloDiv.length > 0) {
+                let elementoAtual = sliderDiv.length > 0 ? sliderDiv.next('li') : tituloDiv.next('li');
+                
+                while (elementoAtual.length > 0) {
+                    if (!elementoAtual.find('.camada-principal-dxf').length) {
+                        break;
+                    }
+                    
+                    const labelExistente = elementoAtual.find('.camada-principal-dxf').next('label').text().trim();
+                    if (nomeCamada.localeCompare(labelExistente, 'pt-BR', { sensitivity: 'base' }) < 0) {
+                        elementoAtual.before(containerCamada);
+                        inserido = true;
+                        break;
+                    }
+                    elementoAtual = elementoAtual.next('li');
+                }
+                
+                if (!inserido) {
+                    if (sliderDiv.length > 0) {
+                        sliderDiv.after(containerCamada);
+                    } else {
+                        tituloDiv.after(containerCamada);
+                    }
+                }
+            } else {
+                dropCamadas.append(containerCamada);
+            }
+        } else {
+            // KML
+            const sliderDiv = $('#sliderOpacidadeCamadasDinamicas');
+            let inserido = false;
+            
+            if (sliderDiv.length > 0) {
+                let elementoAtual = sliderDiv.next('li');
+                
+                while (elementoAtual.length > 0) {
+                    if (elementoAtual.find('hr.dropdown-divider').length > 0) {
+                        const proximo = elementoAtual.next('li');
+                        if (proximo.length > 0 && proximo.attr('id') === 'tituloCamadasDinamicasDXF') {
+                            break;
+                        }
+                    }
+                    if (elementoAtual.attr('id') === 'tituloCamadasDinamicasDXF') {
+                        break;
+                    }
+                    if (!elementoAtual.find('.camada-principal').length) {
+                        break;
+                    }
+                    
+                    const labelExistente = elementoAtual.find('.camada-principal').next('label').text().trim();
+                    if (nomeCamada.localeCompare(labelExistente, 'pt-BR', { sensitivity: 'base' }) < 0) {
+                        elementoAtual.before(containerCamada);
+                        inserido = true;
+                        break;
+                    }
+                    elementoAtual = elementoAtual.next('li');
+                }
+                
+                if (!inserido) {
+                    let separadorDXF = null;
+                    let elemento = sliderDiv.next('li');
+                    while (elemento.length > 0) {
+                        if (elemento.find('hr.dropdown-divider').length > 0) {
+                            const proximo = elemento.next('li');
+                            if (proximo.length > 0 && proximo.attr('id') === 'tituloCamadasDinamicasDXF') {
+                                separadorDXF = elemento;
+                                break;
+                            }
+                        }
+                        if (elemento.attr('id') === 'tituloCamadasDinamicasDXF') {
+                            separadorDXF = elemento.prev('li');
+                            break;
+                        }
+                        elemento = elemento.next('li');
+                    }
+                    
+                    if (separadorDXF && separadorDXF.length > 0) {
+                        separadorDXF.before(containerCamada);
+                    } else {
+                        sliderDiv.after(containerCamada);
+                    }
+                }
+            } else {
+                dropCamadas.append(containerCamada);
+            }
+        }
+
+        // Adiciona event listener para carregar quando clicar
+        this.adicionarEventListenersCamadasVazias(idCamada, tipo);
+    },
+
+    popularSubcamadasKML: function(idCamada, nomeCamada, geoJson, index) {
+        // Extrai as features e agrupa por tipo ou nome
+        const subcamadas = this.extrairSubcamadas(geoJson);
+        const temSubcamadas = subcamadas.length > 0;
+        
+        const containerCamada = $(`#${idCamada}`).closest('li');
+        let collapseContainer = containerCamada.find(`#collapse_${idCamada}`);
+        
+        // Se não encontrou o container, cria
+        if (collapseContainer.length === 0) {
+            // Adiciona o collapse após o cabeçalho
+            const divPrincipal = containerCamada.find('div').first();
+            divPrincipal.append(`
+                <div class="collapse" id="collapse_${idCamada}">
+                    <div class="ms-4 mt-2" id="submenu_${idCamada}">
+                    </div>
+                </div>
+            `);
+            collapseContainer = containerCamada.find(`#collapse_${idCamada}`);
+        }
+        
+        // Garante que o submenu existe - busca dentro do collapse
+        let submenuFinal = collapseContainer.find(`#submenu_${idCamada}`);
+        // Se não encontrou dentro do collapse, cria
+        if (submenuFinal.length === 0) {
+            collapseContainer.html(`<div class="ms-4 mt-2" id="submenu_${idCamada}"></div>`);
+            submenuFinal = collapseContainer.find(`#submenu_${idCamada}`);
+        }
+        
+        if (!submenuFinal || submenuFinal.length === 0) {
+            console.error('Não foi possível encontrar ou criar o container de subcamadas KML para:', idCamada);
+            console.error('Container:', containerCamada);
+            console.error('Collapse:', collapseContainer);
+            return;
+        }
+        
+        // Remove placeholder se existir
+        submenuFinal.empty();
+        
+        // Debug: verifica se está dentro do collapse
+        if (submenuFinal.closest(`#collapse_${idCamada}`).length === 0) {
+            console.warn('Submenu não está dentro do collapse! Movendo...');
+            // Move para dentro do collapse
+            collapseContainer.html(`<div class="ms-4 mt-2" id="submenu_${idCamada}"></div>`);
+            submenuFinal = collapseContainer.find(`#submenu_${idCamada}`);
+        }
+        
+        // Adiciona botão de accordion se tiver subcamadas
+        if (temSubcamadas) {
+            const cabecalho = containerCamada.find('.d-flex');
+            const spanVazio = cabecalho.find('span');
+            
+            // Se ainda tem span vazio, substitui por botão accordion
+            if (spanVazio.length > 0) {
+                spanVazio.replaceWith(`
+                    <button class="btn btn-sm p-0 btn-accordion-toggle" 
+                            type="button" 
+                            data-bs-toggle="collapse" 
+                            data-bs-target="#collapse_${idCamada}"
+                            aria-expanded="false"
+                            style="border: none; background: none; color: #666; font-size: 14px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                `);
+            }
+            
+            // Garante que o collapse está configurado corretamente (fechado por padrão)
+            if (collapseContainer.length > 0) {
+                // Remove style inline que pode estar escondendo
+                collapseContainer.removeAttr('style');
+                // Garante que não está com classe 'show' (fechado)
+                if (collapseContainer.hasClass('show')) {
+                    collapseContainer.removeClass('show');
+                }
+            }
+            
+            // Adiciona eventos do accordion (remove anteriores para evitar duplicação)
+            collapseContainer.off('show.bs.collapse hide.bs.collapse');
+            collapseContainer.on('show.bs.collapse', function() {
+                containerCamada.find('.btn-accordion-toggle i').removeClass('fa-chevron-right').addClass('fa-chevron-down');
+            }).on('hide.bs.collapse', function() {
+                containerCamada.find('.btn-accordion-toggle i').removeClass('fa-chevron-down').addClass('fa-chevron-right');
+            });
+        }
+        
+        // Popula subcamadas
+        if (temSubcamadas) {
+            // Verifica se o checkbox principal está marcado
+            const checkboxPrincipal = $(`#${idCamada}`);
+            const principalMarcado = checkboxPrincipal.is(':checked');
+            
+            subcamadas.forEach((subcamada, subIndex) => {
+                const idSubcamada = `${idCamada}_sub_${subIndex}`;
+                const itemSubcamada = $(`
+                    <div class="form-check mb-1">
+                        <input class="form-check-input subcamada-item" type="checkbox" 
+                               id="${idSubcamada}" 
+                               data-camada-pai="${idCamada}"
+                               data-subcamada="${idSubcamada}"
+                               ${principalMarcado ? 'checked' : ''}>
+                        <label class="form-check-label" for="${idSubcamada}" style="font-size: 13px; cursor: pointer;">
+                            ${subcamada.nome}
+                        </label>
+                    </div>
+                `);
+                
+                submenuFinal.append(itemSubcamada);
+                
+                // Armazena referência da subcamada
+                this.camadasDinamicas[idCamada].subcamadas[idSubcamada] = {
+                    nome: subcamada.nome,
+                    features: subcamada.features,
+                    objetos: [],
+                    visivel: principalMarcado // Se principal está marcado, subcamada também fica visível
+                };
+            });
+            
+            // Adiciona event listeners das subcamadas
+            this.adicionarEventListenersCamadas(idCamada);
+        } else {
+            // Se não tem subcamadas, adiciona listener apenas para o checkbox principal
+            this.adicionarEventListenersCamadas(idCamada);
+        }
+    },
+
+    popularSubcamadasDXF: function(idCamada, nomeCamada, geoJson, index) {
+        // Extrai as features e agrupa por tipo ou nome
+        const subcamadas = this.extrairSubcamadasDXF(geoJson);
+        const temSubcamadas = subcamadas.length > 0;
+        
+        const containerCamada = $(`#${idCamada}`).closest('li');
+        let collapseContainer = containerCamada.find(`#collapse_${idCamada}`);
+        
+        // Se não encontrou o container, cria
+        if (collapseContainer.length === 0) {
+            // Adiciona o collapse após o cabeçalho
+            const divPrincipal = containerCamada.find('div').first();
+            divPrincipal.append(`
+                <div class="collapse" id="collapse_${idCamada}">
+                    <div class="ms-4 mt-2" id="submenu_${idCamada}">
+                    </div>
+                </div>
+            `);
+            collapseContainer = containerCamada.find(`#collapse_${idCamada}`);
+        }
+        
+        // Garante que o submenu existe - busca dentro do collapse
+        let submenuFinal = collapseContainer.find(`#submenu_${idCamada}`);
+        // Se não encontrou dentro do collapse, cria
+        if (submenuFinal.length === 0) {
+            collapseContainer.html(`<div class="ms-4 mt-2" id="submenu_${idCamada}"></div>`);
+            submenuFinal = collapseContainer.find(`#submenu_${idCamada}`);
+        }
+        
+        if (!submenuFinal || submenuFinal.length === 0) {
+            console.error('Não foi possível encontrar ou criar o container de subcamadas DXF para:', idCamada);
+            console.error('Container:', containerCamada);
+            console.error('Collapse:', collapseContainer);
+            return;
+        }
+        
+        // Remove placeholder se existir
+        submenuFinal.empty();
+        
+        // Debug: verifica se está dentro do collapse
+        if (submenuFinal.closest(`#collapse_${idCamada}`).length === 0) {
+            console.warn('Submenu não está dentro do collapse! Movendo...');
+            // Move para dentro do collapse
+            collapseContainer.html(`<div class="ms-4 mt-2" id="submenu_${idCamada}"></div>`);
+            submenuFinal = collapseContainer.find(`#submenu_${idCamada}`);
+        }
+        
+        // Adiciona botão de accordion se tiver subcamadas
+        if (temSubcamadas) {
+            const cabecalho = containerCamada.find('.d-flex');
+            const spanVazio = cabecalho.find('span');
+            
+            // Se ainda tem span vazio, substitui por botão accordion
+            if (spanVazio.length > 0) {
+                spanVazio.replaceWith(`
+                    <button class="btn btn-sm p-0 btn-accordion-toggle" 
+                            type="button" 
+                            data-bs-toggle="collapse" 
+                            data-bs-target="#collapse_${idCamada}"
+                            aria-expanded="false"
+                            style="border: none; background: none; color: #666; font-size: 14px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                `);
+            }
+            
+            // Garante que o collapse está configurado corretamente (fechado por padrão)
+            if (collapseContainer.length > 0) {
+                // Remove style inline que pode estar escondendo
+                collapseContainer.removeAttr('style');
+                // Garante que não está com classe 'show' (fechado)
+                if (collapseContainer.hasClass('show')) {
+                    collapseContainer.removeClass('show');
+                }
+            }
+            
+            // Adiciona eventos do accordion (remove anteriores para evitar duplicação)
+            collapseContainer.off('show.bs.collapse hide.bs.collapse');
+            collapseContainer.on('show.bs.collapse', function() {
+                containerCamada.find('.btn-accordion-toggle i').removeClass('fa-chevron-right').addClass('fa-chevron-down');
+            }).on('hide.bs.collapse', function() {
+                containerCamada.find('.btn-accordion-toggle i').removeClass('fa-chevron-down').addClass('fa-chevron-right');
+            });
+        }
+        
+        // Popula subcamadas
+        if (temSubcamadas) {
+            // Verifica se o checkbox principal está marcado
+            const checkboxPrincipal = $(`#${idCamada}`);
+            const principalMarcado = checkboxPrincipal.is(':checked');
+            
+            subcamadas.forEach((subcamada, subIndex) => {
+                const idSubcamada = `${idCamada}_sub_${subIndex}`;
+                const itemSubcamada = $(`
+                    <div class="form-check mb-1">
+                        <input class="form-check-input subcamada-item-dxf" type="checkbox" 
+                               id="${idSubcamada}" 
+                               data-camada-pai="${idCamada}"
+                               data-subcamada="${idSubcamada}"
+                               ${principalMarcado ? 'checked' : ''}>
+                        <label class="form-check-label" for="${idSubcamada}" style="font-size: 13px; cursor: pointer;">
+                            ${subcamada.nome}
+                        </label>
+                    </div>
+                `);
+                
+                submenuFinal.append(itemSubcamada);
+                
+                // Armazena referência da subcamada
+                this.camadasDinamicasDXF[idCamada].subcamadas[idSubcamada] = {
+                    nome: subcamada.nome,
+                    features: subcamada.features,
+                    objetos: [],
+                    visivel: principalMarcado // Se principal está marcado, subcamada também fica visível
+                };
+            });
+            
+            // Adiciona event listeners das subcamadas
+            this.adicionarEventListenersCamadasDXF(idCamada);
+        } else {
+            // Se não tem subcamadas, adiciona listener apenas para o checkbox principal
+            this.adicionarEventListenersCamadasDXF(idCamada);
+        }
+    },
+
+    adicionarEventListenersCamadasVazias: function(idCamada, tipo) {
+        const self = this;
+        const checkbox = $(`#${idCamada}`);
+        
+        // Remove eventos anteriores
+        checkbox.off('change.lazy');
+        
+        checkbox.on('change.lazy', function() {
+            const isChecked = $(this).is(':checked');
+            const camada = tipo === 'dxf' ? self.camadasDinamicasDXF[idCamada] : self.camadasDinamicas[idCamada];
+            
+            if (!camada) return;
+            
+            // Se não foi carregado ainda e está marcando, carrega o arquivo
+            if (!camada.carregado && isChecked) {
+                // Desabilita checkbox enquanto carrega
+                checkbox.prop('disabled', true);
+                const nomeOriginal = camada.nome;
+                checkbox.next('label').text(nomeOriginal + ' (carregando...)');
+                
+                if (tipo === 'dxf') {
+                    self.carregarDXFDinamico(camada.arquivo, camada.index);
+                } else {
+                    self.carregarKMLDinamico(camada.arquivo, camada.index);
+                }
+            } else if (camada.carregado) {
+                // Se já foi carregado, remove este listener e adiciona o normal
+                checkbox.off('change.lazy');
+                
+                if (tipo === 'dxf') {
+                    self.adicionarEventListenersCamadasDXF(idCamada);
+                } else {
+                    self.adicionarEventListenersCamadas(idCamada);
+                }
+                
+                // Dispara o evento novamente para processar
+                checkbox.trigger('change');
             }
         });
     },
@@ -8376,15 +9000,34 @@ const MapFramework = {
             });
         }
 
-        // Insere na posição alfabética correta
-        const tituloDiv = $('#tituloCamadasDinamicas');
+        // Insere na posição alfabética correta (apenas na seção KML, antes do separador DXF)
+        const sliderDiv = $('#sliderOpacidadeCamadasDinamicas');
         let inserido = false;
         
-        if (tituloDiv.length > 0) {
-            // Percorre todas as camadas já inseridas após o título
-            let elementoAtual = tituloDiv.next('li');
+        if (sliderDiv.length > 0) {
+            // Percorre todas as camadas já inseridas após o slider KML
+            let elementoAtual = sliderDiv.next('li');
             
+            // Para antes do separador DXF ou qualquer elemento que não seja camada KML
             while (elementoAtual.length > 0) {
+                // Se encontrou o separador DXF (tem <hr> e próximo é título DXF), para aqui
+                if (elementoAtual.find('hr.dropdown-divider').length > 0) {
+                    const proximo = elementoAtual.next('li');
+                    if (proximo.length > 0 && proximo.attr('id') === 'tituloCamadasDinamicasDXF') {
+                        break;
+                    }
+                }
+                
+                // Se encontrou o título DXF, para aqui
+                if (elementoAtual.attr('id') === 'tituloCamadasDinamicasDXF') {
+                    break;
+                }
+                
+                // Se não é uma camada KML (não tem classe camada-principal), para aqui
+                if (!elementoAtual.find('.camada-principal').length) {
+                    break;
+                }
+                
                 const labelExistente = elementoAtual.find('.camada-principal').next('label').text().trim();
                 
                 // Compara alfabeticamente (case-insensitive)
@@ -8398,9 +9041,32 @@ const MapFramework = {
                 elementoAtual = elementoAtual.next('li');
             }
             
-            // Se não inseriu antes de nenhuma, insere no final (após todas as camadas)
+            // Se não inseriu antes de nenhuma, encontra onde inserir (antes do separador DXF)
             if (!inserido) {
-                tituloDiv.parent().append(containerCamada);
+                // Procura o separador DXF
+                let separadorDXF = null;
+                let elemento = sliderDiv.next('li');
+                while (elemento.length > 0) {
+                    if (elemento.find('hr.dropdown-divider').length > 0) {
+                        const proximo = elemento.next('li');
+                        if (proximo.length > 0 && proximo.attr('id') === 'tituloCamadasDinamicasDXF') {
+                            separadorDXF = elemento;
+                            break;
+                        }
+                    }
+                    if (elemento.attr('id') === 'tituloCamadasDinamicasDXF') {
+                        separadorDXF = elemento.prev('li');
+                        break;
+                    }
+                    elemento = elemento.next('li');
+                }
+                
+                if (separadorDXF && separadorDXF.length > 0) {
+                    separadorDXF.before(containerCamada);
+                } else {
+                    // Se não encontrou separador, insere após o slider
+                    sliderDiv.after(containerCamada);
+                }
             }
         } else {
             dropCamadas.append(containerCamada);
@@ -8516,6 +9182,9 @@ const MapFramework = {
     adicionarEventListenersCamadas: function(idCamada) {
         const self = this;
 
+        // Remove eventos anteriores para evitar duplicação
+        $(`#${idCamada}`).off('change.lazy change');
+
         // Evento para checkbox da camada principal
         $(`#${idCamada}`).on('change', function() {
             const isChecked = $(this).is(':checked');
@@ -8561,12 +9230,70 @@ const MapFramework = {
         const camada = this.camadasDinamicas[idCamada];
         if (!camada) return;
 
-        // A camada principal não tem features próprias
-        // Apenas mostra todas as subcamadas
-        if (camada.subcamadas) {
+        // Se tem subcamadas, mostra todas elas
+        if (camada.subcamadas && Object.keys(camada.subcamadas).length > 0) {
+            // Marca todos os checkboxes das subcamadas
+            const subcamadasCheckboxes = $(`#submenu_${idCamada} .subcamada-item`);
+            subcamadasCheckboxes.prop('checked', true);
+            
             Object.keys(camada.subcamadas).forEach(idSubcamada => {
                 this.mostrarSubcamada(idCamada, idSubcamada);
             });
+        } else if (camada.geoJson && camada.geoJson.features) {
+            // Se não tem subcamadas, renderiza features diretamente
+            if (!camada.features) {
+                camada.features = camada.geoJson.features;
+            }
+            
+            // Renderiza todas as features diretamente
+            camada.features.forEach(feature => {
+                const geometry = feature.geometry;
+                const properties = feature.properties || {};
+                let objeto = null;
+
+                switch (geometry.type) {
+                    case 'LineString':
+                        objeto = this.criarLinhaDinamica(geometry.coordinates, properties);
+                        break;
+                    case 'Polygon':
+                        objeto = this.criarPoligonoDinamico(geometry.coordinates, properties);
+                        break;
+                    case 'MultiLineString':
+                        geometry.coordinates.forEach(lineCoords => {
+                            const linhaMulti = this.criarLinhaDinamica(lineCoords, properties);
+                            if (linhaMulti) {
+                                if (!camada.objetos) camada.objetos = [];
+                                camada.objetos.push(linhaMulti);
+                            }
+                        });
+                        break;
+                    case 'MultiPolygon':
+                        geometry.coordinates.forEach(polyCoords => {
+                            const polyMulti = this.criarPoligonoDinamico(polyCoords, properties);
+                            if (polyMulti) {
+                                if (!camada.objetos) camada.objetos = [];
+                                camada.objetos.push(polyMulti);
+                            }
+                        });
+                        break;
+                }
+                
+                if (objeto) {
+                    if (!camada.objetos) camada.objetos = [];
+                    camada.objetos.push(objeto);
+                }
+            });
+            
+            // Mostra os objetos no mapa
+            if (camada.objetos) {
+                camada.objetos.forEach(objeto => {
+                    if (objeto.setMap) {
+                        objeto.setMap(this.map);
+                    } else if (objeto.map) {
+                        objeto.map = this.map;
+                    }
+                });
+            }
         }
 
         camada.visivel = true;
@@ -8576,11 +9303,23 @@ const MapFramework = {
         const camada = this.camadasDinamicas[idCamada];
         if (!camada) return;
 
-        // A camada principal não tem features próprias
-        // Apenas oculta todas as subcamadas
-        if (camada.subcamadas) {
+        // Se tem subcamadas, oculta todas elas
+        if (camada.subcamadas && Object.keys(camada.subcamadas).length > 0) {
+            // Desmarca todos os checkboxes das subcamadas
+            const subcamadasCheckboxes = $(`#submenu_${idCamada} .subcamada-item`);
+            subcamadasCheckboxes.prop('checked', false);
+            
             Object.keys(camada.subcamadas).forEach(idSub => {
                 this.ocultarSubcamada(idCamada, idSub);
+            });
+        } else if (camada.objetos) {
+            // Se não tem subcamadas, oculta objetos diretamente
+            camada.objetos.forEach(objeto => {
+                if (objeto.setMap) {
+                    objeto.setMap(null);
+                } else if (objeto.map) {
+                    objeto.map = null;
+                }
             });
         }
 
@@ -8670,6 +9409,1512 @@ const MapFramework = {
 
     atualizarEstadoCamadaPrincipal: function(idCamada) {
         const subcamadas = $(`#submenu_${idCamada} .subcamada-item`);
+        const totalSubcamadas = subcamadas.length;
+        
+        if (totalSubcamadas === 0) return;
+
+        const subcamadasMarcadas = subcamadas.filter(':checked').length;
+        const checkboxPrincipal = $(`#${idCamada}`);
+
+        if (subcamadasMarcadas === 0) {
+            // Nenhuma subcamada marcada - desmarcar principal
+            checkboxPrincipal.prop('checked', false);
+            checkboxPrincipal.prop('indeterminate', false);
+        } else if (subcamadasMarcadas === totalSubcamadas) {
+            // Todas marcadas - marcar principal
+            checkboxPrincipal.prop('checked', true);
+            checkboxPrincipal.prop('indeterminate', false);
+        } else {
+            // Algumas marcadas - estado indeterminado
+            checkboxPrincipal.prop('checked', false);
+            checkboxPrincipal.prop('indeterminate', true);
+        }
+    },
+
+    // ==================== SISTEMA DE CAMADAS DINÂMICAS DXF ====================
+
+    carregarMaisCamadasDXF: function () {
+        // Faz requisição para obter lista de DXFs disponíveis
+        $.ajax({
+            url: 'listar_dxfs.php',
+            method: 'GET',
+            dataType: 'json',
+            success: (response) => {
+                if (response.success && response.arquivos.length > 0) {
+                    // Mostra o título "Camadas Dinâmicas DXF" e o slider de opacidade
+                    $('#tituloCamadasDinamicasDXF').show();
+                    $('#sliderOpacidadeCamadasDinamicasDXF').show();
+                    
+                    // Configura o evento do slider de opacidade
+                    this.configurarSliderOpacidadeCamadasDXF();
+                    
+                    // Inicializa estrutura de dados
+                    if (!this.camadasDinamicasDXF) {
+                        this.camadasDinamicasDXF = {};
+                    }
+                    
+                    // Para cada arquivo DXF, apenas criar estrutura vazia no dropdown (lazy loading)
+                    response.arquivos.forEach((arquivo, index) => {
+                        this.criarEstruturaVaziaDXF(arquivo, index);
+                    });
+                }
+            },
+            error: (xhr, status, error) => {
+                console.error('❌ Erro ao listar arquivos DXF:', error);
+            }
+        });
+    },
+
+    configurarSliderOpacidadeCamadasDXF: function() {
+        const self = this;
+        
+        // Remove evento anterior se existir
+        $('#rangeOpacidadeCamadasDXF').off('input');
+        
+        // Adiciona evento ao slider
+        $('#rangeOpacidadeCamadasDXF').on('input', function() {
+            const opacidade = parseFloat($(this).val());
+            
+            // Atualiza o texto que mostra o valor
+            $('#valorOpacidadeCamadasDXF').text(opacidade.toFixed(1));
+            
+            // Aplica a opacidade em todas as camadas dinâmicas DXF
+            self.atualizarOpacidadeCamadasDinamicasDXF(opacidade);
+        });
+    },
+
+    atualizarOpacidadeCamadasDinamicasDXF: function(opacidade) {
+        if (!this.camadasDinamicasDXF) return;
+
+        // Percorre todas as camadas dinâmicas DXF
+        Object.keys(this.camadasDinamicasDXF).forEach(idCamada => {
+            const camada = this.camadasDinamicasDXF[idCamada];
+            
+            // Percorre todas as subcamadas
+            if (camada.subcamadas) {
+                Object.keys(camada.subcamadas).forEach(idSubcamada => {
+                    const subcamada = camada.subcamadas[idSubcamada];
+                    
+                    // Atualiza a opacidade de todos os objetos desta subcamada
+                    subcamada.objetos.forEach(objeto => {
+                        if (objeto.setOptions) {
+                            // Para Polyline
+                            // Para Polygon
+                            if (objeto.fillOpacity !== undefined) {
+                                objeto.setOptions({
+                                    fillOpacity: opacidade * 0.5 // Fill com metade da opacidade
+                                });
+                            }
+                        }
+                    });
+                });
+            }
+        });
+    },
+
+    criarEstruturaVaziaDXF: function(arquivo, index) {
+        const nomeArquivo = arquivo.nome;
+        const nomeCamada = nomeArquivo.replace('.dxf', '').replace(/_/g, ' ');
+        const idCamada = `camada_dxf_${index}`;
+
+        // Armazena informações do arquivo para carregamento posterior
+        if (!this.camadasDinamicasDXF) {
+            this.camadasDinamicasDXF = {};
+        }
+        
+        this.camadasDinamicasDXF[idCamada] = {
+            nome: nomeCamada,
+            arquivo: arquivo,
+            index: index,
+            carregado: false,
+            dxf: null,
+            geoJson: null,
+            features: [],
+            subcamadas: {},
+            visivel: false
+        };
+
+        // Cria estrutura vazia no dropdown (sem subcamadas ainda)
+        this.criarEstruturaDropdownVazia(idCamada, nomeCamada, index, 'dxf');
+    },
+
+    carregarDXFDinamico: function(arquivo, index) {
+        const nomeArquivo = arquivo.nome;
+        const caminhoArquivo = arquivo.caminho;
+        const nomeCamada = nomeArquivo.replace('.dxf', '').replace(/_/g, ' ');
+        const idCamada = `camada_dxf_${index}`;
+
+        // Verifica se a biblioteca DXF parser está disponível
+        if (typeof DxfParser === 'undefined') {
+            console.error('❌ Biblioteca DXF Parser não encontrada. Certifique-se de que o script foi carregado.');
+            return;
+        }
+
+        // Faz requisição para carregar o conteúdo do DXF
+        $.ajax({
+            url: caminhoArquivo,
+            method: 'GET',
+            dataType: 'text',
+            success: (dxfData) => {
+                try {
+                    // Parse do DXF usando dxf-parser
+                    const parser = new DxfParser();
+                    const dxf = parser.parseSync(dxfData);
+
+                    // Converte DXF para GeoJSON
+                    const geoJson = this.converterDXFParaGeoJSON(dxf);
+
+                    // Atualiza a estrutura de dados da camada
+                    if (this.camadasDinamicasDXF[idCamada]) {
+                        this.camadasDinamicasDXF[idCamada].dxf = dxf;
+                        this.camadasDinamicasDXF[idCamada].geoJson = geoJson;
+                        this.camadasDinamicasDXF[idCamada].carregado = true;
+                    } else {
+                        this.camadasDinamicasDXF[idCamada] = {
+                            nome: nomeCamada,
+                            dxf: dxf,
+                            geoJson: geoJson,
+                            features: [],
+                            subcamadas: {},
+                            visivel: false,
+                            carregado: true
+                        };
+                    }
+
+                    // Popula as subcamadas no dropdown
+                    this.popularSubcamadasDXF(idCamada, nomeCamada, geoJson, index);
+                    
+                    // Atualiza o label do checkbox
+                    const checkbox = $(`#${idCamada}`);
+                    checkbox.prop('disabled', false);
+                    checkbox.next('label').text(nomeCamada);
+                    
+                    // Remove listener lazy e adiciona listener normal
+                    checkbox.off('change.lazy');
+                    this.adicionarEventListenersCamadasDXF(idCamada);
+                    
+                    // Se o checkbox estava marcado, mostra a camada
+                    if (checkbox.is(':checked')) {
+                        this.mostrarCamadaDXF(idCamada);
+                    }
+                } catch (error) {
+                    console.error('❌ Erro ao processar DXF:', error);
+                    console.error('Arquivo:', nomeArquivo);
+                }
+            },
+            error: (xhr, status, error) => {
+                console.error('❌ Erro ao carregar DXF:', error);
+                console.error('Arquivo:', nomeArquivo);
+            }
+        });
+    },
+
+    // Converte ACI (AutoCAD Color Index) para hexadecimal
+    // Usa tabela completa baseada nos valores RGB oficiais do AutoCAD
+    converterACIParaHex: function(aci) {
+        // Se não tem cor ou é BYLAYER (256), retorna null para usar padrão
+        if (!aci || aci === 256 || aci === 0) {
+            return null;
+        }
+        
+        // Para cores ACI > 255, são cores RGB diretas (True Color)
+        if (aci > 255) {
+            // Formato: ACI = 256 + R + G*256 + B*65536
+            const aciValue = aci - 256;
+            const r = aciValue & 0xFF;
+            const g = (aciValue >> 8) & 0xFF;
+            const b = (aciValue >> 16) & 0xFF;
+            return '#' + [r, g, b].map(x => {
+                const hex = x.toString(16);
+                return hex.length === 1 ? '0' + hex : hex;
+            }).join('').toUpperCase();
+        }
+        
+        // Tabela completa de cores ACI 1-255 do AutoCAD
+        // Valores RGB oficiais - cores principais e padrão
+        const aciTable = {
+            // Cores básicas (1-9)
+            1: [255, 0, 0],        // Red
+            2: [255, 255, 0],      // Yellow - COR ESPECÍFICA DO USUÁRIO (RGB 255,255,0)
+            3: [0, 255, 0],        // Green
+            4: [241,235,31],      // Cyan
+            5: [0, 191, 255],        // Blue
+            6: [255, 0, 255],     // Magenta
+            7: [255, 255, 255],   // White/Black
+            8: [128, 128, 128],   // Dark Gray
+            9: [192, 192, 192],   // Light Gray
+            
+            // Cores específicas conhecidas (valores exatos do AutoCAD)
+            151: [0, 191, 255],    // Azul ciano claro - COR ESPECÍFICA DO USUÁRIO (RGB 0,191,255)
+            
+            // Cores 10-249: calcula usando fórmula do AutoCAD
+            // Padrão: 24 cores base em círculo cromático, 10 níveis de saturação
+        };
+        
+        // Se está na tabela direta, retorna
+        if (aciTable[aci]) {
+            const [r, g, b] = aciTable[aci];
+            const hex = '#' + [r, g, b].map(x => {
+                const hex = x.toString(16);
+                return hex.length === 1 ? '0' + hex : hex;
+            }).join('').toUpperCase();
+            
+            // Debug para cores específicas
+            if (aci === 2 || aci === 151) {
+                console.log(`ACI ${aci} → RGB(${r}, ${g}, ${b}) → ${hex}`);
+            }
+            
+            return hex;
+        }
+        
+        // Para cores 10-249, calcula usando a fórmula do AutoCAD
+        if (aci >= 10 && aci <= 249) {
+            const rgb = this.calcularACIRGB(aci);
+            if (rgb) {
+                return '#' + rgb.map(x => {
+                    const hex = x.toString(16);
+                    return hex.length === 1 ? '0' + hex : hex;
+                }).join('').toUpperCase();
+            }
+        }
+        
+        // Cores 250-255 são tons de cinza
+        if (aci >= 250 && aci <= 255) {
+            const gray = Math.round(51 + (aci - 250) * 51); // 51, 102, 153, 204, 255
+            const hex = gray.toString(16).padStart(2, '0');
+            return '#' + hex + hex + hex;
+        }
+        
+        // Se não encontrou, retorna null para usar cor padrão
+        return null;
+    },
+    
+    // Calcula RGB para ACI 10-249 baseado na fórmula do AutoCAD
+    // Inclui valores específicos conhecidos para cores comuns
+    calcularACIRGB: function(aci) {
+        if (aci < 10 || aci > 249) return null;
+        
+        // Tabela de valores RGB conhecidos e verificados do AutoCAD
+        const coresConhecidas = {
+            151: [0, 191, 255],    // Azul ciano claro (RGB 0,191,255) - COR ESPECÍFICA DO USUÁRIO
+            // Adicione outras cores conhecidas aqui se necessário
+        };
+        
+        // Se está na tabela de cores conhecidas, retorna diretamente
+        if (coresConhecidas[aci]) {
+            return coresConhecidas[aci];
+        }
+        
+        // Para outras cores, calcula usando a fórmula do AutoCAD
+        const base = aci - 10;
+        const hueIndex = base % 24; // 24 cores no círculo cromático
+        const satLevel = Math.floor(base / 24); // 10 níveis de saturação (0-9)
+        
+        // 24 cores base em HSL (matiz de 0 a 345 em incrementos de 15)
+        const hues = [
+            0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165,
+            180, 195, 210, 225, 240, 255, 270, 285, 300, 315, 330, 345
+        ];
+        
+        const hue = hues[hueIndex] / 360;
+        const saturation = 1.0 - (satLevel * 0.1); // Saturação de 1.0 a 0.1
+        const lightness = 0.5; // Lightness fixo em 50%
+        
+        // Converte HSL para RGB
+        return this.hslToRgb(hue, saturation, lightness);
+    },
+    
+    // Converte HSL para RGB
+    hslToRgb: function(h, s, l) {
+        let r, g, b;
+        
+        if (s === 0) {
+            r = g = b = l; // Achromatic
+        } else {
+            const hue2rgb = function(p, q, t) {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+            
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+            r = hue2rgb(p, q, h + 1/3);
+            g = hue2rgb(p, q, h);
+            b = hue2rgb(p, q, h - 1/3);
+        }
+        
+        return [
+            Math.round(r * 255),
+            Math.round(g * 255),
+            Math.round(b * 255)
+        ];
+    },
+
+    // Obtém a cor da entidade DXF (verifica entidade e layer)
+    obterCorDXF: function(entity, dxf) {
+        // Debug: mostra todas as propriedades da entidade relacionadas a cor
+        const debugProps = {};
+        Object.keys(entity).forEach(key => {
+            if (key.toLowerCase().includes('color') || key.toLowerCase().includes('rgb') || key === 'colorIndex') {
+                debugProps[key] = entity[key];
+            }
+        });
+        if (Object.keys(debugProps).length > 0) {
+            console.log('Propriedades de cor da entidade:', debugProps);
+        }
+        
+        // Primeiro verifica se há RGB direto (True Color) na entidade
+        // Pode estar em diferentes propriedades
+        const rgbProps = ['rgbColor', 'rgb', 'trueColor', 'colorRGB'];
+        for (let prop of rgbProps) {
+            if (entity[prop]) {
+                let r, g, b;
+                if (Array.isArray(entity[prop])) {
+                    [r, g, b] = entity[prop];
+                } else if (typeof entity[prop] === 'object') {
+                    r = entity[prop].r || entity[prop].R || entity[prop].red || entity[prop].Red;
+                    g = entity[prop].g || entity[prop].G || entity[prop].green || entity[prop].Green;
+                    b = entity[prop].b || entity[prop].B || entity[prop].blue || entity[prop].Blue;
+                } else if (typeof entity[prop] === 'number' && entity[prop] > 16777215) {
+                    // Pode ser um número RGB compacto (0xRRGGBB)
+                    const rgb = entity[prop];
+                    r = (rgb >> 16) & 0xFF;
+                    g = (rgb >> 8) & 0xFF;
+                    b = rgb & 0xFF;
+                }
+                if (r !== undefined && g !== undefined && b !== undefined) {
+                    const hex = '#' + [r, g, b].map(x => {
+                        const hex = Math.round(x).toString(16);
+                        return hex.length === 1 ? '0' + hex : hex;
+                    }).join('').toUpperCase();
+                    console.log(`RGB direto encontrado em ${prop}: RGB(${r}, ${g}, ${b}) → ${hex}`);
+                    return hex;
+                }
+            }
+        }
+        
+        // Tenta a cor ACI da entidade
+        const aciProps = ['color', 'colorIndex', 'aci', 'colorNumber'];
+        for (let prop of aciProps) {
+            if (entity[prop] !== undefined && entity[prop] !== null && entity[prop] !== 256 && entity[prop] !== 0) {
+                const cor = this.converterACIParaHex(entity[prop]);
+                if (cor) {
+                    console.log(`ACI encontrado em ${prop}: ACI ${entity[prop]} → ${cor}`);
+                    return cor;
+                }
+            }
+        }
+        
+        // Se não tem cor na entidade ou é BYLAYER (256), tenta a cor do layer
+        if (entity.layer && dxf) {
+            // Tenta diferentes estruturas possíveis do DXF parser
+            let layers = null;
+            
+            if (dxf.tables && dxf.tables.layers) {
+                layers = dxf.tables.layers;
+            } else if (dxf.layers) {
+                layers = dxf.layers;
+            }
+            
+            if (layers) {
+                // Pode ser array ou objeto
+                let layer = null;
+                if (Array.isArray(layers)) {
+                    layer = layers.find(l => (l.name && l.name === entity.layer) || l === entity.layer);
+                } else if (typeof layers === 'object') {
+                    layer = layers[entity.layer];
+                }
+                
+                if (layer) {
+                    // Primeiro verifica RGB direto do layer
+                    if (layer.rgbColor) {
+                        let r, g, b;
+                        if (Array.isArray(layer.rgbColor)) {
+                            [r, g, b] = layer.rgbColor;
+                        } else if (typeof layer.rgbColor === 'object') {
+                            r = layer.rgbColor.r || layer.rgbColor.R;
+                            g = layer.rgbColor.g || layer.rgbColor.G;
+                            b = layer.rgbColor.b || layer.rgbColor.B;
+                        }
+                        if (r !== undefined && g !== undefined && b !== undefined) {
+                            const hex = '#' + [r, g, b].map(x => {
+                                const hex = Math.round(x).toString(16);
+                                return hex.length === 1 ? '0' + hex : hex;
+                            }).join('').toUpperCase();
+                            return hex;
+                        }
+                    }
+                    
+                    // Verifica se layer tem cor ACI
+                    const layerColor = layer.color !== undefined ? layer.color : (layer.colorIndex !== undefined ? layer.colorIndex : null);
+                    if (layerColor !== undefined && layerColor !== null && layerColor !== 256 && layerColor !== 0) {
+                        const cor = this.converterACIParaHex(layerColor);
+                        if (cor) {
+                            return cor;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Se não encontrou cor, retorna null para usar padrão
+        return null;
+    },
+
+    // Limpa texto DXF removendo códigos de formatação do AutoCAD
+    limparTextoDXF: function(texto) {
+        if (!texto) return '';
+        
+        // Remove códigos de formatação do AutoCAD
+        // Exemplos: \fSwis721 LtCn BT|b0|i0|c0|p34;14A -> 14A
+        // Remove: \f... (font), |b... (bold), |i... (italic), |c... (color), |p... (point size), etc.
+        let textoLimpo = String(texto)
+            // Remove códigos de fonte: \f... BT (pode ter espaços e caracteres antes de BT)
+            .replace(/\\f[^\\|;]*?\s*BT/gi, '')
+            // Remove flags de formatação: |b0|, |i0|, |c0|, |p34|, etc.
+            .replace(/\|[bicp]\d+/g, '')
+            // Remove ponto e vírgula após flags: |b0|i0|c0|p34;
+            .replace(/;/g, '')
+            // Remove quebras de linha de formatação do MTEXT (substitui por espaço)
+            .replace(/\\P/g, ' ')
+            // Remove barras invertidas restantes
+            .replace(/\\/g, '')
+            // Remove pipes restantes
+            .replace(/\|/g, '')
+            // Remove chaves de formatação { }
+            .replace(/\{[^}]*\}/g, '')
+            // Remove espaços múltiplos
+            .replace(/\s+/g, ' ')
+            .trim();
+        
+        return textoLimpo;
+    },
+
+    converterDXFParaGeoJSON: function(dxf) {
+        const features = [];
+        
+        // Processa entidades do DXF
+        if (dxf.entities && Array.isArray(dxf.entities)) {
+            dxf.entities.forEach((entity, index) => {
+                let feature = null;
+                
+                switch (entity.type) {
+                    case 'LINE':
+                        feature = this.converterLinhaDXF(entity, index, dxf);
+                        break;
+                    case 'LWPOLYLINE':
+                    case 'POLYLINE':
+                        feature = this.converterPolilinhaDXF(entity, index, dxf);
+                        break;
+                    case 'CIRCLE':
+                        feature = this.converterCirculoDXF(entity, index, dxf);
+                        break;
+                    case 'ARC':
+                        feature = this.converterArcoDXF(entity, index, dxf);
+                        break;
+                    case 'SPLINE':
+                        feature = this.converterSplineDXF(entity, index, dxf);
+                        break;
+                    case 'TEXT':
+                        feature = this.converterTextoDXF(entity, index, dxf);
+                        break;
+                    case 'MTEXT':
+                        feature = this.converterMTextoDXF(entity, index, dxf);
+                        break;
+                }
+                
+                if (feature) {
+                    features.push(feature);
+                }
+            });
+        }
+        
+        return {
+            type: 'FeatureCollection',
+            features: features
+        };
+    },
+
+    converterLinhaDXF: function(entity, index, dxf) {
+        if (!entity.start || !entity.end) return null;
+        
+        // Obtém a cor da entidade
+        const cor = this.obterCorDXF(entity, dxf);
+        
+        // Debug: log detalhado para as primeiras entidades
+        if (index < 5) {
+            console.log('=== DEBUG LINHA DXF ===');
+            console.log('Entity:', entity);
+            console.log('Entity.color:', entity.color);
+            console.log('Entity.rgbColor:', entity.rgbColor);
+            console.log('Entity.layer:', entity.layer);
+            console.log('Cor obtida:', cor);
+            console.log('======================');
+        }
+        
+        return {
+            type: 'Feature',
+            properties: {
+                name: entity.layer || `Linha ${index + 1}`,
+                type: 'LINE',
+                layer: entity.layer || '0',
+                stroke: cor || '#0000FF',
+                'stroke-color': cor || '#0000FF',
+                'stroke-width': entity.lineWidth || 1
+            },
+            geometry: {
+                type: 'LineString',
+                coordinates: [
+                    [entity.start.x, entity.start.y],
+                    [entity.end.x, entity.end.y]
+                ]
+            }
+        };
+    },
+
+    converterPolilinhaDXF: function(entity, index, dxf) {
+        if (!entity.vertices || entity.vertices.length < 2) return null;
+        
+        // Obtém a cor da entidade
+        const cor = this.obterCorDXF(entity, dxf);
+        
+        const coordinates = entity.vertices.map(v => [v.x, v.y]);
+        
+        // Se a polilinha é fechada, cria um polígono
+        if (entity.closed && coordinates.length >= 3) {
+            // Fecha o polígono
+            coordinates.push(coordinates[0]);
+            
+            return {
+                type: 'Feature',
+                properties: {
+                    name: entity.layer || `Polígono ${index + 1}`,
+                    type: 'POLYGON',
+                    layer: entity.layer || '0',
+                    stroke: cor || '#FF0000',
+                    'stroke-color': cor || '#FF0000',
+                    fill: cor || '#FF0000',
+                    'fill-color': cor || '#FF0000',
+                    'stroke-width': entity.lineWidth || 1
+                },
+                geometry: {
+                    type: 'Polygon',
+                    coordinates: [coordinates]
+                }
+            };
+        } else {
+            // Cria uma linha
+            return {
+                type: 'Feature',
+                properties: {
+                    name: entity.layer || `Polilinha ${index + 1}`,
+                    type: 'LINESTRING',
+                    layer: entity.layer || '0',
+                    stroke: cor || '#0000FF',
+                    'stroke-color': cor || '#0000FF',
+                    'stroke-width': entity.lineWidth || 1
+                },
+                geometry: {
+                    type: 'LineString',
+                    coordinates: coordinates
+                }
+            };
+        }
+    },
+
+    converterCirculoDXF: function(entity, index, dxf) {
+        if (!entity.center || !entity.radius) return null;
+        
+        // Obtém a cor da entidade
+        const cor = this.obterCorDXF(entity, dxf);
+        
+        // Converte círculo em polígono com 64 pontos
+        const points = 64;
+        const coordinates = [];
+        const centerX = entity.center.x;
+        const centerY = entity.center.y;
+        const radius = entity.radius;
+        
+        for (let i = 0; i <= points; i++) {
+            const angle = (i / points) * 2 * Math.PI;
+            coordinates.push([
+                centerX + radius * Math.cos(angle),
+                centerY + radius * Math.sin(angle)
+            ]);
+        }
+        
+        // Fecha o polígono
+        coordinates.push(coordinates[0]);
+        
+        return {
+            type: 'Feature',
+            properties: {
+                name: entity.layer || `Círculo ${index + 1}`,
+                type: 'POLYGON',
+                layer: entity.layer || '0',
+                stroke: cor || '#FF0000',
+                'stroke-color': cor || '#FF0000',
+                fill: cor || '#FF0000',
+                'fill-color': cor || '#FF0000',
+                'stroke-width': entity.lineWidth || 1
+            },
+            geometry: {
+                type: 'Polygon',
+                coordinates: [coordinates]
+            }
+        };
+    },
+
+    converterArcoDXF: function(entity, index, dxf) {
+        if (!entity.center || !entity.radius || !entity.startAngle || !entity.endAngle) return null;
+        
+        // Obtém a cor da entidade
+        const cor = this.obterCorDXF(entity, dxf);
+        
+        // Converte arco em linha
+        const centerX = entity.center.x;
+        const centerY = entity.center.y;
+        const radius = entity.radius;
+        const startAngle = (entity.startAngle * Math.PI) / 180;
+        const endAngle = (entity.endAngle * Math.PI) / 180;
+        
+        // Cria pontos ao longo do arco
+        const points = Math.max(16, Math.abs(endAngle - startAngle) * 180 / Math.PI);
+        const coordinates = [];
+        
+        for (let i = 0; i <= points; i++) {
+            const angle = startAngle + (endAngle - startAngle) * (i / points);
+            coordinates.push([
+                centerX + radius * Math.cos(angle),
+                centerY + radius * Math.sin(angle)
+            ]);
+        }
+        
+        return {
+            type: 'Feature',
+            properties: {
+                name: entity.layer || `Arco ${index + 1}`,
+                type: 'LINESTRING',
+                layer: entity.layer || '0',
+                stroke: cor || '#0000FF',
+                'stroke-color': cor || '#0000FF',
+                'stroke-width': entity.lineWidth || 1
+            },
+            geometry: {
+                type: 'LineString',
+                coordinates: coordinates
+            }
+        };
+    },
+
+    converterTextoDXF: function(entity, index, dxf) {
+        if (!entity.position || !entity.text) return null;
+        
+        // Obtém a cor da entidade
+        const cor = this.obterCorDXF(entity, dxf);
+        
+        // Obtém altura do texto (em unidades do DXF)
+        const alturaTexto = entity.height || 2.5; // Altura padrão se não especificada
+        
+        // Obtém rotação do texto (em graus)
+        const rotacao = entity.rotation || 0;
+        const rotacaoRad = (rotacao * Math.PI) / 180;
+        
+        // Limpa o texto primeiro para calcular a largura correta
+        const textoLimpo = this.limparTextoDXF(entity.text);
+        
+        // Calcula largura aproximada do texto (baseado no número de caracteres do texto limpo)
+        // Assumindo largura média de 0.6x a altura para cada caractere
+        const larguraTexto = textoLimpo.length * alturaTexto * 0.6;
+        
+        // Posição do texto
+        const x = entity.position.x;
+        const y = entity.position.y;
+        
+        // Cria um retângulo que representa o texto
+        // O retângulo é criado na posição do texto com a largura e altura calculadas
+        const halfWidth = larguraTexto / 2;
+        const halfHeight = alturaTexto / 2;
+        
+        // Pontos do retângulo antes da rotação (centro em x, y)
+        const pontos = [
+            [x - halfWidth, y - halfHeight],
+            [x + halfWidth, y - halfHeight],
+            [x + halfWidth, y + halfHeight],
+            [x - halfWidth, y + halfHeight],
+            [x - halfWidth, y - halfHeight] // Fecha o retângulo
+        ];
+        
+        // Aplica rotação se houver
+        const pontosRotacionados = pontos.map(ponto => {
+            const dx = ponto[0] - x;
+            const dy = ponto[1] - y;
+            const cos = Math.cos(rotacaoRad);
+            const sin = Math.sin(rotacaoRad);
+            return [
+                x + dx * cos - dy * sin,
+                y + dx * sin + dy * cos
+            ];
+        });
+        
+        // Remove o último ponto (fechamento) para Polygon
+        const pontosPolygon = pontosRotacionados.slice(0, 4);
+        
+        return {
+            type: 'Feature',
+            properties: {
+                name: entity.layer || `Texto ${index + 1}`,
+                type: 'TEXT',
+                layer: entity.layer || '0',
+                stroke: cor || '#000000',
+                'stroke-color': cor || '#000000',
+                fill: cor || '#000000',
+                'fill-color': cor || '#000000',
+                'stroke-width': 1,
+                'text-content': textoLimpo,
+                'text-height': alturaTexto,
+                'text-rotation': rotacao
+            },
+            geometry: {
+                type: 'Polygon',
+                coordinates: [pontosPolygon] // Polygon precisa de array de arrays
+            }
+        };
+    },
+
+    converterMTextoDXF: function(entity, index, dxf) {
+        if (!entity.position || !entity.text) return null;
+        
+        // Obtém a cor da entidade
+        const cor = this.obterCorDXF(entity, dxf);
+        
+        // Obtém altura do texto (em unidades do DXF)
+        const alturaTexto = entity.height || 2.5; // Altura padrão se não especificada
+        
+        // Obtém rotação do texto (em graus)
+        const rotacao = entity.rotation || 0;
+        const rotacaoRad = (rotacao * Math.PI) / 180;
+        
+        // Para MTEXT, pode ter largura definida
+        const larguraDefinida = entity.width || null;
+        
+        // Limpa o texto removendo códigos de formatação do AutoCAD
+        const textoLimpo = this.limparTextoDXF(entity.text);
+        
+        // Calcula largura aproximada do texto
+        // Para MTEXT, pode ter múltiplas linhas, então calcula a linha mais longa
+        const linhas = textoLimpo.split(' '); // Quebras de linha já foram convertidas para espaço
+        const linhaMaisLonga = linhas.reduce((a, b) => a.length > b.length ? a : b, '');
+        const larguraTexto = larguraDefinida || (linhaMaisLonga.length * alturaTexto * 0.6);
+        
+        // Posição do texto
+        const x = entity.position.x;
+        const y = entity.position.y;
+        
+        // Cria um retângulo que representa o texto
+        const halfWidth = larguraTexto / 2;
+        const halfHeight = (alturaTexto * linhas.length) / 2;
+        
+        // Pontos do retângulo antes da rotação
+        const pontos = [
+            [x - halfWidth, y - halfHeight],
+            [x + halfWidth, y - halfHeight],
+            [x + halfWidth, y + halfHeight],
+            [x - halfWidth, y + halfHeight],
+            [x - halfWidth, y - halfHeight] // Fecha o retângulo
+        ];
+        
+        // Aplica rotação se houver
+        const pontosRotacionados = pontos.map(ponto => {
+            const dx = ponto[0] - x;
+            const dy = ponto[1] - y;
+            const cos = Math.cos(rotacaoRad);
+            const sin = Math.sin(rotacaoRad);
+            return [
+                x + dx * cos - dy * sin,
+                y + dx * sin + dy * cos
+            ];
+        });
+        
+        // Remove o último ponto (fechamento) para Polygon
+        const pontosPolygon = pontosRotacionados.slice(0, 4);
+        
+        return {
+            type: 'Feature',
+            properties: {
+                name: entity.layer || `MTexto ${index + 1}`,
+                type: 'MTEXT',
+                layer: entity.layer || '0',
+                stroke: cor || '#000000',
+                'stroke-color': cor || '#000000',
+                fill: cor || '#000000',
+                'fill-color': cor || '#000000',
+                'stroke-width': 1,
+                'text-content': textoLimpo,
+                'text-height': alturaTexto,
+                'text-rotation': rotacao
+            },
+            geometry: {
+                type: 'Polygon',
+                coordinates: [pontosPolygon] // Polygon precisa de array de arrays
+            }
+        };
+    },
+
+    converterSplineDXF: function(entity, index, dxf) {
+        if (!entity.controlPoints || entity.controlPoints.length < 2) return null;
+        
+        // Obtém a cor da entidade
+        const cor = this.obterCorDXF(entity, dxf);
+        
+        const coordinates = entity.controlPoints.map(cp => [cp.x, cp.y]);
+        
+        return {
+            type: 'Feature',
+            properties: {
+                name: entity.layer || `Spline ${index + 1}`,
+                type: 'LINESTRING',
+                layer: entity.layer || '0',
+                stroke: cor || '#0000FF',
+                'stroke-color': cor || '#0000FF',
+                'stroke-width': entity.lineWidth || 1
+            },
+            geometry: {
+                type: 'LineString',
+                coordinates: coordinates
+            }
+        };
+    },
+
+    criarEstruturaDropdownDXF: function(idCamada, nomeCamada, geoJson, index) {
+        const dropCamadas = $('#dropCamadas');
+        
+        // Extrai as features e agrupa por tipo ou nome
+        const subcamadas = this.extrairSubcamadasDXF(geoJson);
+        const temSubcamadas = subcamadas.length > 0;
+        
+        // Container principal da camada com accordion (setinha '>')
+        const containerCamada = $(`
+            <li style="border-bottom: 1px solid #e9ecef;">
+                <div style="padding: 6px 16px;">
+                    <!-- Cabeçalho da camada com setinha e checkbox -->
+                    <div class="d-flex align-items-center" style="gap: 8px;">
+                        ${temSubcamadas ? `
+                            <button class="btn btn-sm p-0 btn-accordion-toggle" 
+                                    type="button" 
+                                    data-bs-toggle="collapse" 
+                                    data-bs-target="#collapse_${idCamada}"
+                                    aria-expanded="false"
+                                    style="border: none; background: none; color: #666; font-size: 14px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        ` : '<span style="width: 20px;"></span>'}
+                        
+                        <div class="form-check m-0">
+                            <input class="form-check-input camada-principal-dxf" 
+                                   type="checkbox" 
+                                   id="${idCamada}" 
+                                   data-camada="${idCamada}">
+                            <label class="form-check-label" 
+                                   for="${idCamada}" 
+                                   style="cursor: pointer;">
+                                ${nomeCamada}
+                            </label>
+                        </div>
+                    </div>
+                    
+                    ${temSubcamadas ? `
+                        <!-- Subcamadas (collapse) -->
+                        <div class="collapse" id="collapse_${idCamada}">
+                            <div class="ms-4 mt-2" id="submenu_${idCamada}">
+                                <!-- Subcamadas serão inseridas aqui -->
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            </li>
+        `);
+        
+        if (temSubcamadas) {
+            const submenuContainer = containerCamada.find(`#submenu_${idCamada}`);
+            
+            subcamadas.forEach((subcamada, subIndex) => {
+                const idSubcamada = `${idCamada}_sub_${subIndex}`;
+                const itemSubcamada = $(`
+                    <div class="form-check mb-1">
+                        <input class="form-check-input subcamada-item-dxf" type="checkbox" 
+                               id="${idSubcamada}" 
+                               data-camada-pai="${idCamada}"
+                               data-subcamada="${idSubcamada}">
+                        <label class="form-check-label" for="${idSubcamada}" style="font-size: 13px; cursor: pointer;">
+                            ${subcamada.nome}
+                        </label>
+                    </div>
+                `);
+                
+                submenuContainer.append(itemSubcamada);
+                
+                // Armazena referência da subcamada (estrutura já existe)
+                this.camadasDinamicasDXF[idCamada].subcamadas[idSubcamada] = {
+                    nome: subcamada.nome,
+                    features: subcamada.features,
+                    objetos: [],
+                    visivel: false
+                };
+            });
+            
+            // Adiciona evento para rotacionar a setinha quando o collapse abrir/fechar
+            containerCamada.find(`#collapse_${idCamada}`).on('show.bs.collapse', function() {
+                containerCamada.find('.btn-accordion-toggle i').removeClass('fa-chevron-right').addClass('fa-chevron-down');
+            }).on('hide.bs.collapse', function() {
+                containerCamada.find('.btn-accordion-toggle i').removeClass('fa-chevron-down').addClass('fa-chevron-right');
+            });
+        }
+
+        // Insere na posição alfabética correta (apenas na seção DXF)
+        const tituloDiv = $('#tituloCamadasDinamicasDXF');
+        const sliderDiv = $('#sliderOpacidadeCamadasDinamicasDXF');
+        let inserido = false;
+        
+        if (tituloDiv.length > 0) {
+            // Se o slider existe, começa após ele, senão após o título
+            let elementoAtual = sliderDiv.length > 0 ? sliderDiv.next('li') : tituloDiv.next('li');
+            
+            // Percorre apenas camadas DXF (para antes de qualquer outro elemento)
+            while (elementoAtual.length > 0) {
+                // Se não é uma camada DXF, para aqui
+                if (!elementoAtual.find('.camada-principal-dxf').length) {
+                    break;
+                }
+                
+                const labelExistente = elementoAtual.find('.camada-principal-dxf').next('label').text().trim();
+                
+                // Compara alfabeticamente (case-insensitive)
+                if (nomeCamada.localeCompare(labelExistente, 'pt-BR', { sensitivity: 'base' }) < 0) {
+                    // Insere ANTES desta camada
+                    elementoAtual.before(containerCamada);
+                    inserido = true;
+                    break;
+                }
+                
+                elementoAtual = elementoAtual.next('li');
+            }
+            
+            // Se não inseriu antes de nenhuma, insere após o slider (ou após o título se não houver slider)
+            if (!inserido) {
+                if (sliderDiv.length > 0) {
+                    sliderDiv.after(containerCamada);
+                } else {
+                    tituloDiv.after(containerCamada);
+                }
+            }
+        } else {
+            dropCamadas.append(containerCamada);
+        }
+
+        // Adiciona event listeners
+        this.adicionarEventListenersCamadasDXF(idCamada);
+    },
+
+    extrairSubcamadasDXF: function(geoJson) {
+        const subcamadas = [];
+        const featuresAgrupadas = {};
+
+        if (geoJson.features && geoJson.features.length > 0) {
+            geoJson.features.forEach((feature, index) => {
+                // Tenta obter nome da feature de várias propriedades possíveis
+                let nomeFeature = feature.properties?.name || 
+                                  feature.properties?.Name || 
+                                  feature.properties?.layer ||
+                                  feature.properties?.Layer ||
+                                  feature.properties?.description ||
+                                  feature.properties?.Description ||
+                                  `Item ${index + 1}`;
+
+                // Agrupa features por nome
+                if (!featuresAgrupadas[nomeFeature]) {
+                    featuresAgrupadas[nomeFeature] = [];
+                }
+                featuresAgrupadas[nomeFeature].push(feature);
+            });
+
+            // Converte agrupamento em array de subcamadas
+            Object.keys(featuresAgrupadas).forEach(nome => {
+                subcamadas.push({
+                    nome: nome,
+                    features: featuresAgrupadas[nome]
+                });
+            });
+
+            // ORDENA AS SUBCAMADAS ALFABETICAMENTE
+            subcamadas.sort((a, b) => {
+                return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+            });
+        }
+
+        return subcamadas;
+    },
+
+    criarLinhaDinamicaDXF: function(coordinates, properties) {
+        // Valida se há coordenadas suficientes
+        if (!coordinates || coordinates.length < 2) {
+            return null;
+        }
+
+        // Converte coordenadas DXF (UTM) para Lat/Lng
+        const path = coordinates.map((coord, idx) => {
+            // Coordenadas DXF geralmente estão em UTM (X, Y) ou já em lat/lng
+            const x = parseFloat(coord[0]);
+            const y = parseFloat(coord[1]);
+            
+            // Valida se são números válidos
+            if (!isFinite(x) || !isFinite(y)) {
+                console.warn(`Coordenada DXF inválida no índice ${idx}:`, coord);
+                return null;
+            }
+            
+            // Se as coordenadas parecem ser UTM (valores grandes, geralmente > 1000)
+            // ou se estão fora do range de lat/lng (-180 a 180 para lng, -90 a 90 para lat)
+            if (Math.abs(x) > 180 || Math.abs(y) > 90) {
+                // Assume que são coordenadas UTM e converte
+                try {
+                    const [lng, lat] = proj4("EPSG:32723", "EPSG:4326", [x, y]);
+                    if (isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+                        return { lat, lng };
+                    } else {
+                        console.warn(`Conversão UTM resultou em coordenada inválida: lat=${lat}, lng=${lng} (UTM: x=${x}, y=${y})`);
+                        return null;
+                    }
+                } catch (error) {
+                    console.warn('Erro ao converter coordenada UTM:', error, 'X:', x, 'Y:', y);
+                    return null;
+                }
+            }
+            
+            // Se já estão em formato lat/lng, usa diretamente
+            // DXF geralmente usa [lng, lat] ou [x, y] onde x=lng e y=lat
+            if (Math.abs(y) <= 90 && Math.abs(x) <= 180) {
+                return { lat: y, lng: x };
+            }
+            
+            console.warn(`Coordenada DXF fora do range esperado: x=${x}, y=${y}`);
+            return null;
+        }).filter(coord => coord !== null);
+
+        // Se não sobrou coordenadas válidas, retorna null
+        if (path.length < 2) {
+            console.warn('Linha DXF não tem coordenadas válidas suficientes. Total de coordenadas:', coordinates.length, 'Válidas:', path.length);
+            return null;
+        }
+
+        // Pega a opacidade atual do slider (se existir)
+        const opacidadeAtual = parseFloat($('#rangeOpacidadeCamadasDXF').val()) || 0.5;
+
+        // Usa a cor do DXF se disponível, senão usa padrão
+        const strokeColor = properties.stroke || properties['stroke-color'] || '#0000FF';
+        
+        // Verifica se é um texto (TEXT ou MTEXT)
+        const isTexto = properties.type === 'TEXT' || properties.type === 'MTEXT';
+        const textoConteudo = properties['text-content'] || '';
+        
+        // Para textos, usa a altura do texto como grossura da linha
+        // Para linhas normais, usa stroke-width padrão
+        let strokeWeight;
+        if (isTexto) {
+            // Converte altura do texto (em unidades DXF) para pixels no mapa
+            // A altura do texto está em properties['text-height']
+            const alturaTexto = parseFloat(properties['text-height']) || 2.5;
+            // Converte para pixels: aproximadamente 1 unidade DXF = 1 pixel em zoom médio
+            // Multiplica por um fator para tornar mais visível (grossura mínima de 3)
+            strokeWeight = Math.max(3, alturaTexto * 0.5);
+        } else {
+            strokeWeight = parseFloat(properties['stroke-width']) || 2;
+        }
+
+        // Debug: log da cor que está sendo aplicada
+        if (properties.layer && (properties.layer.toLowerCase().includes('azul') || properties.layer.toLowerCase().includes('yellow') || properties.layer.toLowerCase().includes('amarelo'))) {
+            console.log('=== APLICANDO COR NA LINHA ===');
+            console.log('Layer:', properties.layer);
+            console.log('Properties:', properties);
+            console.log('strokeColor aplicado:', strokeColor);
+            console.log('stroke-color property:', properties['stroke-color']);
+            console.log('stroke property:', properties.stroke);
+            console.log('==============================');
+        }
+
+        try {
+            const polyline = new google.maps.Polyline({
+                path: path,
+                strokeColor: strokeColor,
+                strokeOpacity: opacidadeAtual,
+                strokeWeight: strokeWeight,
+                map: null,
+                clickable: true,
+                zIndex: 100
+            });
+
+            return polyline;
+        } catch (error) {
+            console.error('Erro ao criar Polyline DXF:', error);
+            console.error('Path:', path);
+            console.error('Primeiras coordenadas originais:', coordinates.slice(0, 3));
+            return null;
+        }
+    },
+
+    criarPoligonoDinamicoDXF: function(coordinates, properties) {
+        // Valida se há coordenadas suficientes
+        if (!coordinates || !coordinates[0] || coordinates[0].length < 3) {
+            return null;
+        }
+
+        // O primeiro array é o contorno externo
+        // Converte coordenadas DXF (UTM) para Lat/Lng
+        const path = coordinates[0].map((coord, idx) => {
+            // Coordenadas DXF geralmente estão em UTM (X, Y) ou já em lat/lng
+            const x = parseFloat(coord[0]);
+            const y = parseFloat(coord[1]);
+            
+            // Valida se são números válidos
+            if (!isFinite(x) || !isFinite(y)) {
+                console.warn(`Coordenada DXF inválida no índice ${idx}:`, coord);
+                return null;
+            }
+            
+            // Se as coordenadas parecem ser UTM (valores grandes, geralmente > 1000)
+            // ou se estão fora do range de lat/lng (-180 a 180 para lng, -90 a 90 para lat)
+            if (Math.abs(x) > 180 || Math.abs(y) > 90) {
+                // Assume que são coordenadas UTM e converte
+                try {
+                    const [lng, lat] = proj4("EPSG:32723", "EPSG:4326", [x, y]);
+                    if (isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+                        return { lat, lng };
+                    } else {
+                        console.warn(`Conversão UTM resultou em coordenada inválida: lat=${lat}, lng=${lng} (UTM: x=${x}, y=${y})`);
+                        return null;
+                    }
+                } catch (error) {
+                    console.warn('Erro ao converter coordenada UTM:', error, 'X:', x, 'Y:', y);
+                    return null;
+                }
+            }
+            
+            // Se já estão em formato lat/lng, usa diretamente
+            // DXF geralmente usa [lng, lat] ou [x, y] onde x=lng e y=lat
+            if (Math.abs(y) <= 90 && Math.abs(x) <= 180) {
+                return { lat: y, lng: x };
+            }
+            
+            console.warn(`Coordenada DXF fora do range esperado: x=${x}, y=${y}`);
+            return null;
+        }).filter(coord => coord !== null);
+
+        // Se não sobrou coordenadas válidas, retorna null
+        if (path.length < 3) {
+            console.warn('Polígono DXF não tem coordenadas válidas suficientes. Total de coordenadas:', coordinates[0].length, 'Válidas:', path.length);
+            return null;
+        }
+
+        // Pega a opacidade atual do slider (se existir)
+        const opacidadeAtual = parseFloat($('#rangeOpacidadeCamadasDXF').val()) || 0.5;
+
+        // Verifica se é um texto (TEXT ou MTEXT)
+        const isTexto = properties.type === 'TEXT' || properties.type === 'MTEXT';
+        const textoConteudo = properties['text-content'] || '';
+
+        // Usa as cores do DXF se disponíveis, senão usa padrão
+        const strokeColor = properties.stroke || properties['stroke-color'] || '#FF0000';
+        const strokeWeight = parseFloat(properties['stroke-width']) || 2;
+        // Para polígonos, usa a mesma cor do stroke se não tiver fill específico
+        // Para textos, usa fill com opacidade baixa para destacar o bounding box
+        const fillColor = properties.fill || properties['fill-color'] || strokeColor;
+
+        // Debug: log da cor que está sendo aplicada
+        if (properties.layer && (properties.layer.toLowerCase().includes('azul') || properties.layer.toLowerCase().includes('yellow') || properties.layer.toLowerCase().includes('amarelo'))) {
+            console.log('=== APLICANDO COR NO POLÍGONO ===');
+            console.log('Layer:', properties.layer);
+            console.log('Properties:', properties);
+            console.log('strokeColor aplicado:', strokeColor);
+            console.log('fillColor aplicado:', fillColor);
+            console.log('==================================');
+        }
+
+        try {
+            const polygon = new google.maps.Polygon({
+                paths: path,
+                strokeColor: strokeColor,
+                strokeOpacity: opacidadeAtual,
+                strokeWeight: strokeWeight,
+                fillColor: fillColor,
+                fillOpacity: isTexto ? opacidadeAtual * 0.3 : opacidadeAtual * 0.5, // Fill mais transparente para textos
+                map: null,
+                clickable: true,
+                zIndex: 100
+            });
+
+            // Se é um texto, adiciona tooltip ao clicar
+            if (isTexto && textoConteudo) {
+                const mapInstance = this.map;
+                const infoWindow = new google.maps.InfoWindow({
+                    content: `<div style="padding: 8px; font-size: 14px; max-width: 300px; word-wrap: break-word;">${textoConteudo.replace(/\n/g, '<br>')}</div>`
+                });
+                
+                polygon.addListener('click', function(event) {
+                    // Fecha outros tooltips abertos
+                    if (window.infoWindowTextoDXF) {
+                        window.infoWindowTextoDXF.close();
+                    }
+                    
+                    // Abre tooltip na posição do clique
+                    infoWindow.setPosition(event.latLng);
+                    infoWindow.open(mapInstance);
+                    window.infoWindowTextoDXF = infoWindow;
+                });
+            }
+
+            return polygon;
+        } catch (error) {
+            console.error('Erro ao criar Polygon DXF:', error);
+            console.error('Path:', path);
+            console.error('Primeiras coordenadas originais:', coordinates[0].slice(0, 3));
+            return null;
+        }
+    },
+
+    adicionarEventListenersCamadasDXF: function(idCamada) {
+        const self = this;
+
+        // Remove eventos anteriores para evitar duplicação
+        $(`#${idCamada}`).off('change.lazy change');
+
+        // Evento para checkbox da camada principal
+        $(`#${idCamada}`).on('change', function() {
+            const isChecked = $(this).is(':checked');
+            const subcamadas = $(`#submenu_${idCamada} .subcamada-item-dxf`);
+
+            // Marca/desmarca todas as subcamadas
+            subcamadas.prop('checked', isChecked);
+
+            // Mostra/oculta todas as features
+            if (isChecked) {
+                self.mostrarCamadaDXF(idCamada);
+            } else {
+                self.ocultarCamadaDXF(idCamada);
+            }
+
+            // Dispara evento de change nas subcamadas
+            subcamadas.each(function() {
+                $(this).trigger('change.manual');
+            });
+        });
+
+        // Evento para checkboxes das subcamadas
+        $(`#submenu_${idCamada} .subcamada-item-dxf`).on('change change.manual', function(e) {
+            const idSubcamada = $(this).attr('id');
+            const isChecked = $(this).is(':checked');
+
+            // Mostra/oculta subcamada específica
+            if (isChecked) {
+                self.mostrarSubcamadaDXF(idCamada, idSubcamada);
+            } else {
+                self.ocultarSubcamadaDXF(idCamada, idSubcamada);
+            }
+
+            // Atualiza estado da camada principal
+            // Se é um evento manual (disparado pela camada pai), não atualiza o pai
+            if (e.type !== 'manual') {
+                self.atualizarEstadoCamadaPrincipalDXF(idCamada);
+            }
+        });
+    },
+
+    mostrarCamadaDXF: function(idCamada) {
+        const camada = this.camadasDinamicasDXF[idCamada];
+        if (!camada) return;
+
+        // Se tem subcamadas, mostra todas elas
+        if (camada.subcamadas && Object.keys(camada.subcamadas).length > 0) {
+            // Marca todos os checkboxes das subcamadas
+            const subcamadasCheckboxes = $(`#submenu_${idCamada} .subcamada-item-dxf`);
+            subcamadasCheckboxes.prop('checked', true);
+            
+            Object.keys(camada.subcamadas).forEach(idSubcamada => {
+                this.mostrarSubcamadaDXF(idCamada, idSubcamada);
+            });
+        } else if (camada.geoJson && camada.geoJson.features) {
+            // Se não tem subcamadas, renderiza features diretamente
+            if (!camada.features) {
+                camada.features = camada.geoJson.features;
+            }
+            
+            // Renderiza todas as features diretamente
+            camada.features.forEach(feature => {
+                const geometry = feature.geometry;
+                const properties = feature.properties || {};
+                let objeto = null;
+
+                switch (geometry.type) {
+                    case 'LineString':
+                        objeto = this.criarLinhaDinamicaDXF(geometry.coordinates, properties);
+                        break;
+                    case 'Polygon':
+                        objeto = this.criarPoligonoDinamicoDXF(geometry.coordinates, properties);
+                        break;
+                    case 'MultiLineString':
+                        geometry.coordinates.forEach(lineCoords => {
+                            const linhaMulti = this.criarLinhaDinamicaDXF(lineCoords, properties);
+                            if (linhaMulti) {
+                                if (!camada.objetos) camada.objetos = [];
+                                camada.objetos.push(linhaMulti);
+                            }
+                        });
+                        break;
+                    case 'MultiPolygon':
+                        geometry.coordinates.forEach(polyCoords => {
+                            const polyMulti = this.criarPoligonoDinamicoDXF(polyCoords, properties);
+                            if (polyMulti) {
+                                if (!camada.objetos) camada.objetos = [];
+                                camada.objetos.push(polyMulti);
+                            }
+                        });
+                        break;
+                }
+                
+                if (objeto) {
+                    if (!camada.objetos) camada.objetos = [];
+                    camada.objetos.push(objeto);
+                }
+            });
+            
+            // Mostra os objetos no mapa
+            if (camada.objetos) {
+                camada.objetos.forEach(objeto => {
+                    if (objeto.setMap) {
+                        objeto.setMap(this.map);
+                    } else if (objeto.map) {
+                        objeto.map = this.map;
+                    }
+                });
+            }
+        }
+
+        camada.visivel = true;
+    },
+
+    ocultarCamadaDXF: function(idCamada) {
+        const camada = this.camadasDinamicasDXF[idCamada];
+        if (!camada) return;
+
+        // Se tem subcamadas, oculta todas elas
+        if (camada.subcamadas && Object.keys(camada.subcamadas).length > 0) {
+            // Desmarca todos os checkboxes das subcamadas
+            const subcamadasCheckboxes = $(`#submenu_${idCamada} .subcamada-item-dxf`);
+            subcamadasCheckboxes.prop('checked', false);
+            
+            Object.keys(camada.subcamadas).forEach(idSub => {
+                this.ocultarSubcamadaDXF(idCamada, idSub);
+            });
+        } else if (camada.objetos) {
+            // Se não tem subcamadas, oculta objetos diretamente
+            camada.objetos.forEach(objeto => {
+                if (objeto.setMap) {
+                    objeto.setMap(null);
+                } else if (objeto.map) {
+                    objeto.map = null;
+                }
+            });
+        }
+
+        camada.visivel = false;
+    },
+
+    mostrarSubcamadaDXF: function(idCamada, idSubcamada) {
+        const camada = this.camadasDinamicasDXF[idCamada];
+        if (!camada || !camada.subcamadas || !camada.subcamadas[idSubcamada]) return;
+
+        const subcamada = camada.subcamadas[idSubcamada];
+
+        // Se ainda não renderizou os objetos desta subcamada, renderiza agora
+        if (subcamada.objetos.length === 0 && subcamada.features.length > 0) {
+            subcamada.features.forEach(feature => {
+                const geometry = feature.geometry;
+                const properties = feature.properties || {};
+
+                // Renderiza APENAS polígonos e linhas (não renderiza Points)
+                switch (geometry.type) {
+                    case 'LineString':
+                        const linha = this.criarLinhaDinamicaDXF(geometry.coordinates, properties);
+                        if (linha) {
+                            subcamada.objetos.push(linha);
+                        }
+                        break;
+                    
+                    case 'Polygon':
+                        const poly = this.criarPoligonoDinamicoDXF(geometry.coordinates, properties);
+                        if (poly) {
+                            subcamada.objetos.push(poly);
+                        }
+                        break;
+                    
+                    case 'MultiLineString':
+                        // Para MultiLineString, cria múltiplas linhas
+                        geometry.coordinates.forEach(lineCoords => {
+                            const linhaMulti = this.criarLinhaDinamicaDXF(lineCoords, properties);
+                            if (linhaMulti) {
+                                subcamada.objetos.push(linhaMulti);
+                            }
+                        });
+                        break;
+                    
+                    case 'MultiPolygon':
+                        // Para MultiPolygon, cria múltiplos polígonos
+                        geometry.coordinates.forEach(polyCoords => {
+                            const polyMulti = this.criarPoligonoDinamicoDXF(polyCoords, properties);
+                            if (polyMulti) {
+                                subcamada.objetos.push(polyMulti);
+                            }
+                        });
+                        break;
+                }
+            });
+        }
+
+        // Mostra os objetos no mapa
+        subcamada.objetos.forEach(objeto => {
+            if (objeto.setMap) {
+                objeto.setMap(this.map);
+            } else if (objeto.map) {
+                objeto.map = this.map;
+            }
+        });
+        
+        subcamada.visivel = true;
+    },
+
+    ocultarSubcamadaDXF: function(idCamada, idSubcamada) {
+        const camada = this.camadasDinamicasDXF[idCamada];
+        if (!camada || !camada.subcamadas || !camada.subcamadas[idSubcamada]) return;
+
+        const subcamada = camada.subcamadas[idSubcamada];
+
+        // Oculta os objetos do mapa
+        subcamada.objetos.forEach(objeto => {
+            if (objeto.setMap) {
+                objeto.setMap(null);
+            } else if (objeto.map) {
+                objeto.map = null;
+            }
+        });
+
+        subcamada.visivel = false;
+    },
+
+    atualizarEstadoCamadaPrincipalDXF: function(idCamada) {
+        const subcamadas = $(`#submenu_${idCamada} .subcamada-item-dxf`);
         const totalSubcamadas = subcamadas.length;
         
         if (totalSubcamadas === 0) return;

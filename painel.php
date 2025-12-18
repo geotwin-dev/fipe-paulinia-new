@@ -25,6 +25,15 @@ if (isset($_GET['searchApi'])) {
     }
     $file = $dir . '/' . $userId . '.json';
 
+    // Endpoint para obter userId (para JavaScript)
+    if (isset($_GET['obter_user_id'])) {
+        echo json_encode([
+            'success' => true,
+            'userId' => $userId
+        ]);
+        exit;
+    }
+
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $input = json_decode(file_get_contents('php://input'), true);
         if (!is_array($input)) {
@@ -666,7 +675,8 @@ if (isset($_GET['pesquisar'])) {
         }
         
         // Retornar resultados com os desenhos encontrados
-        echo json_encode([
+        // Incluir todos os resultados para ordenação completa (apenas se não for muito grande para evitar problemas de memória)
+        $responseData = [
             'success' => true,
             'total' => intval($totalCount),
             'page' => $page,
@@ -676,7 +686,15 @@ if (isset($_GET['pesquisar'])) {
             'desenhos' => $desenhos,
             'desenhosPorImobId' => $desenhosPorImobId, // Mapa de imob_id => desenhos
             'marcadoresOrfaos' => $marcadoresOrfaos // Marcadores órfãos (apenas para cadastros_nao_desenhados)
-        ]);
+        ];
+        
+        // Incluir todos os resultados se disponível (para ordenação completa)
+        // Sempre incluir allResults se estiver disponível (tanto de cache quanto de nova pesquisa)
+        if (isset($allResults) && is_array($allResults) && count($allResults) > 0) {
+            $responseData['allResults'] = $allResults;
+        }
+        
+        echo json_encode($responseData, JSON_UNESCAPED_UNICODE);
     } catch (PDOException $e) {
         echo json_encode([
             'error' => 'Erro ao executar pesquisa: ' . $e->getMessage()
@@ -2287,6 +2305,61 @@ if (isset($_GET['distribuir_historico'])) {
 
         // Função para carregar página
         async function loadPage(page) {
+            // Se temos dados ordenados, usar eles em vez de fazer nova requisição
+            if (todosDadosOrdenaveis && todosDadosOrdenaveis.length > 0 && sortColumn) {
+                currentPageGlobal = page;
+                currentPage = page;
+                
+                // Aplicar paginação nos dados já ordenados
+                const offset = (page - 1) * currentLimitGlobal;
+                const dadosPaginados = todosDadosOrdenaveis.slice(offset, offset + currentLimitGlobal);
+                dadosOrdenaveis = dadosPaginados;
+                
+                // Re-renderizar tabela
+                const resultsTableBody = document.getElementById('resultsTableBody');
+                const isCadastrosNaoDesenhados = currentSearchPayloadGlobal && currentSearchPayloadGlobal.type === 'cadastros_nao_desenhados';
+                
+                let bodyHTML = '';
+                dadosPaginados.forEach((row, index) => {
+                    const imobId = row.imob_id || '';
+                    const temDesenho = imobId && desenhosPorImobIdGlobal[imobId] && desenhosPorImobIdGlobal[imobId].length > 0;
+                    
+                    const rowClass = temDesenho ? 'row-clickable' : 'no-drawing row-clickable';
+                    bodyHTML += `<tr class="${rowClass}" data-imob-id="${imobId}">`;
+                    
+                    if (!isCadastrosNaoDesenhados) {
+                        if (temDesenho) {
+                            bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="row-checkbox" data-index="${index}" data-imob-id="${imobId}" checked></td>`;
+                        } else {
+                            bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="row-checkbox" data-index="${index}" data-imob-id="${imobId}" disabled title="Desenho não foi encontrado"></td>`;
+                        }
+                    }
+                    
+                    if (isCadastrosNaoDesenhados) {
+                        if (!temDesenho) {
+                            bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="distribuir-checkbox" data-imob-id="${imobId}"></td>`;
+                        } else {
+                            bodyHTML += `<td style="text-align: center;"></td>`;
+                        }
+                    }
+                    
+                    columnArrayGlobal.forEach(col => {
+                        const value = row[col] !== null && row[col] !== undefined ? row[col] : '';
+                        if (col === 'historico') {
+                            bodyHTML += `<td title="${value}"><a href="#" class="historico-link" data-imob-id="${imobId}" style="color: #007bff; text-decoration: underline; cursor: pointer;">${value || '[vazio]'}</a></td>`;
+                        } else {
+                            bodyHTML += `<td title="${value}">${value}</td>`;
+                        }
+                    });
+                    bodyHTML += '</tr>';
+                });
+                
+                resultsTableBody.innerHTML = bodyHTML;
+                atualizarPaginacao();
+                reaplicarEventListeners();
+                return;
+            }
+            
             if (!currentSearchPayload) return;
 
             const payload = {
@@ -2319,6 +2392,17 @@ if (isset($_GET['distribuir_historico'])) {
                     currentPage = result.page;
                     totalPages = result.totalPages;
                     totalResults = result.total;
+                    currentLimitGlobal = result.limit || 50;
+                    currentPageGlobal = result.page || 1;
+                    
+                    // Armazenar todos os resultados se disponível (vem direto do backend)
+                    if (result.allResults && Array.isArray(result.allResults)) {
+                        todosDadosOrdenaveis = result.allResults;
+                    } else {
+                        // Se não vier no resultado, tentar buscar do cache
+                        await carregarTodosDadosDoCache();
+                    }
+                    
                     displaySearchResults(result.dados, result.total, result.page, result.totalPages, result.desenhos || [], result.desenhosPorImobId || {}, result.marcadoresOrfaos || []);
                 }
             } catch (err) {
@@ -2419,6 +2503,17 @@ if (isset($_GET['distribuir_historico'])) {
                         currentPage = result.page;
                         totalPages = result.totalPages;
                         totalResults = result.total;
+                        currentLimitGlobal = result.limit || 50;
+                        currentPageGlobal = result.page || 1;
+                        
+                        // Armazenar todos os resultados se disponível (vem direto do backend)
+                        if (result.allResults && Array.isArray(result.allResults)) {
+                            todosDadosOrdenaveis = result.allResults;
+                        } else {
+                            // Se não vier no resultado, tentar buscar do cache
+                            await carregarTodosDadosDoCache();
+                        }
+                        
                         displaySearchResults(result.dados, result.total, result.page, result.totalPages, result.desenhos || [], result.desenhosPorImobId || {}, result.marcadoresOrfaos || []);
                     }
                 } catch (err) {
@@ -3007,8 +3102,8 @@ if (isset($_GET['distribuir_historico'])) {
             const bounds = new google.maps.LatLngBounds();
 
             // Iterar sobre cada imob_id e seus desenhos
-            Object.keys(desenhosPorImobId).forEach(imobId => {
-                const desenhos = desenhosPorImobId[imobId];
+            Object.keys(desenhosPorImobIdGlobal).forEach(imobId => {
+                const desenhos = desenhosPorImobIdGlobal[imobId];
                 
                 if (!Array.isArray(desenhos) || desenhos.length === 0) {
                     return;
@@ -3154,10 +3249,81 @@ if (isset($_GET['distribuir_historico'])) {
             return false;
         }
 
+        // Variáveis para controle de ordenação
+        let sortColumn = null;
+        let sortDirection = 'asc'; // 'asc' ou 'desc'
+        let dadosOrdenaveis = null; // Armazenar dados da página atual para ordenação
+        let todosDadosOrdenaveis = null; // Armazenar TODOS os dados para ordenação completa
+        let columnArrayGlobal = []; // Array de colunas para uso na ordenação
+        let columnNamesGlobal = {}; // Mapeamento de nomes de colunas
+        let desenhosPorImobIdGlobal = {}; // Desenhos para uso na ordenação
+        let currentSearchPayloadGlobal = null; // Payload atual para uso na ordenação
+        let polygonsByImobIdGlobal = {}; // Polígonos para uso na ordenação
+        let currentLimitGlobal = 50; // Limite de itens por página
+        let currentPageGlobal = 1; // Página atual
+
+        // Função para carregar todos os dados do cache JSON
+        async function carregarTodosDadosDoCache() {
+            try {
+                // Obter userId do PHP (precisamos fazer uma requisição para obter o userId)
+                const response = await fetch('painel.php?obter_user_id=1');
+                
+                if (!response.ok) {
+                    throw new Error('Erro ao obter userId');
+                }
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('Resposta não é JSON');
+                }
+                
+                const result = await response.json();
+                
+                if (result.success && result.userId) {
+                    const cacheFile = `jsonPesquisa/${result.userId}.json`;
+                    const cacheResponse = await fetch(cacheFile);
+                    
+                    if (cacheResponse.ok) {
+                        const cacheContentType = cacheResponse.headers.get('content-type');
+                        if (cacheContentType && cacheContentType.includes('application/json')) {
+                            const cacheData = await cacheResponse.json();
+                            if (cacheData && cacheData.results && cacheData.results.allResults) {
+                                todosDadosOrdenaveis = cacheData.results.allResults;
+                                // Também atualizar desenhosPorImobIdGlobal se disponível
+                                if (cacheData.results.allDesenhosPorImobId) {
+                                    desenhosPorImobIdGlobal = cacheData.results.allDesenhosPorImobId;
+                                }
+                                return; // Sucesso
+                            }
+                        } else {
+                            throw new Error('Arquivo de cache não é JSON');
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn('Erro ao carregar cache completo:', err);
+                // Não definir todosDadosOrdenaveis aqui - deixar null para usar fallback
+            }
+        }
+
         // Função para exibir resultados da pesquisa
         function displaySearchResults(dados, total, page = 1, totalPages = 1, desenhos = [], desenhosPorImobId = {}, marcadoresOrfaos = []) {
             const resultsTableHead = document.getElementById('resultsTableHead');
             const resultsTableBody = document.getElementById('resultsTableBody');
+            
+            // Armazenar dados originais para ordenação
+            dadosOrdenaveis = dados;
+            desenhosPorImobIdGlobal = desenhosPorImobId;
+            currentSearchPayloadGlobal = currentSearchPayload;
+            polygonsByImobIdGlobal = polygonsByImobId;
+            
+            // Se não temos todos os dados ainda, mas temos o total, vamos tentar carregar
+            if ((!todosDadosOrdenaveis || todosDadosOrdenaveis.length === 0) && total > dados.length) {
+                // Carregar em background (não bloquear a exibição)
+                carregarTodosDadosDoCache().catch(err => {
+                    console.warn('Não foi possível carregar todos os dados do cache:', err);
+                });
+            }
             const resultsCount = document.getElementById('resultsCount');
             const desenhosEncontrados = document.getElementById('desenhosEncontrados');
             const desenhosNaoEncontrados = document.getElementById('desenhosNaoEncontrados');
@@ -3246,7 +3412,7 @@ if (isset($_GET['distribuir_historico'])) {
                 'quadra': 'Quadra',
                 'lote': 'Lote',
                 'total_construido': 'Área Construída',
-                'historico': 'Histórico',
+                'historico': 'Responsável',
                 'nome_pessoa': 'Nome',
                 'cnpj': 'CNPJ',
                 'area_terreno': 'Área Terreno',
@@ -3262,6 +3428,10 @@ if (isset($_GET['distribuir_historico'])) {
             const columnArray = columnsOrder.filter(col => {
                 return dados.some(row => row.hasOwnProperty(col));
             });
+            
+            // Armazenar para uso na ordenação
+            columnArrayGlobal = columnArray;
+            columnNamesGlobal = columnNames;
 
             // Verificar se é pesquisa "cadastros_nao_desenhados"
             const isCadastrosNaoDesenhados = currentSearchPayload && currentSearchPayload.type === 'cadastros_nao_desenhados';
@@ -3278,16 +3448,31 @@ if (isset($_GET['distribuir_historico'])) {
             }
             columnArray.forEach(col => {
                 const headerName = columnNames[col] || col;
-                headerHTML += `<th>${headerName}</th>`;
+                // Adicionar indicador de ordenação se a coluna estiver ordenada
+                let sortIndicator = '';
+                if (sortColumn === col) {
+                    sortIndicator = sortDirection === 'asc' ? ' <i class="fas fa-sort-up"></i>' : ' <i class="fas fa-sort-down"></i>';
+                } else {
+                    sortIndicator = ' <i class="fas fa-sort" style="opacity: 0.3;"></i>';
+                }
+                headerHTML += `<th class="sortable-header" data-column="${col}" style="cursor: pointer; user-select: none;">${headerName}${sortIndicator}</th>`;
             });
             headerHTML += '</tr>';
             resultsTableHead.innerHTML = headerHTML;
+            
+            // Adicionar event listeners para ordenação
+            document.querySelectorAll('.sortable-header').forEach(header => {
+                header.addEventListener('click', function() {
+                    const column = this.getAttribute('data-column');
+                    ordenarTabela(column);
+                });
+            });
 
             // Criar corpo com checkbox na primeira coluna
             let bodyHTML = '';
             dados.forEach((row, index) => {
                 const imobId = row.imob_id || '';
-                const temDesenho = imobId && desenhosPorImobId[imobId] && desenhosPorImobId[imobId].length > 0;
+                const temDesenho = imobId && desenhosPorImobIdGlobal[imobId] && desenhosPorImobIdGlobal[imobId].length > 0;
                 
                 // Adicionar classe 'no-drawing' se não tiver desenho
                 const rowClass = temDesenho ? 'row-clickable' : 'no-drawing row-clickable';
@@ -3325,6 +3510,12 @@ if (isset($_GET['distribuir_historico'])) {
                 bodyHTML += '</tr>';
             });
             resultsTableBody.innerHTML = bodyHTML;
+            
+            // Re-aplicar event listeners
+            reaplicarEventListeners();
+            
+            // Atualizar indicadores de ordenação
+            atualizarIndicadoresOrdenacao();
 
             // Adicionar funcionalidade ao checkbox "Selecionar todos" para distribuição (se existir)
             const selectAllDistribuirCheckbox = document.getElementById('selectAllDistribuirCheckbox');
@@ -3408,9 +3599,9 @@ if (isset($_GET['distribuir_historico'])) {
             // desenhosPorImobId contém TODOS os desenhos de TODOS os resultados (não apenas da página atual)
             // Então podemos contar quantos imob_ids únicos têm desenho
             let qtdEncontrados = 0;
-            if (desenhosPorImobId && typeof desenhosPorImobId === 'object') {
-                qtdEncontrados = Object.keys(desenhosPorImobId).filter(imobId => {
-                    return desenhosPorImobId[imobId] && desenhosPorImobId[imobId].length > 0;
+            if (desenhosPorImobIdGlobal && typeof desenhosPorImobIdGlobal === 'object') {
+                qtdEncontrados = Object.keys(desenhosPorImobIdGlobal).filter(imobId => {
+                    return desenhosPorImobIdGlobal[imobId] && desenhosPorImobIdGlobal[imobId].length > 0;
                 }).length;
             }
             
@@ -3524,8 +3715,8 @@ if (isset($_GET['distribuir_historico'])) {
             }
 
             // Desenhar polígonos no mapa se houver desenhos
-            if (desenhosPorImobId && Object.keys(desenhosPorImobId).length > 0) {
-                desenharPoligonosPesquisa(desenhosPorImobId);
+            if (desenhosPorImobIdGlobal && Object.keys(desenhosPorImobIdGlobal).length > 0) {
+                desenharPoligonosPesquisa(desenhosPorImobIdGlobal);
             } else {
                 // Se não houver desenhos, limpar polígonos anteriores
                 limparPoligonosPesquisa();
@@ -3765,6 +3956,297 @@ if (isset($_GET['distribuir_historico'])) {
             novaLinhaHistorico.value = '';
             imobIdAtual = null;
         });
+
+        // Função para ordenar tabela
+        async function ordenarTabela(column) {
+            // Alternar direção se clicar na mesma coluna
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            
+            await aplicarOrdenacao();
+        }
+
+        // Função para aplicar ordenação e re-renderizar tabela
+        async function aplicarOrdenacao() {
+            if (!sortColumn || columnArrayGlobal.length === 0) return;
+            
+            // Se não temos todos os dados carregados, tentar carregar agora
+            if (!todosDadosOrdenaveis || todosDadosOrdenaveis.length === 0) {
+                await carregarTodosDadosDoCache();
+            }
+            
+            // Usar todos os dados se disponível, senão usar apenas os da página atual
+            let dadosParaOrdenar = null;
+            
+            if (todosDadosOrdenaveis && todosDadosOrdenaveis.length > 0) {
+                dadosParaOrdenar = todosDadosOrdenaveis;
+                console.log(`Ordenando ${dadosParaOrdenar.length} resultados completos`);
+            } else {
+                // Se não temos todos os dados, mostrar alerta e não permitir ordenação
+                alert('Não foi possível carregar todos os resultados para ordenação completa. Por favor, faça uma nova pesquisa.');
+                console.error('Não foi possível carregar todos os dados para ordenação');
+                return;
+            }
+            
+            if (!dadosParaOrdenar || dadosParaOrdenar.length === 0) {
+                console.error('Dados para ordenar estão vazios');
+                alert('Nenhum dado disponível para ordenação');
+                return;
+            }
+            
+            // Ordenar TODOS os dados
+            const dadosOrdenados = [...dadosParaOrdenar].sort((a, b) => {
+                let valA = a[sortColumn];
+                let valB = b[sortColumn];
+                
+                // Tratar valores nulos/undefined
+                if (valA === null || valA === undefined || valA === '') valA = '';
+                if (valB === null || valB === undefined || valB === '') valB = '';
+                
+                // Converter para string para comparação
+                valA = String(valA).toLowerCase().trim();
+                valB = String(valB).toLowerCase().trim();
+                
+                // Tentar converter para número se ambos forem numéricos
+                const numA = parseFloat(valA);
+                const numB = parseFloat(valB);
+                if (!isNaN(numA) && !isNaN(numB) && valA !== '' && valB !== '') {
+                    valA = numA;
+                    valB = numB;
+                }
+                
+                let comparacao = 0;
+                if (valA < valB) comparacao = -1;
+                else if (valA > valB) comparacao = 1;
+                
+                return sortDirection === 'asc' ? comparacao : -comparacao;
+            });
+            
+            // Atualizar todos os dados ordenados
+            todosDadosOrdenaveis = dadosOrdenados;
+            
+            // Aplicar paginação nos dados ordenados
+            const offset = (currentPageGlobal - 1) * currentLimitGlobal;
+            const dadosPaginados = dadosOrdenados.slice(offset, offset + currentLimitGlobal);
+            
+            // Atualizar dados da página atual
+            dadosOrdenaveis = dadosPaginados;
+            
+            // Re-renderizar apenas o corpo da tabela (mantendo cabeçalho e estrutura)
+            const resultsTableBody = document.getElementById('resultsTableBody');
+            const isCadastrosNaoDesenhados = currentSearchPayloadGlobal && currentSearchPayloadGlobal.type === 'cadastros_nao_desenhados';
+            
+            let bodyHTML = '';
+            dadosPaginados.forEach((row, index) => {
+                const imobId = row.imob_id || '';
+                const temDesenho = imobId && desenhosPorImobIdGlobal[imobId] && desenhosPorImobIdGlobal[imobId].length > 0;
+                
+                const rowClass = temDesenho ? 'row-clickable' : 'no-drawing row-clickable';
+                bodyHTML += `<tr class="${rowClass}" data-imob-id="${imobId}">`;
+                
+                // Primeira coluna: checkbox (oculto se for cadastros não desenhados)
+                if (!isCadastrosNaoDesenhados) {
+                    if (temDesenho) {
+                        bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="row-checkbox" data-index="${index}" data-imob-id="${imobId}" checked></td>`;
+                    } else {
+                        bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="row-checkbox" data-index="${index}" data-imob-id="${imobId}" disabled title="Desenho não foi encontrado"></td>`;
+                    }
+                }
+                
+                // Coluna de checkbox para distribuição (apenas para cadastros não desenhados)
+                if (isCadastrosNaoDesenhados) {
+                    if (!temDesenho) {
+                        bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="distribuir-checkbox" data-imob-id="${imobId}"></td>`;
+                    } else {
+                        bodyHTML += `<td style="text-align: center;"></td>`;
+                    }
+                }
+                
+                // Demais colunas
+                columnArrayGlobal.forEach(col => {
+                    const value = row[col] !== null && row[col] !== undefined ? row[col] : '';
+                    if (col === 'historico') {
+                        bodyHTML += `<td title="${value}"><a href="#" class="historico-link" data-imob-id="${imobId}" style="color: #007bff; text-decoration: underline; cursor: pointer;">${value || '[vazio]'}</a></td>`;
+                    } else {
+                        bodyHTML += `<td title="${value}">${value}</td>`;
+                    }
+                });
+                bodyHTML += '</tr>';
+            });
+            
+            resultsTableBody.innerHTML = bodyHTML;
+            
+            // Atualizar totalPages baseado nos dados ordenados
+            const totalPagesOrdenado = Math.ceil(dadosOrdenados.length / currentLimitGlobal);
+            totalPages = totalPagesOrdenado;
+            totalResults = dadosOrdenados.length;
+            
+            // Atualizar informações de paginação
+            atualizarPaginacao();
+            
+            // Re-aplicar todos os event listeners
+            reaplicarEventListeners();
+            
+            // Atualizar indicadores de ordenação
+            atualizarIndicadoresOrdenacao();
+        }
+        
+        // Função para atualizar paginação após ordenação
+        function atualizarPaginacao() {
+            const paginationInfoBottom = document.getElementById('paginationInfoBottom');
+            const paginationControlsBottom = document.getElementById('paginationControlsBottom');
+            
+            if (paginationInfoBottom) {
+                const startItem = (currentPageGlobal - 1) * currentLimitGlobal + 1;
+                const endItem = Math.min(currentPageGlobal * currentLimitGlobal, totalResults);
+                paginationInfoBottom.textContent = `Mostrando ${startItem} a ${endItem} de ${totalResults} resultados`;
+            }
+            
+            if (paginationControlsBottom) {
+                let paginationHTML = '';
+                
+                // Botão Anterior
+                if (currentPageGlobal > 1) {
+                    paginationHTML += `<button class="btn btn-sm btn-outline-primary" onclick="loadPage(${currentPageGlobal - 1})">Anterior</button> `;
+                } else {
+                    paginationHTML += `<button class="btn btn-sm btn-outline-secondary" disabled>Anterior</button> `;
+                }
+                
+                // Números de página
+                const maxPagesToShow = 5;
+                let startPage = Math.max(1, currentPageGlobal - Math.floor(maxPagesToShow / 2));
+                let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+                
+                if (endPage - startPage < maxPagesToShow - 1) {
+                    startPage = Math.max(1, endPage - maxPagesToShow + 1);
+                }
+                
+                if (startPage > 1) {
+                    paginationHTML += `<button class="btn btn-sm btn-outline-primary" onclick="loadPage(1)">1</button> `;
+                    if (startPage > 2) {
+                        paginationHTML += `<span>...</span> `;
+                    }
+                }
+                
+                for (let i = startPage; i <= endPage; i++) {
+                    if (i === currentPageGlobal) {
+                        paginationHTML += `<button class="btn btn-sm btn-primary" disabled>${i}</button> `;
+                    } else {
+                        paginationHTML += `<button class="btn btn-sm btn-outline-primary" onclick="loadPage(${i})">${i}</button> `;
+                    }
+                }
+                
+                if (endPage < totalPages) {
+                    if (endPage < totalPages - 1) {
+                        paginationHTML += `<span>...</span> `;
+                    }
+                    paginationHTML += `<button class="btn btn-sm btn-outline-primary" onclick="loadPage(${totalPages})">${totalPages}</button> `;
+                }
+                
+                // Botão Próximo
+                if (currentPageGlobal < totalPages) {
+                    paginationHTML += `<button class="btn btn-sm btn-outline-primary" onclick="loadPage(${currentPageGlobal + 1})">Próximo</button>`;
+                } else {
+                    paginationHTML += `<button class="btn btn-sm btn-outline-secondary" disabled>Próximo</button>`;
+                }
+                
+                paginationControlsBottom.innerHTML = paginationHTML;
+            }
+        }
+        
+        // Função para atualizar indicadores de ordenação no cabeçalho
+        function atualizarIndicadoresOrdenacao() {
+            document.querySelectorAll('.sortable-header').forEach(header => {
+                const col = header.getAttribute('data-column');
+                const headerName = columnNamesGlobal[col] || col;
+                let sortIndicator = '';
+                if (sortColumn === col) {
+                    sortIndicator = sortDirection === 'asc' ? ' <i class="fas fa-sort-up"></i>' : ' <i class="fas fa-sort-down"></i>';
+                } else {
+                    sortIndicator = ' <i class="fas fa-sort" style="opacity: 0.3;"></i>';
+                }
+                header.innerHTML = `${headerName}${sortIndicator}`;
+            });
+        }
+        
+        // Função para re-aplicar event listeners após ordenação
+        function reaplicarEventListeners() {
+            // Re-aplicar event listeners dos checkboxes de distribuição
+            const selectAllDistribuirCheckbox = document.getElementById('selectAllDistribuirCheckbox');
+            if (selectAllDistribuirCheckbox) {
+                selectAllDistribuirCheckbox.addEventListener('change', function() {
+                    const distribuirCheckboxes = document.querySelectorAll('.distribuir-checkbox');
+                    distribuirCheckboxes.forEach(checkbox => {
+                        checkbox.checked = selectAllDistribuirCheckbox.checked;
+                    });
+                    atualizarBotaoDistribuir();
+                });
+            }
+            
+            document.querySelectorAll('.distribuir-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    atualizarBotaoDistribuir();
+                });
+            });
+            
+            // Re-aplicar event listeners do checkbox "Selecionar todos"
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.addEventListener('change', function() {
+                    const rowCheckboxes = document.querySelectorAll('.row-checkbox:not(:disabled)');
+                    rowCheckboxes.forEach(checkbox => {
+                        checkbox.checked = this.checked;
+                        const imobId = checkbox.getAttribute('data-imob-id');
+                        if (imobId) {
+                            togglePolygonVisibility(imobId, this.checked);
+                        }
+                    });
+                });
+            }
+            
+            // Re-aplicar event listeners dos checkboxes individuais
+            document.querySelectorAll('.row-checkbox:not(:disabled)').forEach(checkbox => {
+                checkbox.addEventListener('change', function(e) {
+                    e.stopPropagation();
+                    const imobId = this.getAttribute('data-imob-id');
+                    if (imobId) {
+                        togglePolygonVisibility(imobId, this.checked);
+                    }
+                });
+            });
+            
+            // Re-aplicar event listener de clique nas linhas da tabela
+            document.querySelectorAll('#resultsTableBody tr.row-clickable').forEach(row => {
+                row.addEventListener('click', function(e) {
+                    if (e.target.type === 'checkbox') return;
+                    const imobId = this.getAttribute('data-imob-id');
+                    if (imobId) {
+                        zoomToDesenho(imobId);
+                    }
+                });
+            });
+            
+            // Re-aplicar event listeners dos links de histórico
+            document.querySelectorAll('.historico-link').forEach(link => {
+                link.addEventListener('click', async function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    imobIdAtual = this.getAttribute('data-imob-id');
+                    if (!imobIdAtual) {
+                        alert('Erro: imob_id não encontrado');
+                        return;
+                    }
+                    
+                    modalHistorico.show();
+                    await carregarHistorico(imobIdAtual);
+                });
+            });
+        }
 
         // Função para atualizar visibilidade do botão Distribuir
         function atualizarBotaoDistribuir() {

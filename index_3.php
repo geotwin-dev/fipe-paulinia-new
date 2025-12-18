@@ -975,6 +975,8 @@ if (isset($_GET['adicionar_historico'])) {
 
     <!-- toGeoJSON -->
     <script src="bibliotecas/togeojson.js" defer></script>
+    <!-- DXF Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.min.js" defer></script>
     <!-- Nosso framework -->
     <script src="framework.js" defer></script>
 
@@ -1936,6 +1938,27 @@ if (isset($_GET['adicionar_historico'])) {
             color: #007bff;
         }
 
+        /* Estilos para separar visualmente as camadas dinâmicas DXF */
+        #tituloCamadasDinamicasDXF {
+            background-color: #f8f9fa;
+            margin-top: 5px;
+        }
+
+        /* Estilos para o slider de opacidade das camadas dinâmicas DXF */
+        #sliderOpacidadeCamadasDinamicasDXF {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        #rangeOpacidadeCamadasDXF {
+            cursor: pointer;
+        }
+
+        #valorOpacidadeCamadasDXF {
+            font-weight: 600;
+            color: #007bff;
+        }
+
         /* ==================== QUADRINHO DE PESQUISA ==================== */
         #searchBox {
             position: absolute;
@@ -2370,8 +2393,17 @@ if (isset($_GET['adicionar_historico'])) {
                 <!-- Botões -->
                 <div id="divBots" class="d-flex align-items-center flex-grow-1 gap-2">
 
-                    <!-- Botão Tipo de Mapa -->
-                    <button id="btnTipoMapa" class="btn btn-light">Mapa</button>
+                    <!-- Dropdown Tipo de Mapa -->
+                    <div class="btn-group">
+                        <button id="btnTipoMapa" class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            Mapa
+                        </button>
+                        <ul class="dropdown-menu" id="dropdownTipoMapa">
+                            <li><a class="dropdown-item" href="#" data-tipo="roadmap">Mapa Claro</a></li>
+                            <li><a class="dropdown-item" href="#" data-tipo="styled_map">Mapa Escuro</a></li>
+                            <li><a class="dropdown-item" href="#" data-tipo="satellite">Satélite</a></li>
+                        </ul>
+                    </div>
 
                     <!-- Botão Camadas (Dropdown com Checkboxes) -->
                     <div class="btn-group">
@@ -2588,6 +2620,23 @@ if (isset($_GET['adicionar_historico'])) {
                                         Opacidade: <span id="valorOpacidadeCamadas">0.5</span>
                                     </label>
                                     <input type="range" class="form-range" id="rangeOpacidadeCamadas"
+                                        min="0" max="2" step="0.1" value="0.5">
+                                </div>
+                            </li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li id="tituloCamadasDinamicasDXF" style="display: none;">
+                                <div style="padding: 8px 16px; font-weight: 600; color: #6c757d; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    Camadas dos DXF
+                                </div>
+                            </li>
+                            <li id="sliderOpacidadeCamadasDinamicasDXF" style="display: none;">
+                                <div style="padding: 8px 16px;">
+                                    <label for="rangeOpacidadeCamadasDXF" class="form-label" style="font-size: 12px; font-weight: 500; color: #495057; margin-bottom: 8px; display: block;">
+                                        Opacidade: <span id="valorOpacidadeCamadasDXF">0.5</span>
+                                    </label>
+                                    <input type="range" class="form-range" id="rangeOpacidadeCamadasDXF"
                                         min="0" max="2" step="0.1" value="0.5">
                                 </div>
                             </li>
@@ -3233,12 +3282,22 @@ if (isset($_GET['adicionar_historico'])) {
         }
 
         // Função para exibir resultados da pesquisa (SEM desenhos)
+        // Variáveis para controle de ordenação
+        let sortColumnIndex3 = null;
+        let sortDirectionIndex3 = 'asc'; // 'asc' ou 'desc'
+        let dadosOrdenaveisIndex3 = null; // Armazenar dados originais para ordenação
+        let columnArrayGlobalIndex3 = []; // Array de colunas para uso na ordenação
+        let columnNamesGlobalIndex3 = {}; // Mapeamento de nomes de colunas
+
         function displaySearchResults(dados, total, page = 1, totalPages = 1) {
             const resultsTableHead = document.getElementById('resultsTableHead');
             const resultsTableBody = document.getElementById('resultsTableBody');
             const resultsCount = document.getElementById('resultsCount');
             const searchResultsBox = document.getElementById('searchResultsBox');
             const btnToggleResults = document.getElementById('btnToggleResults');
+            
+            // Armazenar dados originais para ordenação
+            dadosOrdenaveisIndex3 = dados;
             const searchResultsPaginationBottom = document.getElementById('searchResultsPaginationBottom');
             const paginationInfoBottom = document.getElementById('paginationInfoBottom');
             const paginationControlsBottom = document.getElementById('paginationControlsBottom');
@@ -3328,17 +3387,36 @@ if (isset($_GET['adicionar_historico'])) {
             const columnArray = columnsOrder.filter(col => {
                 return dados.some(row => row.hasOwnProperty(col));
             });
+            
+            // Armazenar para uso na ordenação
+            columnArrayGlobalIndex3 = columnArray;
+            columnNamesGlobalIndex3 = columnNames;
 
             // Criar cabeçalho
             let headerHTML = '<tr>';
             columnArray.forEach(col => {
                 const headerName = columnNames[col] || col;
-                headerHTML += `<th>${headerName}</th>`;
+                // Adicionar indicador de ordenação se a coluna estiver ordenada
+                let sortIndicator = '';
+                if (sortColumnIndex3 === col) {
+                    sortIndicator = sortDirectionIndex3 === 'asc' ? ' <i class="fas fa-sort-up"></i>' : ' <i class="fas fa-sort-down"></i>';
+                } else {
+                    sortIndicator = ' <i class="fas fa-sort" style="opacity: 0.3;"></i>';
+                }
+                headerHTML += `<th class="sortable-header" data-column="${col}" style="cursor: pointer; user-select: none;">${headerName}${sortIndicator}</th>`;
             });
             headerHTML += '</tr>';
             if (resultsTableHead) {
                 resultsTableHead.innerHTML = headerHTML;
             }
+            
+            // Adicionar event listeners para ordenação
+            document.querySelectorAll('.sortable-header').forEach(header => {
+                header.addEventListener('click', function() {
+                    const column = this.getAttribute('data-column');
+                    ordenarTabelaIndex3(column);
+                });
+            });
 
             // Criar corpo
             let bodyHTML = '';
@@ -5795,6 +5873,9 @@ if (isset($_GET['adicionar_historico'])) {
             // Carrega camadas dinâmicas adicionais de KML
             MapFramework.carregarMaisCamadas();
 
+            // Carrega camadas dinâmicas adicionais de DXF
+            MapFramework.carregarMaisCamadasDXF();
+
             // Inicializa o modo normal (mostra botões principais)
             controlarVisibilidadeBotoes('normal');
 
@@ -5979,8 +6060,11 @@ if (isset($_GET['adicionar_historico'])) {
             });
 
             // Outros inits
-            $('#btnTipoMapa').on('click', function() {
-                MapFramework.alternarTipoMapa();
+            // Evento para o dropdown de tipo de mapa
+            $('#dropdownTipoMapa .dropdown-item').on('click', function(e) {
+                e.preventDefault();
+                const tipoMapa = $(this).data('tipo');
+                MapFramework.alternarTipoMapa(tipoMapa);
             });
 
             $('#dropCamadas').on('click', function(e) {
@@ -9889,6 +9973,106 @@ if (isset($_GET['adicionar_historico'])) {
             novaLinhaHistorico.value = '';
             imobIdAtual = null;
         });
+
+        // Função para ordenar tabela (index_3.php)
+        function ordenarTabelaIndex3(column) {
+            if (!dadosOrdenaveisIndex3 || dadosOrdenaveisIndex3.length === 0) return;
+            
+            // Alternar direção se clicar na mesma coluna
+            if (sortColumnIndex3 === column) {
+                sortDirectionIndex3 = sortDirectionIndex3 === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumnIndex3 = column;
+                sortDirectionIndex3 = 'asc';
+            }
+            
+            aplicarOrdenacaoIndex3();
+        }
+
+        // Função para aplicar ordenação e re-renderizar tabela (index_3.php)
+        function aplicarOrdenacaoIndex3() {
+            if (!dadosOrdenaveisIndex3 || !sortColumnIndex3 || columnArrayGlobalIndex3.length === 0) return;
+            
+            const dadosOrdenados = [...dadosOrdenaveisIndex3].sort((a, b) => {
+                let valA = a[sortColumnIndex3];
+                let valB = b[sortColumnIndex3];
+                
+                // Tratar valores nulos/undefined
+                if (valA === null || valA === undefined || valA === '') valA = '';
+                if (valB === null || valB === undefined || valB === '') valB = '';
+                
+                // Converter para string para comparação
+                valA = String(valA).toLowerCase().trim();
+                valB = String(valB).toLowerCase().trim();
+                
+                // Tentar converter para número se ambos forem numéricos
+                const numA = parseFloat(valA);
+                const numB = parseFloat(valB);
+                if (!isNaN(numA) && !isNaN(numB) && valA !== '' && valB !== '') {
+                    valA = numA;
+                    valB = numB;
+                }
+                
+                let comparacao = 0;
+                if (valA < valB) comparacao = -1;
+                else if (valA > valB) comparacao = 1;
+                
+                return sortDirectionIndex3 === 'asc' ? comparacao : -comparacao;
+            });
+            
+            // Atualizar dados ordenáveis
+            dadosOrdenaveisIndex3 = dadosOrdenados;
+            
+            // Re-renderizar apenas o corpo da tabela
+            const resultsTableBody = document.getElementById('resultsTableBody');
+            
+            let bodyHTML = '';
+            dadosOrdenados.forEach((row) => {
+                const imobId = row.imob_id || '';
+                bodyHTML += `<tr data-imob-id="${imobId}">`;
+                columnArrayGlobalIndex3.forEach(col => {
+                    const value = row[col] !== null && row[col] !== undefined ? row[col] : '';
+                    if (col === 'historico') {
+                        bodyHTML += `<td title="${value}"><a href="#" class="historico-link" data-imob-id="${imobId}" style="color: #007bff; text-decoration: underline; cursor: pointer;">${value || '[vazio]'}</a></td>`;
+                    } else {
+                        bodyHTML += `<td title="${value}">${value}</td>`;
+                    }
+                });
+                bodyHTML += '</tr>';
+            });
+            
+            if (resultsTableBody) {
+                resultsTableBody.innerHTML = bodyHTML;
+            }
+            
+            // Re-aplicar event listeners dos links de histórico
+            $(document).off('click', '.historico-link').on('click', '.historico-link', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                imobIdAtual = $(this).attr('data-imob-id');
+                if (!imobIdAtual) {
+                    alert('Erro: imob_id não encontrado');
+                    return;
+                }
+                
+                modalHistorico.show();
+                await carregarHistorico(imobIdAtual);
+            });
+            
+            // Atualizar indicadores de ordenação no cabeçalho
+            document.querySelectorAll('.sortable-header').forEach(header => {
+                const col = header.getAttribute('data-column');
+                const headerName = columnNamesGlobalIndex3[col] || col;
+                let sortIndicator = '';
+                if (sortColumnIndex3 === col) {
+                    sortIndicator = sortDirectionIndex3 === 'asc' ? ' <i class="fas fa-sort-up"></i>' : ' <i class="fas fa-sort-down"></i>';
+                } else {
+                    sortIndicator = ' <i class="fas fa-sort" style="opacity: 0.3;"></i>';
+                }
+                header.innerHTML = `${headerName}${sortIndicator}`;
+            });
+        }
     </script>
 
 </body>

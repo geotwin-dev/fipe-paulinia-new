@@ -1,0 +1,65 @@
+{
+    "type": "quarteirao",
+    "values": {
+        "quarteirao": "893"
+    },
+    "totalCount": 2,
+    "usuario_email": null,
+    "results": {
+        "allResults": [
+            {
+                "id": 22842,
+                "inscricao": 870180731019400,
+                "imob_id": 15157,
+                "logradouro": "AVN   OLIVIA FAVERO PIVA",
+                "numero": "701",
+                "bairro": "ALTO DE PINHEIROS",
+                "cara_quarteirao": "893",
+                "quadra": "S\\D",
+                "lote": "S\/D",
+                "total_construido": 1489,
+                "nome_pessoa": "PREFEITURA MUNICIPAL DE PAULINIA",
+                "cnpj": "45.751.435\/0001-06",
+                "area_terreno": "19089.10",
+                "tipo_edificacao": "Edificado",
+                "tipo_utilizacao": "Serviços",
+                "zona": "ZR3",
+                "cat_via": " ECS2",
+                "nome_loteamento": "875180 - ALTO DE PINHEIROS",
+                "imob_id_principal": 15157,
+                "multiplo": 1,
+                "uso_imovel": "?",
+                "historico": null
+            },
+            {
+                "id": 22843,
+                "inscricao": 870180731014300,
+                "imob_id": 15156,
+                "logradouro": "AVN   OLIVIA FAVERO PIVA",
+                "numero": "651",
+                "bairro": "ALTO DE PINHEIROS",
+                "cara_quarteirao": "893",
+                "quadra": "S\/D",
+                "lote": "S\/D",
+                "total_construido": 331,
+                "nome_pessoa": "PREFEITURA MUNICIPAL DE PAULINIA",
+                "cnpj": "45.751.435\/0001-06",
+                "area_terreno": "18768.76",
+                "tipo_edificacao": "Edificado",
+                "tipo_utilizacao": "Serviços",
+                "zona": "ZR3",
+                "cat_via": " ECS2",
+                "nome_loteamento": "875180 - ALTO DE PINHEIROS",
+                "imob_id_principal": 15156,
+                "multiplo": 1,
+                "uso_imovel": "?",
+                "historico": null
+            }
+        ],
+        "allDesenhosPorImobId": {
+            "15157": [],
+            "15156": []
+        },
+        "marcadoresOrfaos": []
+    }
+}
