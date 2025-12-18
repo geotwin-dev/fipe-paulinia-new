@@ -62,7 +62,13 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
         if (!$usarCache) {
             // Para cadastros_nao_desenhados, usar query especial com NOT EXISTS
             if ($type === 'cadastros_nao_desenhados') {
-                $sql = "SELECT cad.* 
+                $sql = "SELECT cad.id, cad.inscricao, cad.imob_id,  
+                               cad.logradouro, cad.numero, cad.bairro, cad.cara_quarteirao, cad.quadra, 
+                               cad.lote, cad.total_construido, cad.nome_pessoa, 
+                               cad.cnpj, cad.area_terreno, cad.tipo_edificacao, cad.tipo_utilizacao, 
+                               cad.zona, cad.cat_via, cad.nome_loteamento, 
+                               cad.imob_id_principal, cad.multiplo, cad.uso_imovel,
+                               SUBSTRING_INDEX(REPLACE(cad.historico, '\r\n', '\n'), '\n', -1) AS historico
                         FROM cadastro cad 
                         WHERE cad.imob_id = cad.imob_id_principal 
                         AND NOT EXISTS ( 
@@ -76,7 +82,14 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
                 $params = [];
                 // Não há switch para este tipo, pular direto para execução
             } else {
-                $sql = "SELECT * FROM cadastro WHERE 1=1 AND imob_id = imob_id_principal";
+                $sql = "SELECT cad.id, cad.inscricao, cad.imob_id,  
+                               cad.logradouro, cad.numero, cad.bairro, cad.cara_quarteirao, cad.quadra, 
+                               cad.lote, cad.total_construido, cad.nome_pessoa, 
+                               cad.cnpj, cad.area_terreno, cad.tipo_edificacao, cad.tipo_utilizacao, 
+                               cad.zona, cad.cat_via, cad.nome_loteamento, 
+                               cad.imob_id_principal, cad.multiplo, cad.uso_imovel,
+                               SUBSTRING_INDEX(REPLACE(cad.historico, '\r\n', '\n'), '\n', -1) AS historico
+                        FROM cadastro cad WHERE 1=1 AND imob_id = imob_id_principal";
                 $params = [];
 
                 switch ($type) {
@@ -429,7 +442,13 @@ if (isset($_GET['pesquisar'])) {
         if (!$usarCache) {
             // Para cadastros_nao_desenhados, usar query especial com NOT EXISTS
             if ($type === 'cadastros_nao_desenhados') {
-                $sql = "SELECT cad.* 
+                $sql = "SELECT cad.id, cad.inscricao, cad.imob_id,  
+                               cad.logradouro, cad.numero, cad.bairro, cad.cara_quarteirao, cad.quadra, 
+                               cad.lote, cad.total_construido, cad.nome_pessoa, 
+                               cad.cnpj, cad.area_terreno, cad.tipo_edificacao, cad.tipo_utilizacao, 
+                               cad.zona, cad.cat_via, cad.nome_loteamento, 
+                               cad.imob_id_principal, cad.multiplo, cad.uso_imovel,
+                               SUBSTRING_INDEX(REPLACE(cad.historico, '\r\n', '\n'), '\n', -1) AS historico
                         FROM cadastro cad 
                         WHERE cad.imob_id = cad.imob_id_principal 
                         AND NOT EXISTS ( 
@@ -443,7 +462,14 @@ if (isset($_GET['pesquisar'])) {
                 $params = [];
                 // Não há switch para este tipo, pular direto para execução
             } else {
-                $sql = "SELECT * FROM cadastro WHERE 1=1 AND imob_id = imob_id_principal";
+                $sql = "SELECT cad.id, cad.inscricao, cad.imob_id,  
+                               cad.logradouro, cad.numero, cad.bairro, cad.cara_quarteirao, cad.quadra, 
+                               cad.lote, cad.total_construido, cad.nome_pessoa, 
+                               cad.cnpj, cad.area_terreno, cad.tipo_edificacao, cad.tipo_utilizacao, 
+                               cad.zona, cad.cat_via, cad.nome_loteamento, 
+                               cad.imob_id_principal, cad.multiplo, cad.uso_imovel,
+                               SUBSTRING_INDEX(REPLACE(cad.historico, '\r\n', '\n'), '\n', -1) AS historico
+                        FROM cadastro cad WHERE 1=1 AND imob_id = imob_id_principal";
                 $params = [];
 
                 switch ($type) {
@@ -773,6 +799,146 @@ if (isset($_GET['quadricula'])) {
 } else {
     $dadosOrto = [];
 }
+
+// Endpoint para buscar historico completo de um registro
+if (isset($_GET['buscar_historico'])) {
+    header('Content-Type: application/json');
+    
+    try {
+        $imob_id = isset($_GET['imob_id']) ? trim($_GET['imob_id']) : '';
+        
+        if (empty($imob_id)) {
+            echo json_encode(['error' => 'imob_id é obrigatório']);
+            exit;
+        }
+        
+        $sql = "SELECT historico FROM cadastro WHERE imob_id = :imob_id LIMIT 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':imob_id', $imob_id);
+        $stmt->execute();
+        
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($result) {
+            $historico = $result['historico'] ?? '';
+            // Dividir por quebras de linha
+            $linhas = [];
+            if (!empty($historico)) {
+                // Normalizar quebras de linha
+                $historico = str_replace("\r\n", "\n", $historico);
+                $historico = str_replace("\r", "\n", $historico);
+                $linhas = explode("\n", $historico);
+                // Remover linhas vazias do final
+                $linhas = array_filter($linhas, function($linha) {
+                    return trim($linha) !== '';
+                });
+                $linhas = array_values($linhas); // Reindexar
+            }
+            
+            echo json_encode([
+                'success' => true,
+                'imob_id' => $imob_id,
+                'linhas' => $linhas
+            ]);
+        } else {
+            echo json_encode([
+                'success' => true,
+                'imob_id' => $imob_id,
+                'linhas' => []
+            ]);
+        }
+    } catch (PDOException $e) {
+        echo json_encode(['error' => 'Erro ao buscar histórico: ' . $e->getMessage()]);
+    } catch (Exception $e) {
+        echo json_encode(['error' => 'Erro: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+// Endpoint para adicionar nova linha ao historico
+if (isset($_GET['adicionar_historico'])) {
+    header('Content-Type: application/json');
+    
+    try {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        if (!is_array($input) || !isset($input['imob_id']) || !isset($input['nova_linha'])) {
+            echo json_encode(['error' => 'Dados inválidos']);
+            exit;
+        }
+        
+        $imob_id = trim($input['imob_id']);
+        $nova_linha = trim($input['nova_linha']);
+        
+        if (empty($imob_id)) {
+            echo json_encode(['error' => 'imob_id é obrigatório']);
+            exit;
+        }
+        
+        if (empty($nova_linha)) {
+            echo json_encode(['error' => 'Nova linha não pode estar vazia']);
+            exit;
+        }
+        
+        // Buscar historico atual
+        $sql = "SELECT historico FROM cadastro WHERE imob_id = :imob_id LIMIT 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':imob_id', $imob_id);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$result) {
+            echo json_encode(['error' => 'Registro não encontrado']);
+            exit;
+        }
+        
+        $historico_atual = $result['historico'] ?? '';
+        
+        // Adicionar nova linha (append)
+        if (!empty($historico_atual)) {
+            // Normalizar quebras de linha existentes
+            $historico_atual = str_replace("\r\n", "\n", $historico_atual);
+            $historico_atual = str_replace("\r", "\n", $historico_atual);
+            // Remover quebra de linha do final se existir
+            $historico_atual = rtrim($historico_atual, "\n");
+            // Adicionar nova linha
+            $historico_novo = $historico_atual . "\n" . $nova_linha;
+        } else {
+            $historico_novo = $nova_linha;
+        }
+        
+        // Atualizar no banco
+        $sqlUpdate = "UPDATE cadastro SET historico = :historico WHERE imob_id = :imob_id";
+        $stmtUpdate = $pdo->prepare($sqlUpdate);
+        $stmtUpdate->bindValue(':historico', $historico_novo);
+        $stmtUpdate->bindValue(':imob_id', $imob_id);
+        $stmtUpdate->execute();
+        
+        // Retornar todas as linhas atualizadas
+        $linhas = [];
+        if (!empty($historico_novo)) {
+            $historico_novo_normalizado = str_replace("\r\n", "\n", $historico_novo);
+            $historico_novo_normalizado = str_replace("\r", "\n", $historico_novo_normalizado);
+            $linhas = explode("\n", $historico_novo_normalizado);
+            $linhas = array_filter($linhas, function($linha) {
+                return trim($linha) !== '';
+            });
+            $linhas = array_values($linhas);
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'imob_id' => $imob_id,
+            'linhas' => $linhas
+        ]);
+    } catch (PDOException $e) {
+        echo json_encode(['error' => 'Erro ao adicionar histórico: ' . $e->getMessage()]);
+    } catch (Exception $e) {
+        echo json_encode(['error' => 'Erro: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
 ?>
 
 <script>
@@ -1852,7 +2018,7 @@ if (isset($_GET['quadricula'])) {
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             display: none;
-            width: calc(100% - 30px);
+            width: calc(100% - 250px);
             margin: 0 auto;
             max-height: calc(100vh - 180px);
             overflow: hidden;
@@ -1922,6 +2088,11 @@ if (isset($_GET['quadricula'])) {
             width: 100%;
         }
 
+        /* Remover text-decoration line-through de linhas sem desenho */
+        #searchResultsBody table tbody tr td {
+            text-decoration: none !important;
+        }
+
         #searchResultsBody table thead {
             position: sticky;
             top: 0;
@@ -1988,6 +2159,43 @@ if (isset($_GET['quadricula'])) {
                 <div class="d-flex gap-2 justify-content-end">
                     <button id="btnCancelarCamada" class="btn btn-outline-secondary">Cancelar</button>
                     <button id="btnSalvarCamada" class="btn btn-primary">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Histórico -->
+    <div class="modal fade" id="modalHistorico" tabindex="-1" aria-labelledby="modalHistoricoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalHistoricoLabel">Histórico do Cadastro</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="novaLinhaHistorico" class="form-label">Adicionar nova linha ao histórico:</label>
+                        <textarea id="novaLinhaHistorico" class="form-control" rows="3" placeholder="Digite o texto da nova linha..."></textarea>
+                    </div>
+                    <button type="button" class="btn btn-primary mb-3" id="btnAdicionarHistorico">
+                        <i class="fas fa-plus"></i> Adicionar Linha
+                    </button>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-sm" id="tabelaHistorico">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th style="width: 50px;">#</th>
+                                    <th>Texto</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyHistorico">
+                                <!-- Linhas serão preenchidas dinamicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
                 </div>
             </div>
         </div>
@@ -2570,6 +2778,20 @@ if (isset($_GET['quadricula'])) {
 
         // Opções de pesquisa (ordenadas alfabeticamente)
         const searchOptions = [{
+                value: 'cadastros_nao_desenhados',
+                label: 'Cadastros não desenhados',
+                fields: [
+                    {
+                        name: 'loteamento',
+                        placeholder: 'Loteamento (opcional)'
+                    },
+                    {
+                        name: 'quarteirao',
+                        placeholder: 'Quarteirão (opcional)'
+                    }
+                ]
+            },
+            {
                 value: 'area_construida',
                 label: 'Área Construída',
                 fields: [{
@@ -2602,11 +2824,6 @@ if (isset($_GET['quadricula'])) {
                     name: 'bairro',
                     placeholder: 'Bairro'
                 }]
-            },
-            {
-                value: 'cadastros_nao_desenhados',
-                label: 'Cadastros não desenhados',
-                fields: []
             },
             {
                 value: 'cat_via',
@@ -2798,11 +3015,19 @@ if (isset($_GET['quadricula'])) {
 
             // Preencher select
             if (select) {
-                searchOptions.forEach(opt => {
+                searchOptions.forEach((opt, index) => {
                     const option = document.createElement('option');
                     option.value = opt.value;
                     option.textContent = opt.label;
                     select.appendChild(option);
+                    
+                    // Adicionar separador após "Cadastros não desenhados" (primeira opção)
+                    if (index === 0 && opt.value === 'cadastros_nao_desenhados') {
+                        const separator = document.createElement('option');
+                        separator.disabled = true;
+                        separator.textContent = '─────────────────────────';
+                        select.appendChild(separator);
+                    }
                 });
             }
 
@@ -3063,6 +3288,7 @@ if (isset($_GET['quadricula'])) {
                 'quadra',
                 'lote',
                 'total_construido',
+                'historico',
                 'nome_pessoa',
                 'cnpj',
                 'area_terreno',
@@ -3086,6 +3312,7 @@ if (isset($_GET['quadricula'])) {
                 'quadra': 'Quadra',
                 'lote': 'Lote',
                 'total_construido': 'Área Construída',
+                'historico': 'Histórico',
                 'nome_pessoa': 'Nome',
                 'cnpj': 'CNPJ',
                 'area_terreno': 'Área Terreno',
@@ -3116,10 +3343,16 @@ if (isset($_GET['quadricula'])) {
             // Criar corpo
             let bodyHTML = '';
             dados.forEach((row) => {
-                bodyHTML += '<tr>';
+                const imobId = row.imob_id || '';
+                bodyHTML += `<tr data-imob-id="${imobId}">`;
                 columnArray.forEach(col => {
                     const value = row[col] !== null && row[col] !== undefined ? row[col] : '';
-                    bodyHTML += `<td title="${value}">${value}</td>`;
+                    // Se for a coluna historico, criar link clicável
+                    if (col === 'historico') {
+                        bodyHTML += `<td title="${value}"><a href="#" class="historico-link" data-imob-id="${imobId}" style="color: #007bff; text-decoration: underline; cursor: pointer;">${value || '[vazio]'}</a></td>`;
+                    } else {
+                        bodyHTML += `<td title="${value}">${value}</td>`;
+                    }
                 });
                 bodyHTML += '</tr>';
             });
@@ -9494,6 +9727,167 @@ if (isset($_GET['quadricula'])) {
             if (e.which === 13) {
                 $('#btnExecutarPesquisa').click();
             }
+        });
+
+        // Gerenciar modal de histórico
+        let imobIdAtual = null;
+        const modalHistorico = new bootstrap.Modal(document.getElementById('modalHistorico'));
+        const tbodyHistorico = document.getElementById('tbodyHistorico');
+        const novaLinhaHistorico = document.getElementById('novaLinhaHistorico');
+        const btnAdicionarHistorico = document.getElementById('btnAdicionarHistorico');
+
+        // Event listener para links de histórico (usando delegação de eventos)
+        $(document).on('click', '.historico-link', async function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            imobIdAtual = $(this).attr('data-imob-id');
+            if (!imobIdAtual) {
+                alert('Erro: imob_id não encontrado');
+                return;
+            }
+            
+            // Abrir modal
+            modalHistorico.show();
+            
+            // Carregar histórico
+            await carregarHistorico(imobIdAtual);
+        });
+
+        // Função para carregar histórico completo
+        async function carregarHistorico(imobId) {
+            try {
+                tbodyHistorico.innerHTML = '<tr><td colspan="2" class="text-center">Carregando...</td></tr>';
+                
+                const response = await fetch(`?buscar_historico=1&imob_id=${encodeURIComponent(imobId)}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    tbodyHistorico.innerHTML = `<tr><td colspan="2" class="text-danger">Erro: ${data.error}</td></tr>`;
+                    return;
+                }
+                
+                // Limpar tabela
+                tbodyHistorico.innerHTML = '';
+                
+                if (data.linhas && data.linhas.length > 0) {
+                    data.linhas.forEach((linha, index) => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${index + 1}</td>
+                            <td>${escapeHtml(linha)}</td>
+                        `;
+                        tbodyHistorico.appendChild(tr);
+                    });
+                } else {
+                    tbodyHistorico.innerHTML = '<tr><td colspan="2" class="text-muted text-center">Nenhum histórico registrado</td></tr>';
+                }
+            } catch (error) {
+                console.error('Erro ao carregar histórico:', error);
+                tbodyHistorico.innerHTML = `<tr><td colspan="2" class="text-danger">Erro ao carregar histórico</td></tr>`;
+            }
+        }
+
+        // Função para adicionar nova linha ao histórico
+        btnAdicionarHistorico.addEventListener('click', async function() {
+            const texto = novaLinhaHistorico.value.trim();
+            
+            if (!texto) {
+                alert('Por favor, digite um texto para adicionar ao histórico.');
+                return;
+            }
+            
+            if (!imobIdAtual) {
+                alert('Erro: imob_id não encontrado');
+                return;
+            }
+            
+            try {
+                btnAdicionarHistorico.disabled = true;
+                btnAdicionarHistorico.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Adicionando...';
+                
+                const response = await fetch('?adicionar_historico=1', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        imob_id: imobIdAtual,
+                        nova_linha: texto
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert('Erro ao adicionar linha: ' + data.error);
+                    btnAdicionarHistorico.disabled = false;
+                    btnAdicionarHistorico.innerHTML = '<i class="fas fa-plus"></i> Adicionar Linha';
+                    return;
+                }
+                
+                // Limpar campo de texto
+                novaLinhaHistorico.value = '';
+                
+                // Recarregar histórico atualizado
+                await carregarHistorico(imobIdAtual);
+                
+                // Atualizar a célula do histórico na tabela principal
+                atualizarHistoricoNaTabela(imobIdAtual, data.linhas[data.linhas.length - 1]);
+                
+                // Mostrar mensagem de sucesso
+                const toast = document.createElement('div');
+                toast.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3';
+                toast.style.zIndex = '9999';
+                toast.innerHTML = `
+                    <strong>Sucesso!</strong> Nova linha adicionada ao histórico.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+                
+                btnAdicionarHistorico.disabled = false;
+                btnAdicionarHistorico.innerHTML = '<i class="fas fa-plus"></i> Adicionar Linha';
+            } catch (error) {
+                console.error('Erro ao adicionar histórico:', error);
+                alert('Erro ao adicionar linha ao histórico');
+                btnAdicionarHistorico.disabled = false;
+                btnAdicionarHistorico.innerHTML = '<i class="fas fa-plus"></i> Adicionar Linha';
+            }
+        });
+
+        // Função auxiliar para escapar HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Função para atualizar histórico na tabela principal
+        function atualizarHistoricoNaTabela(imobId, novaUltimaLinha) {
+            // Encontrar todas as linhas da tabela
+            const linhasTabela = document.querySelectorAll('#resultsTableBody tr');
+            
+            linhasTabela.forEach(linha => {
+                // Verificar se a linha tem o imob_id correto
+                const imobIdLinha = linha.getAttribute('data-imob-id');
+                if (imobIdLinha === imobId) {
+                    // Encontrar a célula do histórico (link)
+                    const linkHistorico = linha.querySelector('.historico-link');
+                    if (linkHistorico) {
+                        // Atualizar o texto do link
+                        linkHistorico.textContent = novaUltimaLinha || '[vazio]';
+                        // Atualizar o title também
+                        linkHistorico.setAttribute('title', novaUltimaLinha || '');
+                    }
+                }
+            });
+        }
+
+        // Limpar campo ao fechar modal
+        $('#modalHistorico').on('hidden.bs.modal', function() {
+            novaLinhaHistorico.value = '';
+            imobIdAtual = null;
         });
     </script>
 

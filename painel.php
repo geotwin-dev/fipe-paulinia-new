@@ -134,7 +134,13 @@ if (isset($_GET['pesquisar'])) {
         if (!$usarCache) {
             // Para cadastros_nao_desenhados, usar query especial sem JOIN
             if ($type === 'cadastros_nao_desenhados') {
-                $sql = "SELECT cad.* 
+                $sql = "SELECT cad.id, cad.inscricao, cad.imob_id,  
+                               cad.logradouro, cad.numero, cad.bairro, cad.cara_quarteirao, cad.quadra, 
+                               cad.lote, cad.total_construido, cad.nome_pessoa, 
+                               cad.cnpj, cad.area_terreno, cad.tipo_edificacao, cad.tipo_utilizacao, 
+                               cad.zona, cad.cat_via, cad.nome_loteamento, 
+                               cad.imob_id_principal, cad.multiplo, cad.uso_imovel,
+                               SUBSTRING_INDEX(REPLACE(cad.historico, '\r\n', '\n'), '\n', -1) AS historico
                         FROM cadastro cad 
                         WHERE cad.imob_id = cad.imob_id_principal 
                         AND NOT EXISTS ( 
@@ -152,12 +158,32 @@ if (isset($_GET['pesquisar'])) {
                     $params[':loteamento'] = '%' . $values['loteamento'] . '%';
                 }
                 
-                // Adicionar condição de quarteirão se preenchido (tratar como int)
+                // Adicionar condição de quarteirão se preenchido
                 if (!empty($values['quarteirao'])) {
-                    $quarteiraoInt = intval($values['quarteirao']);
-                    if ($quarteiraoInt > 0) {
-                        $sql .= " AND cad.cara_quarteirao = :quarteirao";
-                        $params[':quarteirao'] = $quarteiraoInt;
+                    $quarteiraoInput = trim($values['quarteirao']);
+                    // Verificar se tem letras
+                    if (preg_match('/[a-zA-Z]/', $quarteiraoInput)) {
+                        // Se tiver letras, busca exata como string
+                        $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_cnd";
+                        $params[':quarteirao_cnd'] = $quarteiraoInput;
+                    } else {
+                        // Se for apenas numérico, busca flexível (com e sem zeros à esquerda)
+                        $quarteiraoInt = intval($quarteiraoInput);
+                        if ($quarteiraoInt > 0) {
+                            // Buscar tanto o valor original quanto o normalizado (sem zeros)
+                            // E também a versão com 4 dígitos (com zeros à esquerda)
+                            $quarteiraoComZeros = str_pad($quarteiraoInt, 4, '0', STR_PAD_LEFT);
+                            $sql .= " AND (TRIM(cad.cara_quarteirao) = :quarteirao_original_cnd OR 
+                                           CAST(TRIM(cad.cara_quarteirao) AS UNSIGNED) = :quarteirao_int_cnd OR
+                                           TRIM(cad.cara_quarteirao) = :quarteirao_com_zeros_cnd)";
+                            $params[':quarteirao_original_cnd'] = $quarteiraoInput;
+                            $params[':quarteirao_int_cnd'] = $quarteiraoInt;
+                            $params[':quarteirao_com_zeros_cnd'] = $quarteiraoComZeros;
+                        } else {
+                            // Se não for numérico válido, busca exata
+                            $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_cnd";
+                            $params[':quarteirao_cnd'] = $quarteiraoInput;
+                        }
                     }
                 }
                 
@@ -166,14 +192,20 @@ if (isset($_GET['pesquisar'])) {
             } else {
                 // Construir query SQL baseada no tipo de pesquisa usando JOIN otimizado
                 // Selecionar todas as colunas do cadastro e colunas necessárias do desenhos
-                $sql = "SELECT cad.*, 
-                               des.id as desenho_id, 
-                               des.tipo as desenho_tipo, 
-                               des.coordenadas as desenho_coordenadas, 
-                               des.quarteirao as desenho_quarteirao, 
-                               des.quadra as desenho_quadra, 
-                               des.lote as desenho_lote, 
-                               des.cor_usuario as desenho_cor_usuario, 
+                $sql = "SELECT cad.id, cad.inscricao, cad.imob_id,  
+                               cad.logradouro, cad.numero, cad.bairro, cad.cara_quarteirao, cad.quadra, 
+                               cad.lote, cad.total_construido, cad.nome_pessoa, 
+                               cad.cnpj, cad.area_terreno, cad.tipo_edificacao, cad.tipo_utilizacao, 
+                               cad.zona, cad.cat_via, cad.nome_loteamento, 
+                               cad.imob_id_principal, cad.multiplo, cad.uso_imovel,
+                               SUBSTRING_INDEX(REPLACE(cad.historico, '\r\n', '\n'), '\n', -1) AS historico,
+                               des.id as desenho_id,
+                               des.tipo as desenho_tipo,
+                               des.coordenadas as desenho_coordenadas,
+                               des.quarteirao as desenho_quarteirao,
+                               des.quadra as desenho_quadra,
+                               des.lote as desenho_lote,
+                               des.cor_usuario as desenho_cor_usuario,
                                des.cor as desenho_cor
                         FROM cadastro cad 
                         LEFT JOIN desenhos des ON (des.camada = 'poligono lote' OR des.camada = 'poligono_lote') 
@@ -198,15 +230,58 @@ if (isset($_GET['pesquisar'])) {
 
             case 'quarteirao':
                 if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cad.cara_quarteirao = :quarteirao";
-                    $params[':quarteirao'] = $values['quarteirao'];
+                    $quarteiraoInput = trim($values['quarteirao']);
+                    // Verificar se tem letras
+                    if (preg_match('/[a-zA-Z]/', $quarteiraoInput)) {
+                        // Se tiver letras, busca exata como string
+                        $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao";
+                        $params[':quarteirao'] = $quarteiraoInput;
+                    } else {
+                        // Se for apenas numérico, busca flexível (com e sem zeros à esquerda)
+                        $quarteiraoInt = intval($quarteiraoInput);
+                        if ($quarteiraoInt > 0) {
+                            // Buscar tanto o valor original quanto o normalizado (sem zeros)
+                            // E também a versão com 4 dígitos (com zeros à esquerda)
+                            $quarteiraoComZeros = str_pad($quarteiraoInt, 4, '0', STR_PAD_LEFT);
+                            $sql .= " AND (TRIM(cad.cara_quarteirao) = :quarteirao_original OR 
+                                           CAST(TRIM(cad.cara_quarteirao) AS UNSIGNED) = :quarteirao_int OR
+                                           TRIM(cad.cara_quarteirao) = :quarteirao_com_zeros)";
+                            $params[':quarteirao_original'] = $quarteiraoInput;
+                            $params[':quarteirao_int'] = $quarteiraoInt;
+                            $params[':quarteirao_com_zeros'] = $quarteiraoComZeros;
+                        } else {
+                            // Se não for numérico válido, busca exata
+                            $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao";
+                            $params[':quarteirao'] = $quarteiraoInput;
+                        }
+                    }
                 }
                 break;
 
             case 'quarteirao_quadra':
                 if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cad.cara_quarteirao = :quarteirao";
-                    $params[':quarteirao'] = $values['quarteirao'];
+                    $quarteiraoInput = trim($values['quarteirao']);
+                    // Verificar se tem letras
+                    if (preg_match('/[a-zA-Z]/', $quarteiraoInput)) {
+                        // Se tiver letras, busca exata como string
+                        $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_qq";
+                        $params[':quarteirao_qq'] = $quarteiraoInput;
+                    } else {
+                        // Se for apenas numérico, busca flexível (com e sem zeros à esquerda)
+                        $quarteiraoInt = intval($quarteiraoInput);
+                        if ($quarteiraoInt > 0) {
+                            $quarteiraoComZeros = str_pad($quarteiraoInt, 4, '0', STR_PAD_LEFT);
+                            $sql .= " AND (TRIM(cad.cara_quarteirao) = :quarteirao_original_qq OR 
+                                           CAST(TRIM(cad.cara_quarteirao) AS UNSIGNED) = :quarteirao_int_qq OR
+                                           TRIM(cad.cara_quarteirao) = :quarteirao_com_zeros_qq)";
+                            $params[':quarteirao_original_qq'] = $quarteiraoInput;
+                            $params[':quarteirao_int_qq'] = $quarteiraoInt;
+                            $params[':quarteirao_com_zeros_qq'] = $quarteiraoComZeros;
+                        } else {
+                            $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_qq";
+                            $params[':quarteirao_qq'] = $quarteiraoInput;
+                        }
+                    }
                 }
                 if (!empty($values['quadra'])) {
                     $sql .= " AND cad.quadra = :quadra";
@@ -216,8 +291,28 @@ if (isset($_GET['pesquisar'])) {
 
             case 'quarteirao_quadra_lote':
                 if (!empty($values['quarteirao'])) {
-                    $sql .= " AND cad.cara_quarteirao = :quarteirao";
-                    $params[':quarteirao'] = $values['quarteirao'];
+                    $quarteiraoInput = trim($values['quarteirao']);
+                    // Verificar se tem letras
+                    if (preg_match('/[a-zA-Z]/', $quarteiraoInput)) {
+                        // Se tiver letras, busca exata como string
+                        $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_qql";
+                        $params[':quarteirao_qql'] = $quarteiraoInput;
+                    } else {
+                        // Se for apenas numérico, busca flexível (com e sem zeros à esquerda)
+                        $quarteiraoInt = intval($quarteiraoInput);
+                        if ($quarteiraoInt > 0) {
+                            $quarteiraoComZeros = str_pad($quarteiraoInt, 4, '0', STR_PAD_LEFT);
+                            $sql .= " AND (TRIM(cad.cara_quarteirao) = :quarteirao_original_qql OR 
+                                           CAST(TRIM(cad.cara_quarteirao) AS UNSIGNED) = :quarteirao_int_qql OR
+                                           TRIM(cad.cara_quarteirao) = :quarteirao_com_zeros_qql)";
+                            $params[':quarteirao_original_qql'] = $quarteiraoInput;
+                            $params[':quarteirao_int_qql'] = $quarteiraoInt;
+                            $params[':quarteirao_com_zeros_qql'] = $quarteiraoComZeros;
+                        } else {
+                            $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_qql";
+                            $params[':quarteirao_qql'] = $quarteiraoInput;
+                        }
+                    }
                 }
                 if (!empty($values['quadra'])) {
                     $sql .= " AND cad.quadra = :quadra";
@@ -387,16 +482,40 @@ if (isset($_GET['pesquisar'])) {
                                 AND des.lote = cad.lote 
                             )";
                 
+                $countParams = [];
+                
                 // Adicionar condição de loteamento se preenchido
                 if (!empty($values['loteamento'])) {
                     $countSql .= " AND cad.nome_loteamento LIKE :loteamento";
+                    $countParams[':loteamento'] = '%' . $values['loteamento'] . '%';
                 }
                 
-                // Adicionar condição de quarteirão se preenchido (tratar como int)
+                // Adicionar condição de quarteirão se preenchido
                 if (!empty($values['quarteirao'])) {
-                    $quarteiraoInt = intval($values['quarteirao']);
-                    if ($quarteiraoInt > 0) {
-                        $countSql .= " AND cad.cara_quarteirao = :quarteirao";
+                    $quarteiraoInput = trim($values['quarteirao']);
+                    // Verificar se tem letras
+                    if (preg_match('/[a-zA-Z]/', $quarteiraoInput)) {
+                        // Se tiver letras, busca exata como string
+                        $countSql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_cnd_count";
+                        $countParams[':quarteirao_cnd_count'] = $quarteiraoInput;
+                    } else {
+                        // Se for apenas numérico, busca flexível (com e sem zeros à esquerda)
+                        $quarteiraoInt = intval($quarteiraoInput);
+                        if ($quarteiraoInt > 0) {
+                            // Buscar tanto o valor original quanto o normalizado (sem zeros)
+                            // E também a versão com 4 dígitos (com zeros à esquerda)
+                            $quarteiraoComZeros = str_pad($quarteiraoInt, 4, '0', STR_PAD_LEFT);
+                            $countSql .= " AND (TRIM(cad.cara_quarteirao) = :quarteirao_original_cnd_count OR 
+                                               CAST(TRIM(cad.cara_quarteirao) AS UNSIGNED) = :quarteirao_int_cnd_count OR
+                                               TRIM(cad.cara_quarteirao) = :quarteirao_com_zeros_cnd_count)";
+                            $countParams[':quarteirao_original_cnd_count'] = $quarteiraoInput;
+                            $countParams[':quarteirao_int_cnd_count'] = $quarteiraoInt;
+                            $countParams[':quarteirao_com_zeros_cnd_count'] = $quarteiraoComZeros;
+                        } else {
+                            // Se não for numérico válido, busca exata
+                            $countSql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_cnd_count";
+                            $countParams[':quarteirao_cnd_count'] = $quarteiraoInput;
+                        }
                     }
                 }
             } else {
@@ -416,7 +535,9 @@ if (isset($_GET['pesquisar'])) {
             }
             
             $countStmt = $pdo->prepare($countSql);
-            foreach ($params as $key => $value) {
+            // Usar countParams se existir (para cadastros_nao_desenhados), senão usar params
+            $paramsToUse = isset($countParams) ? $countParams : $params;
+            foreach ($paramsToUse as $key => $value) {
                 $countStmt->bindValue($key, $value);
             }
             $countStmt->execute();
@@ -564,6 +685,244 @@ if (isset($_GET['pesquisar'])) {
         echo json_encode([
             'error' => 'Erro: ' . $e->getMessage()
         ]);
+    }
+    exit;
+}
+
+// Endpoint para buscar historico completo de um registro
+if (isset($_GET['buscar_historico'])) {
+    header('Content-Type: application/json');
+    
+    try {
+        $imob_id = isset($_GET['imob_id']) ? trim($_GET['imob_id']) : '';
+        
+        if (empty($imob_id)) {
+            echo json_encode(['error' => 'imob_id é obrigatório']);
+            exit;
+        }
+        
+        $sql = "SELECT historico FROM cadastro WHERE imob_id = :imob_id LIMIT 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':imob_id', $imob_id);
+        $stmt->execute();
+        
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($result) {
+            $historico = $result['historico'] ?? '';
+            // Dividir por quebras de linha
+            $linhas = [];
+            if (!empty($historico)) {
+                // Normalizar quebras de linha
+                $historico = str_replace("\r\n", "\n", $historico);
+                $historico = str_replace("\r", "\n", $historico);
+                $linhas = explode("\n", $historico);
+                // Remover linhas vazias do final
+                $linhas = array_filter($linhas, function($linha) {
+                    return trim($linha) !== '';
+                });
+                $linhas = array_values($linhas); // Reindexar
+            }
+            
+            echo json_encode([
+                'success' => true,
+                'imob_id' => $imob_id,
+                'linhas' => $linhas
+            ]);
+        } else {
+            echo json_encode([
+                'success' => true,
+                'imob_id' => $imob_id,
+                'linhas' => []
+            ]);
+        }
+    } catch (PDOException $e) {
+        echo json_encode(['error' => 'Erro ao buscar histórico: ' . $e->getMessage()]);
+    } catch (Exception $e) {
+        echo json_encode(['error' => 'Erro: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+// Endpoint para adicionar nova linha ao historico
+if (isset($_GET['adicionar_historico'])) {
+    header('Content-Type: application/json');
+    
+    try {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        if (!is_array($input) || !isset($input['imob_id']) || !isset($input['nova_linha'])) {
+            echo json_encode(['error' => 'Dados inválidos']);
+            exit;
+        }
+        
+        $imob_id = trim($input['imob_id']);
+        $nova_linha = trim($input['nova_linha']);
+        
+        if (empty($imob_id)) {
+            echo json_encode(['error' => 'imob_id é obrigatório']);
+            exit;
+        }
+        
+        if (empty($nova_linha)) {
+            echo json_encode(['error' => 'Nova linha não pode estar vazia']);
+            exit;
+        }
+        
+        // Buscar historico atual
+        $sql = "SELECT historico FROM cadastro WHERE imob_id = :imob_id LIMIT 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':imob_id', $imob_id);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$result) {
+            echo json_encode(['error' => 'Registro não encontrado']);
+            exit;
+        }
+        
+        $historico_atual = $result['historico'] ?? '';
+        
+        // Adicionar nova linha (append)
+        if (!empty($historico_atual)) {
+            // Normalizar quebras de linha existentes
+            $historico_atual = str_replace("\r\n", "\n", $historico_atual);
+            $historico_atual = str_replace("\r", "\n", $historico_atual);
+            // Remover quebra de linha do final se existir
+            $historico_atual = rtrim($historico_atual, "\n");
+            // Adicionar nova linha
+            $historico_novo = $historico_atual . "\n" . $nova_linha;
+        } else {
+            $historico_novo = $nova_linha;
+        }
+        
+        // Atualizar no banco
+        $sqlUpdate = "UPDATE cadastro SET historico = :historico WHERE imob_id = :imob_id";
+        $stmtUpdate = $pdo->prepare($sqlUpdate);
+        $stmtUpdate->bindValue(':historico', $historico_novo);
+        $stmtUpdate->bindValue(':imob_id', $imob_id);
+        $stmtUpdate->execute();
+        
+        // Retornar todas as linhas atualizadas
+        $linhas = [];
+        if (!empty($historico_novo)) {
+            $historico_novo_normalizado = str_replace("\r\n", "\n", $historico_novo);
+            $historico_novo_normalizado = str_replace("\r", "\n", $historico_novo_normalizado);
+            $linhas = explode("\n", $historico_novo_normalizado);
+            $linhas = array_filter($linhas, function($linha) {
+                return trim($linha) !== '';
+            });
+            $linhas = array_values($linhas);
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'imob_id' => $imob_id,
+            'linhas' => $linhas
+        ]);
+    } catch (PDOException $e) {
+        echo json_encode(['error' => 'Erro ao adicionar histórico: ' . $e->getMessage()]);
+    } catch (Exception $e) {
+        echo json_encode(['error' => 'Erro: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+// Endpoint para distribuir histórico em múltiplos registros
+if (isset($_GET['distribuir_historico'])) {
+    header('Content-Type: application/json');
+    
+    try {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        if (!is_array($input) || !isset($input['imob_ids']) || !isset($input['texto'])) {
+            echo json_encode(['error' => 'Dados inválidos']);
+            exit;
+        }
+        
+        $imob_ids = $input['imob_ids'];
+        $texto = trim($input['texto']);
+        
+        if (!is_array($imob_ids) || empty($imob_ids)) {
+            echo json_encode(['error' => 'Lista de imob_ids é obrigatória']);
+            exit;
+        }
+        
+        if (empty($texto)) {
+            echo json_encode(['error' => 'Texto não pode estar vazio']);
+            exit;
+        }
+        
+        $atualizados = [];
+        
+        // Processar cada imob_id
+        foreach ($imob_ids as $imob_id) {
+            $imob_id = trim($imob_id);
+            if (empty($imob_id)) continue;
+            
+            try {
+                // Buscar historico atual
+                $sql = "SELECT historico FROM cadastro WHERE imob_id = :imob_id LIMIT 1";
+                $stmt = $pdo->prepare($sql);
+                $stmt->bindValue(':imob_id', $imob_id);
+                $stmt->execute();
+                $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$result) {
+                    continue; // Pular se não encontrar
+                }
+                
+                $historico_atual = $result['historico'] ?? '';
+                
+                // Adicionar nova linha (append)
+                if (!empty($historico_atual)) {
+                    // Normalizar quebras de linha existentes
+                    $historico_atual = str_replace("\r\n", "\n", $historico_atual);
+                    $historico_atual = str_replace("\r", "\n", $historico_atual);
+                    // Remover quebra de linha do final se existir
+                    $historico_atual = rtrim($historico_atual, "\n");
+                    // Adicionar nova linha
+                    $historico_novo = $historico_atual . "\n" . $texto;
+                } else {
+                    $historico_novo = $texto;
+                }
+                
+                // Atualizar no banco
+                $sqlUpdate = "UPDATE cadastro SET historico = :historico WHERE imob_id = :imob_id";
+                $stmtUpdate = $pdo->prepare($sqlUpdate);
+                $stmtUpdate->bindValue(':historico', $historico_novo);
+                $stmtUpdate->bindValue(':imob_id', $imob_id);
+                $stmtUpdate->execute();
+                
+                // Obter última linha para retornar
+                $historico_novo_normalizado = str_replace("\r\n", "\n", $historico_novo);
+                $historico_novo_normalizado = str_replace("\r", "\n", $historico_novo_normalizado);
+                $linhas = explode("\n", $historico_novo_normalizado);
+                $linhas = array_filter($linhas, function($linha) {
+                    return trim($linha) !== '';
+                });
+                $linhas = array_values($linhas);
+                $ultima_linha = !empty($linhas) ? end($linhas) : '';
+                
+                $atualizados[] = [
+                    'imob_id' => $imob_id,
+                    'ultima_linha' => $ultima_linha
+                ];
+            } catch (PDOException $e) {
+                // Continuar com os próximos mesmo se um falhar
+                continue;
+            }
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'atualizados' => $atualizados,
+            'total' => count($atualizados)
+        ]);
+    } catch (PDOException $e) {
+        echo json_encode(['error' => 'Erro ao distribuir histórico: ' . $e->getMessage()]);
+    } catch (Exception $e) {
+        echo json_encode(['error' => 'Erro: ' . $e->getMessage()]);
     }
     exit;
 }
@@ -971,7 +1330,6 @@ if (isset($_GET['pesquisar'])) {
 
         #searchResultsBody table tbody tr.no-drawing td {
             color: #dc3545; /* Texto vermelho */
-            text-decoration: line-through; /* Texto tachado */
         }
 
         #searchResultsBody table tbody tr.no-drawing .row-checkbox {
@@ -1071,6 +1429,68 @@ if (isset($_GET['pesquisar'])) {
             </button>
         </div>
 
+        <!-- Modal para Distribuir Histórico -->
+        <div class="modal fade" id="modalDistribuirHistorico" tabindex="-1" aria-labelledby="modalDistribuirHistoricoLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalDistribuirHistoricoLabel">Distribuir Histórico</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Você está prestes a adicionar uma linha de histórico em <strong id="qtdSelecionadosDistribuir">0</strong> registro(s).</p>
+                        <div class="mb-3">
+                            <label for="textoDistribuirHistorico" class="form-label">Texto a ser adicionado ao histórico:</label>
+                            <textarea id="textoDistribuirHistorico" class="form-control" rows="3" placeholder="Digite o texto que será adicionado ao histórico de todos os registros selecionados..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="btnConfirmarDistribuir">
+                            <i class="fas fa-check"></i> Confirmar Distribuição
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal para Histórico -->
+        <div class="modal fade" id="modalHistorico" tabindex="-1" aria-labelledby="modalHistoricoLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalHistoricoLabel">Histórico do Cadastro</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="novaLinhaHistorico" class="form-label">Adicionar nova linha ao histórico:</label>
+                            <textarea id="novaLinhaHistorico" class="form-control" rows="3" placeholder="Digite o texto da nova linha..."></textarea>
+                        </div>
+                        <button type="button" class="btn btn-primary mb-3" id="btnAdicionarHistorico">
+                            <i class="fas fa-plus"></i> Adicionar Linha
+                        </button>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-sm" id="tabelaHistorico">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th style="width: 50px;">#</th>
+                                        <th>Texto</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbodyHistorico">
+                                    <!-- Linhas serão preenchidas dinamicamente -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Quadrinho de Resultados (Tabela) - SEPARADO -->
         <div id="searchResultsBox">
             <div id="searchResultsHeader">
@@ -1079,6 +1499,9 @@ if (isset($_GET['pesquisar'])) {
                     <span id="resultsCount" class="badge bg-primary ms-2">0 registros</span>
                     <span id="desenhosEncontrados" class="badge bg-success ms-2">0 com desenho</span>
                     <span id="desenhosNaoEncontrados" class="badge bg-danger ms-2">0 sem desenho</span>
+                    <button id="btnDistribuirHistorico" class="btn btn-sm btn-warning ms-2" style="display: none;">
+                        <i class="fas fa-share-alt"></i> Designar responsável
+                    </button>
                 </span>
             </div>
             <div id="searchResultsBody">
@@ -1626,6 +2049,20 @@ if (isset($_GET['pesquisar'])) {
 
         // Opções de pesquisa (ordenadas alfabeticamente)
         const searchOptions = [{
+                value: 'cadastros_nao_desenhados',
+                label: 'Cadastros não desenhados',
+                fields: [
+                    {
+                        name: 'loteamento',
+                        placeholder: 'Loteamento (opcional)'
+                    },
+                    {
+                        name: 'quarteirao',
+                        placeholder: 'Quarteirão (opcional)'
+                    }
+                ]
+            },
+            {
                 value: 'area_construida',
                 label: 'Área Construída',
                 fields: [{
@@ -1658,20 +2095,6 @@ if (isset($_GET['pesquisar'])) {
                     name: 'bairro',
                     placeholder: 'Bairro'
                 }]
-            },
-            {
-                value: 'cadastros_nao_desenhados',
-                label: 'Cadastros não desenhados',
-                fields: [
-                    {
-                        name: 'loteamento',
-                        placeholder: 'Loteamento (opcional)'
-                    },
-                    {
-                        name: 'quarteirao',
-                        placeholder: 'Quarteirão (opcional)'
-                    }
-                ]
             },
             {
                 value: 'cat_via',
@@ -1914,11 +2337,19 @@ if (isset($_GET['pesquisar'])) {
             const btnPesquisar = document.getElementById('btnPesquisar');
 
             // Preencher select
-            searchOptions.forEach(opt => {
+            searchOptions.forEach((opt, index) => {
                 const option = document.createElement('option');
                 option.value = opt.value;
                 option.textContent = opt.label;
                 select.appendChild(option);
+                
+                // Adicionar separador após "Cadastros não desenhados" (primeira opção)
+                if (index === 0 && opt.value === 'cadastros_nao_desenhados') {
+                    const separator = document.createElement('option');
+                    separator.disabled = true;
+                    separator.textContent = '─────────────────────────';
+                    select.appendChild(separator);
+                }
             });
 
             // Sincronizar largura do botão toggle inicialmente
@@ -2119,6 +2550,70 @@ if (isset($_GET['pesquisar'])) {
                 quarteiraoPolygon.setMap(null);
             }
             quarteiraoPolygon = null;
+            
+            // Esconder tooltip se estiver visível
+            esconderTooltipQuarteirao();
+        }
+
+        // Variável global para tooltip
+        let tooltipQuarteirao = null;
+        let tooltipTextoAtual = null;
+        let mouseX = 0;
+        let mouseY = 0;
+
+        // Listener global para rastrear posição do mouse
+        if (typeof document !== 'undefined') {
+            document.addEventListener('mousemove', function(e) {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+                
+                // Atualizar posição do tooltip se estiver visível
+                if (tooltipQuarteirao && tooltipQuarteirao.style.display === 'block') {
+                    tooltipQuarteirao.style.left = (mouseX + 10) + 'px';
+                    tooltipQuarteirao.style.top = (mouseY - 30) + 'px';
+                }
+            });
+        }
+
+        // Função para criar tooltip
+        function criarTooltipQuarteirao() {
+            if (tooltipQuarteirao) return tooltipQuarteirao;
+            
+            const tooltip = document.createElement('div');
+            tooltip.id = 'tooltipQuarteirao';
+            tooltip.style.position = 'fixed';
+            tooltip.style.background = 'rgba(0, 0, 0, 0.8)';
+            tooltip.style.color = '#FFFFFF';
+            tooltip.style.padding = '6px 10px';
+            tooltip.style.borderRadius = '4px';
+            tooltip.style.fontSize = '13px';
+            tooltip.style.fontWeight = 'bold';
+            tooltip.style.pointerEvents = 'none';
+            tooltip.style.zIndex = '10000';
+            tooltip.style.display = 'none';
+            tooltip.style.whiteSpace = 'nowrap';
+            tooltip.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)';
+            document.body.appendChild(tooltip);
+            tooltipQuarteirao = tooltip;
+            return tooltip;
+        }
+
+        // Função para mostrar tooltip
+        function mostrarTooltipQuarteirao(texto) {
+            const tooltip = criarTooltipQuarteirao();
+            tooltip.textContent = texto;
+            tooltipTextoAtual = texto;
+            tooltip.style.display = 'block';
+            tooltip.style.left = (mouseX + 10) + 'px';
+            tooltip.style.top = (mouseY - 30) + 'px';
+        }
+
+        // Função para esconder tooltip
+        function esconderTooltipQuarteirao() {
+            if (tooltipQuarteirao) {
+                tooltipQuarteirao.style.display = 'none';
+            }
+            tooltipTextoAtual = null;
         }
 
         // Função para limpar marcadores/polígonos órfãos dos resultados anteriores
@@ -2134,6 +2629,8 @@ if (isset($_GET['pesquisar'])) {
             if (counterDiv) {
                 counterDiv.style.display = 'none';
             }
+            // Esconder tooltip se estiver visível
+            esconderTooltipQuarteirao();
         }
 
         // Função para limpar polígonos de quarteirões desenhados (não órfãos, mas dos resultados)
@@ -2248,15 +2745,8 @@ if (isset($_GET['pesquisar'])) {
                         continue;
                     }
 
-                    // Obter cor do JSON (properties.fill_color)
-                    let cor = '#FF0000'; // Padrão: vermelho
-                    if (feature.properties && feature.properties.fill_color) {
-                        cor = String(feature.properties.fill_color).trim();
-                        // Garantir que começa com #
-                        if (!cor.startsWith('#')) {
-                            cor = '#' + cor;
-                        }
-                    }
+                    // Usar cor preta fixa para polígonos de quarteirões órfãos
+                    const cor = '#000000'; // Preto
 
                     // Criar polígono
                     const polygon = new google.maps.Polygon({
@@ -2268,12 +2758,21 @@ if (isset($_GET['pesquisar'])) {
                         fillOpacity: 0.35,
                         map: map,
                         zIndex: 1001, // Z-index alto para ficar acima de outros elementos
-                        clickable: false
+                        clickable: true // Habilitar para tooltip
                     });
 
                     // Adicionar tooltip ao polígono
                     const quarteiraoNome = feature.properties && feature.properties.name ? feature.properties.name : quarteirao;
                     polygon.quarteirao = quarteiraoNome;
+
+                    // Adicionar eventos de mouse para tooltip
+                    google.maps.event.addListener(polygon, 'mouseover', function() {
+                        mostrarTooltipQuarteirao(`Quarteirão: ${quarteiraoNome}`);
+                    });
+
+                    google.maps.event.addListener(polygon, 'mouseout', function() {
+                        esconderTooltipQuarteirao();
+                    });
 
                     // Adicionar ao array (usando searchResultMarkers para manter compatibilidade com limparMarcadoresOrfaos)
                     searchResultMarkers.push(polygon);
@@ -2358,15 +2857,8 @@ if (isset($_GET['pesquisar'])) {
                         continue;
                     }
 
-                    // Obter cor do JSON (properties.fill_color)
-                    let cor = '#4285F4'; // Padrão: azul do Google Maps
-                    if (feature.properties && feature.properties.fill_color) {
-                        cor = String(feature.properties.fill_color).trim();
-                        // Garantir que começa com #
-                        if (!cor.startsWith('#')) {
-                            cor = '#' + cor;
-                        }
-                    }
+                    // Usar cor preta fixa para polígonos de quarteirões na pesquisa "cadastros não desenhados"
+                    const cor = '#000000'; // Preto
 
                     // Criar polígono do quarteirão
                     const polygon = new google.maps.Polygon({
@@ -2378,12 +2870,21 @@ if (isset($_GET['pesquisar'])) {
                         fillOpacity: 0.2,
                         map: map,
                         zIndex: 500, // Z-index médio para ficar visível mas não sobrepor outros elementos
-                        clickable: false
+                        clickable: true // Habilitar para tooltip
                     });
 
                     // Adicionar tooltip ao polígono
                     const quarteiraoNome = feature.properties && feature.properties.name ? feature.properties.name : quarteirao;
                     polygon.quarteirao = quarteiraoNome;
+
+                    // Adicionar eventos de mouse para tooltip
+                    google.maps.event.addListener(polygon, 'mouseover', function() {
+                        mostrarTooltipQuarteirao(`Quarteirão: ${quarteiraoNome}`);
+                    });
+
+                    google.maps.event.addListener(polygon, 'mouseout', function() {
+                        esconderTooltipQuarteirao();
+                    });
 
                     // Adicionar ao array de marcadores (para manter compatibilidade)
                     searchResultMarkers.push(polygon);
@@ -2454,27 +2955,32 @@ if (isset($_GET['pesquisar'])) {
                     return;
                 }
 
-                // Obter cor do JSON (properties.fill_color)
-                let cor = '#4285F4'; // Padrão: azul do Google Maps
-                if (feature.properties && feature.properties.fill_color) {
-                    cor = String(feature.properties.fill_color).trim();
-                    // Garantir que começa com #
-                    if (!cor.startsWith('#')) {
-                        cor = '#' + cor;
-                    }
-                }
-
+                // Obter cor: preta se usarCorPreta for true, senão usar cor do JSON
+                
                 // Criar polígono do quarteirão
                 quarteiraoPolygon = new google.maps.Polygon({
                     paths: paths,
-                    strokeColor: cor,
+                    strokeColor: "#000000",
                     strokeOpacity: 0.8,
                     strokeWeight: 4,
-                    fillColor: cor,
+                    fillColor: "#000000",
                     fillOpacity: 0.2,
                     map: map,
                     zIndex: 500, // Z-index médio para ficar visível mas não sobrepor outros elementos
-                    clickable: false
+                    clickable: true // Habilitar para tooltip
+                });
+
+                // Adicionar tooltip ao polígono
+                const quarteiraoNome = feature.properties && feature.properties.name ? feature.properties.name : quarteirao;
+                quarteiraoPolygon.quarteirao = quarteiraoNome;
+
+                // Adicionar eventos de mouse para tooltip
+                google.maps.event.addListener(quarteiraoPolygon, 'mouseover', function() {
+                    mostrarTooltipQuarteirao(`Quarteirão: ${quarteiraoNome}`);
+                });
+
+                google.maps.event.addListener(quarteiraoPolygon, 'mouseout', function() {
+                    esconderTooltipQuarteirao();
                 });
 
                 // Ajustar zoom para mostrar o quarteirão
@@ -2716,6 +3222,7 @@ if (isset($_GET['pesquisar'])) {
                 'quadra',
                 'lote',
                 'total_construido',
+                'historico',
                 'nome_pessoa',
                 'cnpj',
                 'area_terreno',
@@ -2739,6 +3246,7 @@ if (isset($_GET['pesquisar'])) {
                 'quadra': 'Quadra',
                 'lote': 'Lote',
                 'total_construido': 'Área Construída',
+                'historico': 'Histórico',
                 'nome_pessoa': 'Nome',
                 'cnpj': 'CNPJ',
                 'area_terreno': 'Área Terreno',
@@ -2755,9 +3263,19 @@ if (isset($_GET['pesquisar'])) {
                 return dados.some(row => row.hasOwnProperty(col));
             });
 
+            // Verificar se é pesquisa "cadastros_nao_desenhados"
+            const isCadastrosNaoDesenhados = currentSearchPayload && currentSearchPayload.type === 'cadastros_nao_desenhados';
+            
             // Criar cabeçalho com checkbox na primeira coluna
             let headerHTML = '<tr>';
-            headerHTML += '<th style="width: 50px; text-align: center;"><input type="checkbox" id="selectAllCheckbox" title="Selecionar todos"></th>';
+            // Se for cadastros não desenhados, ocultar o primeiro checkbox (de visualização no mapa)
+            if (!isCadastrosNaoDesenhados) {
+                headerHTML += '<th style="width: 50px; text-align: center;"><input type="checkbox" id="selectAllCheckbox" title="Selecionar todos"></th>';
+            }
+            // Se for cadastros não desenhados, adicionar coluna de checkbox para distribuição
+            if (isCadastrosNaoDesenhados) {
+                headerHTML += '<th style="width: 50px; text-align: center;"><input type="checkbox" id="selectAllDistribuirCheckbox" title="Selecionar todos para distribuir"></th>';
+            }
             columnArray.forEach(col => {
                 const headerName = columnNames[col] || col;
                 headerHTML += `<th>${headerName}</th>`;
@@ -2776,22 +3294,68 @@ if (isset($_GET['pesquisar'])) {
                 // Adicionar atributo data-imob-id para facilitar o clique
                 bodyHTML += `<tr class="${rowClass}" data-imob-id="${imobId}">`;
                 
-                // Primeira coluna: checkbox (desabilitado se não tiver desenho)
-                if (temDesenho) {
-                    bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="row-checkbox" data-index="${index}" data-imob-id="${imobId}" checked></td>`;
-                } else {
-                    bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="row-checkbox" data-index="${index}" data-imob-id="${imobId}" disabled title="Desenho não foi encontrado"></td>`;
+                // Primeira coluna: checkbox (oculto se for cadastros não desenhados)
+                if (!isCadastrosNaoDesenhados) {
+                    if (temDesenho) {
+                        bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="row-checkbox" data-index="${index}" data-imob-id="${imobId}" checked></td>`;
+                    } else {
+                        bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="row-checkbox" data-index="${index}" data-imob-id="${imobId}" disabled title="Desenho não foi encontrado"></td>`;
+                    }
+                }
+                
+                // Coluna de checkbox para distribuição (apenas para cadastros não desenhados)
+                if (isCadastrosNaoDesenhados) {
+                    if (!temDesenho) {
+                        bodyHTML += `<td style="text-align: center;"><input type="checkbox" class="distribuir-checkbox" data-imob-id="${imobId}"></td>`;
+                    } else {
+                        bodyHTML += `<td style="text-align: center;"></td>`;
+                    }
                 }
                 // Demais colunas
                 columnArray.forEach(col => {
                     const value = row[col] !== null && row[col] !== undefined ? row[col] : '';
-                    bodyHTML += `<td title="${value}">${value}</td>`;
+                    // Se for a coluna historico, criar link clicável
+                    if (col === 'historico') {
+                        const imobId = row.imob_id || '';
+                        bodyHTML += `<td title="${value}"><a href="#" class="historico-link" data-imob-id="${imobId}" style="color: #007bff; text-decoration: underline; cursor: pointer;">${value || '[vazio]'}</a></td>`;
+                    } else {
+                        bodyHTML += `<td title="${value}">${value}</td>`;
+                    }
                 });
                 bodyHTML += '</tr>';
             });
             resultsTableBody.innerHTML = bodyHTML;
 
-            // Adicionar funcionalidade ao checkbox "Selecionar todos"
+            // Adicionar funcionalidade ao checkbox "Selecionar todos" para distribuição (se existir)
+            const selectAllDistribuirCheckbox = document.getElementById('selectAllDistribuirCheckbox');
+            if (selectAllDistribuirCheckbox) {
+                selectAllDistribuirCheckbox.addEventListener('change', function() {
+                    const distribuirCheckboxes = document.querySelectorAll('.distribuir-checkbox');
+                    distribuirCheckboxes.forEach(checkbox => {
+                        checkbox.checked = selectAllDistribuirCheckbox.checked;
+                    });
+                    atualizarBotaoDistribuir();
+                });
+            }
+            
+            // Adicionar event listeners aos checkboxes de distribuição
+            document.querySelectorAll('.distribuir-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    atualizarBotaoDistribuir();
+                });
+            });
+            
+            // Esconder botão distribuir se não for cadastros não desenhados
+            const btnDistribuir = document.getElementById('btnDistribuirHistorico');
+            if (btnDistribuir) {
+                if (!isCadastrosNaoDesenhados) {
+                    btnDistribuir.style.display = 'none';
+                } else {
+                    atualizarBotaoDistribuir();
+                }
+            }
+            
+            // Adicionar funcionalidade ao checkbox "Selecionar todos" (apenas se existir, ou seja, se não for cadastros não desenhados)
             const selectAllCheckbox = document.getElementById('selectAllCheckbox');
             if (selectAllCheckbox) {
                 selectAllCheckbox.addEventListener('change', function() {
@@ -2817,14 +3381,6 @@ if (isset($_GET['pesquisar'])) {
                 });
             });
 
-            // Adicionar event listeners aos checkboxes desabilitados (para mostrar alerta)
-            document.querySelectorAll('.row-checkbox:disabled').forEach(checkbox => {
-                checkbox.addEventListener('click', function(e) {
-                    e.stopPropagation(); // Evitar que o clique no checkbox também dispare o clique na linha
-                    alert('Desenho não foi encontrado');
-                });
-            });
-
             // Adicionar event listener de clique nas linhas da tabela
             document.querySelectorAll('#resultsTableBody tr').forEach(row => {
                 row.addEventListener('click', function(e) {
@@ -2844,9 +3400,6 @@ if (isset($_GET['pesquisar'])) {
                     if (temDesenho) {
                         // Fazer zoom no desenho
                         zoomToDesenho(imobId);
-                    } else {
-                        // Mostrar alerta se não tiver desenho
-                        alert('Desenho não foi encontrado');
                     }
                 });
             });
@@ -2979,10 +3532,22 @@ if (isset($_GET['pesquisar'])) {
             }
 
             // Desenhar marcadores órfãos se houver (apenas para pesquisa cadastros_nao_desenhados)
-            if (marcadoresOrfaos && Array.isArray(marcadoresOrfaos) && marcadoresOrfaos.length > 0) {
-                desenharMarcadoresOrfaos(marcadoresOrfaos);
+            // MAS só se não tiver quarteirão específico preenchido (quando tem quarteirão, desenha apenas ele)
+            if (currentSearchPayload && currentSearchPayload.type === 'cadastros_nao_desenhados') {
+                const values = currentSearchPayload.values || {};
+                // Só desenhar marcadores órfãos se NÃO tiver quarteirão preenchido
+                if (!values.quarteirao || values.quarteirao === '' || values.quarteirao === null) {
+                    if (marcadoresOrfaos && Array.isArray(marcadoresOrfaos) && marcadoresOrfaos.length > 0) {
+                        desenharMarcadoresOrfaos(marcadoresOrfaos);
+                    } else {
+                        limparMarcadoresOrfaos();
+                    }
+                } else {
+                    // Se tiver quarteirão preenchido, não desenhar marcadores órfãos
+                    limparMarcadoresOrfaos();
+                }
             } else {
-                // Se não houver marcadores órfãos, limpar marcadores anteriores
+                // Para outros tipos de pesquisa, não desenhar marcadores órfãos
                 limparMarcadoresOrfaos();
             }
 
@@ -3003,15 +3568,18 @@ if (isset($_GET['pesquisar'])) {
                 if (values.quarteirao && values.quarteirao !== '' && values.quarteirao !== null) {
                     const quarteiraoInt = parseInt(values.quarteirao);
                     if (quarteiraoInt > 0) {
-                        // Limpar polígonos múltiplos antes de desenhar o único
+                        // Limpar polígonos múltiplos e marcadores órfãos antes de desenhar o único
                         limparMarcadoresOrfaos();
+                        limparQuarteiraoPolygon();
+                        // Desenhar apenas o quarteirão pesquisado (já usa cor preta por padrão)
                         desenharQuarteiraoPesquisado(quarteiraoInt);
                     }
                 } 
                 // Se tiver loteamento preenchido (sem quarteirão), desenhar quarteirões dos resultados
                 else if (values.loteamento && values.loteamento !== '' && values.loteamento !== null && dados && dados.length > 0) {
-                    // Limpar polígono único antes de desenhar múltiplos
+                    // Limpar polígono único e marcadores órfãos antes de desenhar múltiplos
                     limparQuarteiraoPolygon();
+                    limparMarcadoresOrfaos();
                     // Extrair quarteirões únicos dos resultados
                     const quarteiroesUnicos = [...new Set(dados
                         .map(row => row.cara_quarteirao)
@@ -3034,8 +3602,299 @@ if (isset($_GET['pesquisar'])) {
                 }
             }
         }
+
+        // Gerenciar modal de histórico
+        let imobIdAtual = null;
+        const modalHistorico = new bootstrap.Modal(document.getElementById('modalHistorico'));
+        const tbodyHistorico = document.getElementById('tbodyHistorico');
+        const novaLinhaHistorico = document.getElementById('novaLinhaHistorico');
+        const btnAdicionarHistorico = document.getElementById('btnAdicionarHistorico');
+
+        // Event listener para links de histórico (usando delegação de eventos)
+        document.addEventListener('click', async function(e) {
+            if (e.target && e.target.classList.contains('historico-link')) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                imobIdAtual = e.target.getAttribute('data-imob-id');
+                if (!imobIdAtual) {
+                    alert('Erro: imob_id não encontrado');
+                    return;
+                }
+                
+                // Abrir modal
+                modalHistorico.show();
+                
+                // Carregar histórico
+                await carregarHistorico(imobIdAtual);
+            }
+        });
+
+        // Função para carregar histórico completo
+        async function carregarHistorico(imobId) {
+            try {
+                tbodyHistorico.innerHTML = '<tr><td colspan="2" class="text-center">Carregando...</td></tr>';
+                
+                const response = await fetch(`?buscar_historico=1&imob_id=${encodeURIComponent(imobId)}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    tbodyHistorico.innerHTML = `<tr><td colspan="2" class="text-danger">Erro: ${data.error}</td></tr>`;
+                    return;
+                }
+                
+                // Limpar tabela
+                tbodyHistorico.innerHTML = '';
+                
+                if (data.linhas && data.linhas.length > 0) {
+                    data.linhas.forEach((linha, index) => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${index + 1}</td>
+                            <td>${escapeHtml(linha)}</td>
+                        `;
+                        tbodyHistorico.appendChild(tr);
+                    });
+                } else {
+                    tbodyHistorico.innerHTML = '<tr><td colspan="2" class="text-muted text-center">Nenhum histórico registrado</td></tr>';
+                }
+            } catch (error) {
+                console.error('Erro ao carregar histórico:', error);
+                tbodyHistorico.innerHTML = `<tr><td colspan="2" class="text-danger">Erro ao carregar histórico</td></tr>`;
+            }
+        }
+
+        // Função para adicionar nova linha ao histórico
+        btnAdicionarHistorico.addEventListener('click', async function() {
+            const texto = novaLinhaHistorico.value.trim();
+            
+            if (!texto) {
+                alert('Por favor, digite um texto para adicionar ao histórico.');
+                return;
+            }
+            
+            if (!imobIdAtual) {
+                alert('Erro: imob_id não encontrado');
+                return;
+            }
+            
+            try {
+                btnAdicionarHistorico.disabled = true;
+                btnAdicionarHistorico.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Adicionando...';
+                
+                const response = await fetch('?adicionar_historico=1', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        imob_id: imobIdAtual,
+                        nova_linha: texto
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert('Erro ao adicionar linha: ' + data.error);
+                    btnAdicionarHistorico.disabled = false;
+                    btnAdicionarHistorico.innerHTML = '<i class="fas fa-plus"></i> Adicionar Linha';
+                    return;
+                }
+                
+                // Limpar campo de texto
+                novaLinhaHistorico.value = '';
+                
+                // Recarregar histórico atualizado
+                await carregarHistorico(imobIdAtual);
+                
+                // Atualizar a célula do histórico na tabela principal
+                atualizarHistoricoNaTabela(imobIdAtual, data.linhas[data.linhas.length - 1]);
+                
+                // Mostrar mensagem de sucesso
+                const toast = document.createElement('div');
+                toast.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3';
+                toast.style.zIndex = '9999';
+                toast.innerHTML = `
+                    <strong>Sucesso!</strong> Nova linha adicionada ao histórico.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+                
+                btnAdicionarHistorico.disabled = false;
+                btnAdicionarHistorico.innerHTML = '<i class="fas fa-plus"></i> Adicionar Linha';
+            } catch (error) {
+                console.error('Erro ao adicionar histórico:', error);
+                alert('Erro ao adicionar linha ao histórico');
+                btnAdicionarHistorico.disabled = false;
+                btnAdicionarHistorico.innerHTML = '<i class="fas fa-plus"></i> Adicionar Linha';
+            }
+        });
+
+        // Função auxiliar para escapar HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Função para atualizar histórico na tabela principal
+        function atualizarHistoricoNaTabela(imobId, novaUltimaLinha) {
+            // Encontrar todas as linhas da tabela
+            const linhasTabela = document.querySelectorAll('#resultsTableBody tr');
+            
+            linhasTabela.forEach(linha => {
+                // Verificar se a linha tem o imob_id correto
+                const imobIdLinha = linha.getAttribute('data-imob-id');
+                if (imobIdLinha === imobId) {
+                    // Encontrar a célula do histórico (link)
+                    const linkHistorico = linha.querySelector('.historico-link');
+                    if (linkHistorico) {
+                        // Atualizar o texto do link
+                        linkHistorico.textContent = novaUltimaLinha || '[vazio]';
+                        // Atualizar o title também
+                        linkHistorico.setAttribute('title', novaUltimaLinha || '');
+                    }
+                }
+            });
+        }
+
+        // Limpar campo ao fechar modal
+        document.getElementById('modalHistorico').addEventListener('hidden.bs.modal', function() {
+            novaLinhaHistorico.value = '';
+            imobIdAtual = null;
+        });
+
+        // Função para atualizar visibilidade do botão Distribuir
+        function atualizarBotaoDistribuir() {
+            const btnDistribuir = document.getElementById('btnDistribuirHistorico');
+            const checkboxesSelecionados = document.querySelectorAll('.distribuir-checkbox:checked');
+            
+            if (btnDistribuir) {
+                if (checkboxesSelecionados.length > 0) {
+                    btnDistribuir.style.display = 'inline-block';
+                } else {
+                    btnDistribuir.style.display = 'none';
+                }
+            }
+        }
+
+        // Event listener para botão Distribuir
+        const btnDistribuirHistorico = document.getElementById('btnDistribuirHistorico');
+        if (btnDistribuirHistorico) {
+            btnDistribuirHistorico.addEventListener('click', function() {
+                const checkboxesSelecionados = document.querySelectorAll('.distribuir-checkbox:checked');
+                
+                if (checkboxesSelecionados.length === 0) {
+                    alert('Por favor, selecione pelo menos um registro para distribuir o histórico.');
+                    return;
+                }
+                
+                // Coletar imob_ids selecionados
+                const imobIds = Array.from(checkboxesSelecionados).map(cb => cb.getAttribute('data-imob-id'));
+                
+                // Atualizar contador no modal
+                document.getElementById('qtdSelecionadosDistribuir').textContent = imobIds.length;
+                
+                // Limpar campo de texto
+                document.getElementById('textoDistribuirHistorico').value = '';
+                
+                // Abrir modal
+                const modalDistribuir = new bootstrap.Modal(document.getElementById('modalDistribuirHistorico'));
+                modalDistribuir.show();
+                
+                // Armazenar imob_ids para uso no botão de confirmação
+                window.imobIdsParaDistribuir = imobIds;
+            });
+        }
+
+        // Event listener para botão Confirmar Distribuição
+        const btnConfirmarDistribuir = document.getElementById('btnConfirmarDistribuir');
+        if (btnConfirmarDistribuir) {
+            btnConfirmarDistribuir.addEventListener('click', async function() {
+                const texto = document.getElementById('textoDistribuirHistorico').value.trim();
+                
+                if (!texto) {
+                    alert('Por favor, digite um texto para adicionar ao histórico.');
+                    return;
+                }
+                
+                if (!window.imobIdsParaDistribuir || window.imobIdsParaDistribuir.length === 0) {
+                    alert('Erro: Nenhum registro selecionado.');
+                    return;
+                }
+                
+                try {
+                    btnConfirmarDistribuir.disabled = true;
+                    btnConfirmarDistribuir.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Distribuindo...';
+                    
+                    const response = await fetch('?distribuir_historico=1', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            imob_ids: window.imobIdsParaDistribuir,
+                            texto: texto
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        alert('Erro ao distribuir histórico: ' + data.error);
+                        btnConfirmarDistribuir.disabled = false;
+                        btnConfirmarDistribuir.innerHTML = '<i class="fas fa-check"></i> Confirmar Distribuição';
+                        return;
+                    }
+                    
+                    // Fechar modal
+                    const modalDistribuir = bootstrap.Modal.getInstance(document.getElementById('modalDistribuirHistorico'));
+                    modalDistribuir.hide();
+                    
+                    // Desmarcar checkboxes
+                    document.querySelectorAll('.distribuir-checkbox:checked').forEach(cb => {
+                        cb.checked = false;
+                    });
+                    if (document.getElementById('selectAllDistribuirCheckbox')) {
+                        document.getElementById('selectAllDistribuirCheckbox').checked = false;
+                    }
+                    
+                    // Atualizar botão
+                    atualizarBotaoDistribuir();
+                    
+                    // Atualizar histórico nas linhas da tabela
+                    if (data.atualizados && data.atualizados.length > 0) {
+                        data.atualizados.forEach(item => {
+                            atualizarHistoricoNaTabela(item.imob_id, item.ultima_linha);
+                        });
+                    }
+                    
+                    // Mostrar mensagem de sucesso
+                    const toast = document.createElement('div');
+                    toast.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3';
+                    toast.style.zIndex = '9999';
+                    toast.innerHTML = `
+                        <strong>Sucesso!</strong> Histórico adicionado em ${data.atualizados ? data.atualizados.length : 0} registro(s).
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
+                    
+                    btnConfirmarDistribuir.disabled = false;
+                    btnConfirmarDistribuir.innerHTML = '<i class="fas fa-check"></i> Confirmar Distribuição';
+                    window.imobIdsParaDistribuir = null;
+                } catch (error) {
+                    console.error('Erro ao distribuir histórico:', error);
+                    alert('Erro ao distribuir histórico');
+                    btnConfirmarDistribuir.disabled = false;
+                    btnConfirmarDistribuir.innerHTML = '<i class="fas fa-check"></i> Confirmar Distribuição';
+                }
+            });
+        }
     </script>
 
 </body>
 
-</head>
+</html>
