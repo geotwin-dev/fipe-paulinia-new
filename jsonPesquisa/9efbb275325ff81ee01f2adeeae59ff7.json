@@ -1,64 +1,64 @@
 {
     "type": "quarteirao",
     "values": {
-        "quarteirao": "1626"
+        "quarteirao": "1624"
     },
     "totalCount": 2,
-    "usuario_email": "caio_jhoni@hotmail.com",
+    "usuario_email": null,
     "results": {
         "allResults": [
             {
-                "id": 41286,
-                "inscricao": 870125503038200,
-                "imob_id": 117412,
+                "id": 41282,
+                "inscricao": 865125833042000,
+                "imob_id": 117408,
                 "logradouro": "AVN   LUIZ BATISTA DE SOUZA",
                 "numero": "0",
                 "bairro": "PARQUE BOM RETIRO",
-                "cara_quarteirao": "1626",
+                "cara_quarteirao": "1624",
                 "quadra": "S\/D",
                 "lote": "S\/N",
                 "total_construido": 0,
                 "nome_pessoa": "PREFEITURA MUNICIPAL DE PAULINIA",
                 "cnpj": "45.751.435\/0001-06",
-                "area_terreno": "568.70",
+                "area_terreno": "3150.21",
                 "tipo_edificacao": "Vago",
                 "tipo_utilizacao": "Não Informado",
                 "zona": "ZR3",
                 "cat_via": " ECS1",
                 "nome_loteamento": "865125 - PARQUE BOM RETIRO",
-                "imob_id_principal": 117412,
+                "imob_id_principal": 117408,
                 "multiplo": 1,
                 "uso_imovel": "?",
                 "historico": null
             },
             {
-                "id": 41287,
-                "inscricao": 870125501019300,
-                "imob_id": 117411,
+                "id": 41283,
+                "inscricao": 865125831019800,
+                "imob_id": 117407,
                 "logradouro": "AVN   LUIZ BATISTA DE SOUZA",
                 "numero": "0",
                 "bairro": "PARQUE BOM RETIRO",
-                "cara_quarteirao": "1626",
+                "cara_quarteirao": "1624",
                 "quadra": "S\/D",
                 "lote": "S\/N",
                 "total_construido": 0,
                 "nome_pessoa": "PREFEITURA MUNICIPAL DE PAULINIA",
                 "cnpj": "45.751.435\/0001-06",
-                "area_terreno": "3950.02",
+                "area_terreno": "1983.89",
                 "tipo_edificacao": "Vago",
                 "tipo_utilizacao": "Não Informado",
                 "zona": "ZR3",
                 "cat_via": " ECS1",
                 "nome_loteamento": "870130 - J.RES.TEREZA Z. VEDOVELLO",
-                "imob_id_principal": 117411,
+                "imob_id_principal": 117407,
                 "multiplo": 1,
                 "uso_imovel": "?",
                 "historico": null
             }
         ],
         "allDesenhosPorImobId": {
-            "117412": [],
-            "117411": []
+            "117408": [],
+            "117407": []
         },
         "marcadoresOrfaos": []
     }
