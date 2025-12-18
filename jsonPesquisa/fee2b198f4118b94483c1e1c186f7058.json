@@ -1,0 +1,40 @@
+{
+    "type": "quarteirao",
+    "values": {
+        "quarteirao": "2027"
+    },
+    "totalCount": 1,
+    "usuario_email": null,
+    "results": {
+        "allResults": [
+            {
+                "id": 49149,
+                "inscricao": 767938378500000,
+                "imob_id": 135368,
+                "logradouro": "RUA   GENI NEMESIO DE MELO",
+                "numero": "0",
+                "bairro": "ALTO DE PINHEIROS",
+                "cara_quarteirao": "2027",
+                "quadra": "S\/D",
+                "lote": "AV-1",
+                "total_construido": 0,
+                "nome_pessoa": "PREFEITURA MUNICIPAL DE PAULINIA",
+                "cnpj": "45.751.435\/0001-06",
+                "area_terreno": "50849.18",
+                "tipo_edificacao": "Vago",
+                "tipo_utilizacao": "Não Informado",
+                "zona": "ZR3",
+                "cat_via": " L",
+                "nome_loteamento": "890185 - RESIDENCIAL VIDA NOVA",
+                "imob_id_principal": 135368,
+                "multiplo": 1,
+                "uso_imovel": "A.V.",
+                "historico": "Distribuido para Valdinei"
+            }
+        ],
+        "allDesenhosPorImobId": {
+            "135368": []
+        },
+        "marcadoresOrfaos": []
+    }
+}
