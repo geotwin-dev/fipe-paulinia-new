@@ -1,39 +1,39 @@
 {
     "type": "quarteirao",
     "values": {
-        "quarteirao": "2028"
+        "quarteirao": "1429"
     },
     "totalCount": 1,
     "usuario_email": "VALDINEY291106@GMAIL.COM",
     "results": {
         "allResults": [
             {
-                "id": 49150,
-                "inscricao": 769068404300000,
-                "imob_id": 135430,
-                "logradouro": "AVN   JOAO ARANHA",
-                "numero": "409",
-                "bairro": "ALTO DE PINHEIROS",
-                "cara_quarteirao": "2028",
+                "id": 34897,
+                "inscricao": 795397965800000,
+                "imob_id": 16680,
+                "logradouro": "RUA   IZOLINO CLEMENTE DUARTE",
+                "numero": "0",
+                "bairro": "JARDIM AMERICA",
+                "cara_quarteirao": "1429",
                 "quadra": "S\/D",
-                "lote": "SL-1",
+                "lote": "SL-4",
                 "total_construido": 0,
                 "nome_pessoa": "PREFEITURA MUNICIPAL DE PAULINIA",
                 "cnpj": "45.751.435\/0001-06",
-                "area_terreno": "11443.21",
+                "area_terreno": "9797.17",
                 "tipo_edificacao": "Vago",
                 "tipo_utilizacao": "Não Informado",
-                "zona": "ZR3",
-                "cat_via": " ECS1",
-                "nome_loteamento": "890185 - RESIDENCIAL VIDA NOVA",
-                "imob_id_principal": 135430,
+                "zona": "ZR2",
+                "cat_via": " ECS2",
+                "nome_loteamento": "905150 - RESIDENCIAL VILLA BELLA",
+                "imob_id_principal": 16680,
                 "multiplo": 1,
                 "uso_imovel": "S.L.",
-                "historico": "Distribuido para Valdinei"
+                "historico": null
             }
         ],
         "allDesenhosPorImobId": {
-            "135430": []
+            "16680": []
         },
         "marcadoresOrfaos": []
     }

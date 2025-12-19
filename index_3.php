@@ -42,24 +42,40 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
         $type = $pesquisaData['type'];
         $values = $pesquisaData['values'];
 
-        // Verificar se há cache de resultados - mesma pesquisa com resultados
-        $usarCache = false;
-        $allResults = null;
-
-        if (
-            isset($pesquisaData['results']) &&
-            is_array($pesquisaData['results']) &&
+        // Verificar se foi solicitada atualização forçada (parâmetro _t com timestamp)
+        // Se sim, sempre fazer nova busca, não usar cache
+        $forcarAtualizacao = isset($_GET['_t']) && !empty($_GET['_t']);
+        
+        // Se não forçar atualização E já temos IDs salvos para esta quadrícula, usar diretamente
+        // IMPORTANTE: Só usar cache se houver IDs (mesmo que vazio) e a quadrícula corresponder
+        if (!$forcarAtualizacao && 
+            isset($pesquisaData['idsDesenhosFiltrados']) && 
+            is_array($pesquisaData['idsDesenhosFiltrados']) && 
+            isset($pesquisaData['quadricula']) && 
+            $pesquisaData['quadricula'] === $quadricula &&
             isset($pesquisaData['results']['allResults']) &&
-            is_array($pesquisaData['results']['allResults']) &&
-            count($pesquisaData['results']['allResults']) > 0
-        ) {
-            // Cache válido encontrado - mesma pesquisa com resultados
-            $usarCache = true;
-            $allResults = $pesquisaData['results']['allResults'];
+            is_array($pesquisaData['results']['allResults'])) {
+            // Retornar IDs salvos (pode ser array vazio se não houver desenhos)
+            // Isso garante que IDs antigos de pesquisas anteriores não sejam usados
+            echo json_encode(['ids' => $pesquisaData['idsDesenhosFiltrados']]);
+            exit;
         }
-
-        // Se não usar cache, fazer pesquisa no banco (pesquisa diferente ou sem cache)
-        if (!$usarCache) {
+        
+        // Se forçar atualização ou não tiver IDs salvos, fazer nova busca
+        // Primeiro, tentar usar resultados salvos no JSON
+        $allResults = null;
+        
+        if (!$forcarAtualizacao && isset($pesquisaData['results']['allResults']) && is_array($pesquisaData['results']['allResults'])) {
+            // Usar resultados salvos (mais rápido)
+            $allResults = $pesquisaData['results']['allResults'];
+        } else {
+            // Se não tiver resultados salvos, fazer nova pesquisa no banco
+            // SEMPRE fazer nova pesquisa (não usar cache)
+            $usarCache = false;
+            
+            // Cache desabilitado - sempre fazer nova pesquisa no banco
+            
+            // Fazer pesquisa no banco
             // Para cadastros_nao_desenhados, usar query especial com NOT EXISTS
             if ($type === 'cadastros_nao_desenhados') {
                 $sql = "SELECT cad.id, cad.inscricao, cad.imob_id,  
@@ -82,108 +98,133 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
                 $params = [];
                 // Não há switch para este tipo, pular direto para execução
             } else {
+                // Definir se deve aplicar a condição imob_id = imob_id_principal
+                // Não aplicar para: area_construida, proprietario_cnpj_cpf, imob_id, inscricao
+                // Para endereco_numero: não aplicar se complemento foi preenchido
+                $aplicarCondicaoPrincipal = !in_array($type, ['area_construida', 'proprietario_cnpj_cpf', 'imob_id', 'inscricao']);
+                
+                // Se for endereco_numero e complemento foi preenchido, não aplicar condição
+                if ($type === 'endereco_numero' && !empty($values['complemento'])) {
+                    $aplicarCondicaoPrincipal = false;
+                }
+                
                 $sql = "SELECT cad.id, cad.inscricao, cad.imob_id,  
-                               cad.logradouro, cad.numero, cad.bairro, cad.cara_quarteirao, cad.quadra, 
+                               cad.logradouro, cad.numero, cad.complemento, cad.bairro, cad.cara_quarteirao, cad.quadra, 
                                cad.lote, cad.total_construido, cad.nome_pessoa, 
-                               cad.cnpj, cad.area_terreno, cad.tipo_edificacao, cad.tipo_utilizacao, 
+                               cad.cpf, cad.cnpj, cad.area_terreno, cad.tipo_edificacao, cad.tipo_utilizacao, 
                                cad.zona, cad.cat_via, cad.nome_loteamento, 
                                cad.imob_id_principal, cad.multiplo, cad.uso_imovel,
-                               SUBSTRING_INDEX(REPLACE(cad.historico, '\r\n', '\n'), '\n', -1) AS historico
-                        FROM cadastro cad WHERE 1=1 AND imob_id = imob_id_principal";
+                               SUBSTRING_INDEX(REPLACE(cad.historico, '\r\n', '\n'), '\n', -1) AS historico,
+                               des.id as desenho_id
+                        FROM cadastro cad 
+                        LEFT JOIN desenhos des ON des.camada = 'marcador_quadra' 
+                            AND des.quarteirao = cad.cara_quarteirao 
+                            AND des.quadra = cad.quadra 
+                            AND des.lote = cad.lote
+                        WHERE 1=1";
+                
+                // Aplicar condição apenas se necessário
+                if ($aplicarCondicaoPrincipal) {
+                    $sql .= " AND cad.imob_id = cad.imob_id_principal";
+                }
+                
                 $params = [];
 
                 switch ($type) {
                     case 'endereco_numero':
                         if (!empty($values['endereco'])) {
-                            $sql .= " AND logradouro LIKE :endereco";
+                            $sql .= " AND cad.logradouro LIKE :endereco";
                             $params[':endereco'] = '%' . $values['endereco'] . '%';
                         }
                         if (!empty($values['numero'])) {
-                            $sql .= " AND numero = :numero";
+                            $sql .= " AND cad.numero = :numero";
                             $params[':numero'] = $values['numero'];
                         }
-                        break;
-                    case 'quarteirao':
-                        if (!empty($values['quarteirao'])) {
-                            $sql .= " AND cara_quarteirao = :quarteirao";
-                            $params[':quarteirao'] = $values['quarteirao'];
+                        if (!empty($values['complemento'])) {
+                            $sql .= " AND cad.complemento LIKE :complemento";
+                            $params[':complemento'] = '%' . $values['complemento'] . '%';
                         }
                         break;
-                    case 'quarteirao_quadra':
-                        if (!empty($values['quarteirao'])) {
-                            $sql .= " AND cara_quarteirao = :quarteirao";
-                            $params[':quarteirao'] = $values['quarteirao'];
+                    case 'loteamento_quarteirao_quadra_lote':
+                        // Loteamento (opcional)
+                        if (!empty($values['loteamento'])) {
+                            $sql .= " AND cad.nome_loteamento LIKE :loteamento_lqql";
+                            $params[':loteamento_lqql'] = '%' . $values['loteamento'] . '%';
                         }
+                        
+                        // Quarteirão (opcional) - com tratamento flexível
+                        if (!empty($values['quarteirao'])) {
+                            $quarteiraoInput = trim($values['quarteirao']);
+                            // Verificar se tem letras
+                            if (preg_match('/[a-zA-Z]/', $quarteiraoInput)) {
+                                // Se tiver letras, busca exata como string
+                                $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_lqql";
+                                $params[':quarteirao_lqql'] = $quarteiraoInput;
+                            } else {
+                                // Se for apenas numérico, busca flexível (com e sem zeros à esquerda)
+                                $quarteiraoInt = intval($quarteiraoInput);
+                                if ($quarteiraoInt > 0) {
+                                    // Buscar tanto o valor original quanto o normalizado (sem zeros)
+                                    // E também a versão com 4 dígitos (com zeros à esquerda)
+                                    $quarteiraoComZeros = str_pad($quarteiraoInt, 4, '0', STR_PAD_LEFT);
+                                    $sql .= " AND (TRIM(cad.cara_quarteirao) = :quarteirao_original_lqql OR 
+                                                   CAST(TRIM(cad.cara_quarteirao) AS UNSIGNED) = :quarteirao_int_lqql OR
+                                                   TRIM(cad.cara_quarteirao) = :quarteirao_com_zeros_lqql)";
+                                    $params[':quarteirao_original_lqql'] = $quarteiraoInput;
+                                    $params[':quarteirao_int_lqql'] = $quarteiraoInt;
+                                    $params[':quarteirao_com_zeros_lqql'] = $quarteiraoComZeros;
+                                } else {
+                                    // Se não for numérico válido, busca exata
+                                    $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_lqql";
+                                    $params[':quarteirao_lqql'] = $quarteiraoInput;
+                                }
+                            }
+                        }
+                        
+                        // Quadra (opcional)
                         if (!empty($values['quadra'])) {
-                            $sql .= " AND quadra = :quadra";
-                            $params[':quadra'] = $values['quadra'];
+                            $sql .= " AND cad.quadra = :quadra_lqql";
+                            $params[':quadra_lqql'] = $values['quadra'];
                         }
-                        break;
-                    case 'quarteirao_quadra_lote':
-                        if (!empty($values['quarteirao'])) {
-                            $sql .= " AND cara_quarteirao = :quarteirao";
-                            $params[':quarteirao'] = $values['quarteirao'];
-                        }
-                        if (!empty($values['quadra'])) {
-                            $sql .= " AND quadra = :quadra";
-                            $params[':quadra'] = $values['quadra'];
-                        }
+                        
+                        // Lote (opcional)
                         if (!empty($values['lote'])) {
-                            $sql .= " AND lote = :lote";
-                            $params[':lote'] = $values['lote'];
+                            $sql .= " AND cad.lote = :lote_lqql";
+                            $params[':lote_lqql'] = $values['lote'];
                         }
                         break;
-                    case 'loteamento':
-                        if (!empty($values['loteamento'])) {
-                            $sql .= " AND nome_loteamento LIKE :loteamento";
-                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                    case 'proprietario_cnpj_cpf':
+                        // Proprietário (nome_pessoa) - opcional
+                        if (!empty($values['proprietario'])) {
+                            $sql .= " AND cad.nome_pessoa LIKE :proprietario";
+                            $params[':proprietario'] = '%' . $values['proprietario'] . '%';
                         }
-                        break;
-                    case 'loteamento_quadra':
-                        if (!empty($values['loteamento'])) {
-                            $sql .= " AND nome_loteamento LIKE :loteamento";
-                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
-                        }
-                        if (!empty($values['quadra'])) {
-                            $sql .= " AND quadra = :quadra";
-                            $params[':quadra'] = $values['quadra'];
-                        }
-                        break;
-                    case 'loteamento_quadra_lote':
-                        if (!empty($values['loteamento'])) {
-                            $sql .= " AND nome_loteamento LIKE :loteamento";
-                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
-                        }
-                        if (!empty($values['quadra'])) {
-                            $sql .= " AND quadra = :quadra";
-                            $params[':quadra'] = $values['quadra'];
-                        }
-                        if (!empty($values['lote'])) {
-                            $sql .= " AND lote = :lote";
-                            $params[':lote'] = $values['lote'];
-                        }
-                        break;
-                    case 'cnpj':
+                        // CNPJ - opcional
                         if (!empty($values['cnpj'])) {
-                            $sql .= " AND cnpj = :cnpj";
+                            $sql .= " AND cad.cnpj = :cnpj";
                             $params[':cnpj'] = $values['cnpj'];
+                        }
+                        // CPF - opcional
+                        if (!empty($values['cpf'])) {
+                            $sql .= " AND cad.cpf = :cpf";
+                            $params[':cpf'] = $values['cpf'];
                         }
                         break;
                     case 'uso_imovel':
                         if (!empty($values['uso_imovel'])) {
-                            $sql .= " AND uso_imovel LIKE :uso_imovel";
+                            $sql .= " AND cad.uso_imovel LIKE :uso_imovel";
                             $params[':uso_imovel'] = '%' . $values['uso_imovel'] . '%';
                         }
                         break;
                     case 'bairro':
                         if (!empty($values['bairro'])) {
-                            $sql .= " AND bairro LIKE :bairro";
+                            $sql .= " AND cad.bairro LIKE :bairro";
                             $params[':bairro'] = '%' . $values['bairro'] . '%';
                         }
                         break;
                     case 'inscricao':
                         if (!empty($values['inscricao'])) {
-                            $sql .= " AND inscricao = :inscricao";
+                            $sql .= " AND cad.inscricao = :inscricao";
                             $params[':inscricao'] = $values['inscricao'];
                         }
                         break;
@@ -195,25 +236,25 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
                         break;
                     case 'zona':
                         if (!empty($values['zona'])) {
-                            $sql .= " AND zona = :zona";
+                            $sql .= " AND cad.zona = :zona";
                             $params[':zona'] = $values['zona'];
                         }
                         break;
                     case 'cat_via':
                         if (!empty($values['cat_via'])) {
-                            $sql .= " AND cat_via LIKE :cat_via";
+                            $sql .= " AND cad.cat_via LIKE :cat_via";
                             $params[':cat_via'] = '%' . $values['cat_via'] . '%';
                         }
                         break;
                     case 'tipo_edificacao':
                         if (!empty($values['tipo_edificacao'])) {
-                            $sql .= " AND tipo_edificacao LIKE :tipo_edificacao";
+                            $sql .= " AND cad.tipo_edificacao LIKE :tipo_edificacao";
                             $params[':tipo_edificacao'] = '%' . $values['tipo_edificacao'] . '%';
                         }
                         break;
                     case 'tipo_utilizacao':
                         if (!empty($values['tipo_utilizacao'])) {
-                            $sql .= " AND tipo_utilizacao LIKE :tipo_utilizacao";
+                            $sql .= " AND cad.tipo_utilizacao LIKE :tipo_utilizacao";
                             $params[':tipo_utilizacao'] = '%' . $values['tipo_utilizacao'] . '%';
                         }
                         break;
@@ -223,7 +264,7 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
                             $params[':area_construida_min'] = floatval($values['area_construida_min']);
                         }
                         if (!empty($values['area_construida_max'])) {
-                            $sql .= " AND total_construido <= :area_construida_max";
+                            $sql .= " AND cad.total_construido <= :area_construida_max";
                             $params[':area_construida_max'] = floatval($values['area_construida_max']);
                         }
                         break;
@@ -233,7 +274,7 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
                             $params[':area_terreno_min'] = floatval($values['area_terreno_min']);
                         }
                         if (!empty($values['area_terreno_max'])) {
-                            $sql .= " AND area_terreno <= :area_terreno_max";
+                            $sql .= " AND cad.area_terreno <= :area_terreno_max";
                             $params[':area_terreno_max'] = floatval($values['area_terreno_max']);
                         }
                         break;
@@ -241,21 +282,27 @@ if (isset($_GET['buscarDesenhosFiltrados'])) {
                         echo json_encode(['ids' => []]);
                         exit;
                 }
-            }
+            
+                // Executar pesquisa (SEM paginação - todos os resultados)
+                $stmt = $pdo->prepare($sql);
+                foreach ($params as $key => $value) {
+                    $stmt->bindValue($key, $value);
+                }
+                $stmt->execute();
+                $allResults = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Executar pesquisa (SEM paginação - todos os resultados)
-            $stmt = $pdo->prepare($sql);
-            foreach ($params as $key => $value) {
-                $stmt->bindValue($key, $value);
+                // Salvar no cache
+                $pesquisaData['results'] = [
+                    'allResults' => $allResults
+                ];
+                file_put_contents($file, json_encode($pesquisaData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
             }
-            $stmt->execute();
-            $allResults = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
 
-            // Salvar no cache
-            $pesquisaData['results'] = [
-                'allResults' => $allResults
-            ];
-            file_put_contents($file, json_encode($pesquisaData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        // Verificar se temos resultados antes de processar
+        if (empty($allResults) || !is_array($allResults)) {
+            echo json_encode(['ids' => []]);
+            exit;
         }
 
         // Coletar combinações únicas de (quarteirao, quadra, lote) dos resultados (cache ou banco)
@@ -393,53 +440,19 @@ if (isset($_GET['pesquisar'])) {
         $dir = __DIR__ . '/jsonPesquisa';
         $file = $dir . '/' . $userId . '.json';
 
+        // SEMPRE fazer nova pesquisa (não usar cache)
         $usarCache = false;
         $cacheData = null;
         $allResults = null;
-
-        if (file_exists($file)) {
-            $cacheData = json_decode(file_get_contents($file), true);
-            // Verificar se o cache corresponde à pesquisa atual
-            if (
-                is_array($cacheData) &&
-                isset($cacheData['type']) && $cacheData['type'] === $type &&
-                isset($cacheData['values']) && is_array($cacheData['values']) &&
-                is_array($values)
-            ) {
-
-                // Comparar valores de forma mais robusta
-                $cacheValuesNormalized = $cacheData['values'];
-                $currentValuesNormalized = $values;
-
-                // Normalizar arrays para comparação (ordenar chaves e converter tipos)
-                ksort($cacheValuesNormalized);
-                ksort($currentValuesNormalized);
-
-                // Converter valores para string para comparação
-                $cacheValuesStr = json_encode($cacheValuesNormalized, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK);
-                $currentValuesStr = json_encode($currentValuesNormalized, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK);
-
-                if (
-                    $cacheValuesStr === $currentValuesStr &&
-                    isset($cacheData['results']) &&
-                    is_array($cacheData['results']) &&
-                    isset($cacheData['results']['allResults']) &&
-                    is_array($cacheData['results']['allResults']) &&
-                    count($cacheData['results']['allResults']) > 0
-                ) {
-                    // Cache válido encontrado - mesma pesquisa com resultados
-                    $usarCache = true;
-                    $allResults = $cacheData['results']['allResults'];
-                }
-            }
-        }
-
+        
+        // Cache desabilitado - sempre fazer nova pesquisa no banco
+        
         if (!is_dir($dir)) {
             @mkdir($dir, 0775, true);
         }
 
-        // Só construir query SQL se não usar cache (pesquisa diferente ou sem cache)
-        if (!$usarCache) {
+        // Construir query SQL (sempre fazer nova pesquisa)
+        if (true) { // Sempre executar (cache desabilitado)
             // Para cadastros_nao_desenhados, usar query especial com NOT EXISTS
             if ($type === 'cadastros_nao_desenhados') {
                 $sql = "SELECT cad.id, cad.inscricao, cad.imob_id,  
@@ -457,123 +470,185 @@ if (isset($_GET['pesquisar'])) {
                             AND des.quarteirao = cad.cara_quarteirao 
                             AND des.quadra = cad.quadra 
                             AND des.lote = cad.lote 
-                        ) 
-                        ORDER BY cad.nome_loteamento, cad.cara_quarteirao";
+                        )";
                 $params = [];
+                
+                // Adicionar condição de loteamento se preenchido
+                if (!empty($values['loteamento'])) {
+                    $sql .= " AND cad.nome_loteamento LIKE :loteamento";
+                    $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                }
+                
+                // Adicionar condição de quarteirão se preenchido
+                if (!empty($values['quarteirao'])) {
+                    $quarteiraoInput = trim($values['quarteirao']);
+                    // Verificar se tem letras
+                    if (preg_match('/[a-zA-Z]/', $quarteiraoInput)) {
+                        // Se tiver letras, busca exata como string
+                        $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_cnd";
+                        $params[':quarteirao_cnd'] = $quarteiraoInput;
+                    } else {
+                        // Se for apenas numérico, busca flexível (com e sem zeros à esquerda)
+                        $quarteiraoInt = intval($quarteiraoInput);
+                        if ($quarteiraoInt > 0) {
+                            // Buscar tanto o valor original quanto o normalizado (sem zeros)
+                            // E também a versão com 4 dígitos (com zeros à esquerda)
+                            $quarteiraoComZeros = str_pad($quarteiraoInt, 4, '0', STR_PAD_LEFT);
+                            $sql .= " AND (TRIM(cad.cara_quarteirao) = :quarteirao_original_cnd OR 
+                                           CAST(TRIM(cad.cara_quarteirao) AS UNSIGNED) = :quarteirao_int_cnd OR
+                                           TRIM(cad.cara_quarteirao) = :quarteirao_com_zeros_cnd)";
+                            $params[':quarteirao_original_cnd'] = $quarteiraoInput;
+                            $params[':quarteirao_int_cnd'] = $quarteiraoInt;
+                            $params[':quarteirao_com_zeros_cnd'] = $quarteiraoComZeros;
+                        } else {
+                            // Se não for numérico válido, busca exata
+                            $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_cnd";
+                            $params[':quarteirao_cnd'] = $quarteiraoInput;
+                        }
+                    }
+                }
+                
+                // Adicionar condição de responsável (historico) se preenchido
+                if (!empty($values['responsavel'])) {
+                    $sql .= " AND cad.historico LIKE :responsavel_cnd";
+                    $params[':responsavel_cnd'] = '%' . $values['responsavel'] . '%';
+                }
+                
+                $sql .= " ORDER BY cad.nome_loteamento, cad.cara_quarteirao";
                 // Não há switch para este tipo, pular direto para execução
             } else {
+                // Definir se deve aplicar a condição imob_id = imob_id_principal
+                // Não aplicar para: area_construida, proprietario_cnpj_cpf, imob_id, inscricao
+                // Para endereco_numero: não aplicar se complemento foi preenchido
+                $aplicarCondicaoPrincipal = !in_array($type, ['area_construida', 'proprietario_cnpj_cpf', 'imob_id', 'inscricao']);
+                
+                // Se for endereco_numero e complemento foi preenchido, não aplicar condição
+                if ($type === 'endereco_numero' && !empty($values['complemento'])) {
+                    $aplicarCondicaoPrincipal = false;
+                }
+                
                 $sql = "SELECT cad.id, cad.inscricao, cad.imob_id,  
-                               cad.logradouro, cad.numero, cad.bairro, cad.cara_quarteirao, cad.quadra, 
+                               cad.logradouro, cad.numero, cad.complemento, cad.bairro, cad.cara_quarteirao, cad.quadra, 
                                cad.lote, cad.total_construido, cad.nome_pessoa, 
-                               cad.cnpj, cad.area_terreno, cad.tipo_edificacao, cad.tipo_utilizacao, 
+                               cad.cpf, cad.cnpj, cad.area_terreno, cad.tipo_edificacao, cad.tipo_utilizacao, 
                                cad.zona, cad.cat_via, cad.nome_loteamento, 
                                cad.imob_id_principal, cad.multiplo, cad.uso_imovel,
-                               SUBSTRING_INDEX(REPLACE(cad.historico, '\r\n', '\n'), '\n', -1) AS historico
-                        FROM cadastro cad WHERE 1=1 AND imob_id = imob_id_principal";
+                               SUBSTRING_INDEX(REPLACE(cad.historico, '\r\n', '\n'), '\n', -1) AS historico,
+                               des.id as desenho_id
+                        FROM cadastro cad 
+                        LEFT JOIN desenhos des ON des.camada = 'marcador_quadra' 
+                            AND des.quarteirao = cad.cara_quarteirao 
+                            AND des.quadra = cad.quadra 
+                            AND des.lote = cad.lote
+                        WHERE 1=1";
+                
+                // Aplicar condição apenas se necessário
+                if ($aplicarCondicaoPrincipal) {
+                    $sql .= " AND cad.imob_id = cad.imob_id_principal";
+                }
+                
                 $params = [];
 
                 switch ($type) {
                     case 'endereco_numero':
                         if (!empty($values['endereco'])) {
-                            $sql .= " AND logradouro LIKE :endereco";
+                            $sql .= " AND cad.logradouro LIKE :endereco";
                             $params[':endereco'] = '%' . $values['endereco'] . '%';
                         }
                         if (!empty($values['numero'])) {
-                            $sql .= " AND numero = :numero";
+                            $sql .= " AND cad.numero = :numero";
                             $params[':numero'] = $values['numero'];
                         }
-                        break;
-
-                    case 'quarteirao':
-                        if (!empty($values['quarteirao'])) {
-                            $sql .= " AND cara_quarteirao = :quarteirao";
-                            $params[':quarteirao'] = $values['quarteirao'];
+                        if (!empty($values['complemento'])) {
+                            $sql .= " AND cad.complemento LIKE :complemento";
+                            $params[':complemento'] = '%' . $values['complemento'] . '%';
                         }
                         break;
 
-                    case 'quarteirao_quadra':
-                        if (!empty($values['quarteirao'])) {
-                            $sql .= " AND cara_quarteirao = :quarteirao";
-                            $params[':quarteirao'] = $values['quarteirao'];
+                    case 'loteamento_quarteirao_quadra_lote':
+                        // Loteamento (opcional)
+                        if (!empty($values['loteamento'])) {
+                            $sql .= " AND cad.nome_loteamento LIKE :loteamento_lqql";
+                            $params[':loteamento_lqql'] = '%' . $values['loteamento'] . '%';
                         }
+                        
+                        // Quarteirão (opcional) - com tratamento flexível
+                        if (!empty($values['quarteirao'])) {
+                            $quarteiraoInput = trim($values['quarteirao']);
+                            // Verificar se tem letras
+                            if (preg_match('/[a-zA-Z]/', $quarteiraoInput)) {
+                                // Se tiver letras, busca exata como string
+                                $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_lqql";
+                                $params[':quarteirao_lqql'] = $quarteiraoInput;
+                            } else {
+                                // Se for apenas numérico, busca flexível (com e sem zeros à esquerda)
+                                $quarteiraoInt = intval($quarteiraoInput);
+                                if ($quarteiraoInt > 0) {
+                                    // Buscar tanto o valor original quanto o normalizado (sem zeros)
+                                    // E também a versão com 4 dígitos (com zeros à esquerda)
+                                    $quarteiraoComZeros = str_pad($quarteiraoInt, 4, '0', STR_PAD_LEFT);
+                                    $sql .= " AND (TRIM(cad.cara_quarteirao) = :quarteirao_original_lqql OR 
+                                                   CAST(TRIM(cad.cara_quarteirao) AS UNSIGNED) = :quarteirao_int_lqql OR
+                                                   TRIM(cad.cara_quarteirao) = :quarteirao_com_zeros_lqql)";
+                                    $params[':quarteirao_original_lqql'] = $quarteiraoInput;
+                                    $params[':quarteirao_int_lqql'] = $quarteiraoInt;
+                                    $params[':quarteirao_com_zeros_lqql'] = $quarteiraoComZeros;
+                                } else {
+                                    // Se não for numérico válido, busca exata
+                                    $sql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_lqql";
+                                    $params[':quarteirao_lqql'] = $quarteiraoInput;
+                                }
+                            }
+                        }
+                        
+                        // Quadra (opcional)
                         if (!empty($values['quadra'])) {
-                            $sql .= " AND quadra = :quadra";
-                            $params[':quadra'] = $values['quadra'];
+                            $sql .= " AND cad.quadra = :quadra_lqql";
+                            $params[':quadra_lqql'] = $values['quadra'];
                         }
-                        break;
-
-                    case 'quarteirao_quadra_lote':
-                        if (!empty($values['quarteirao'])) {
-                            $sql .= " AND cara_quarteirao = :quarteirao";
-                            $params[':quarteirao'] = $values['quarteirao'];
-                        }
-                        if (!empty($values['quadra'])) {
-                            $sql .= " AND quadra = :quadra";
-                            $params[':quadra'] = $values['quadra'];
-                        }
+                        
+                        // Lote (opcional)
                         if (!empty($values['lote'])) {
-                            $sql .= " AND lote = :lote";
-                            $params[':lote'] = $values['lote'];
+                            $sql .= " AND cad.lote = :lote_lqql";
+                            $params[':lote_lqql'] = $values['lote'];
                         }
                         break;
 
-                    case 'loteamento':
-                        if (!empty($values['loteamento'])) {
-                            $sql .= " AND nome_loteamento LIKE :loteamento";
-                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
+                    case 'proprietario_cnpj_cpf':
+                        // Proprietário (nome_pessoa) - opcional
+                        if (!empty($values['proprietario'])) {
+                            $sql .= " AND cad.nome_pessoa LIKE :proprietario";
+                            $params[':proprietario'] = '%' . $values['proprietario'] . '%';
                         }
-                        break;
-
-                    case 'loteamento_quadra':
-                        if (!empty($values['loteamento'])) {
-                            $sql .= " AND nome_loteamento LIKE :loteamento";
-                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
-                        }
-                        if (!empty($values['quadra'])) {
-                            $sql .= " AND quadra = :quadra";
-                            $params[':quadra'] = $values['quadra'];
-                        }
-                        break;
-
-                    case 'loteamento_quadra_lote':
-                        if (!empty($values['loteamento'])) {
-                            $sql .= " AND nome_loteamento LIKE :loteamento";
-                            $params[':loteamento'] = '%' . $values['loteamento'] . '%';
-                        }
-                        if (!empty($values['quadra'])) {
-                            $sql .= " AND quadra = :quadra";
-                            $params[':quadra'] = $values['quadra'];
-                        }
-                        if (!empty($values['lote'])) {
-                            $sql .= " AND lote = :lote";
-                            $params[':lote'] = $values['lote'];
-                        }
-                        break;
-
-                    case 'cnpj':
+                        // CNPJ - opcional
                         if (!empty($values['cnpj'])) {
-                            $sql .= " AND cnpj = :cnpj";
+                            $sql .= " AND cad.cnpj = :cnpj";
                             $params[':cnpj'] = $values['cnpj'];
+                        }
+                        // CPF - opcional
+                        if (!empty($values['cpf'])) {
+                            $sql .= " AND cad.cpf = :cpf";
+                            $params[':cpf'] = $values['cpf'];
                         }
                         break;
 
                     case 'uso_imovel':
                         if (!empty($values['uso_imovel'])) {
-                            $sql .= " AND uso_imovel LIKE :uso_imovel";
+                            $sql .= " AND cad.uso_imovel LIKE :uso_imovel";
                             $params[':uso_imovel'] = '%' . $values['uso_imovel'] . '%';
                         }
                         break;
 
                     case 'bairro':
                         if (!empty($values['bairro'])) {
-                            $sql .= " AND bairro LIKE :bairro";
+                            $sql .= " AND cad.bairro LIKE :bairro";
                             $params[':bairro'] = '%' . $values['bairro'] . '%';
                         }
                         break;
 
                     case 'inscricao':
                         if (!empty($values['inscricao'])) {
-                            $sql .= " AND inscricao = :inscricao";
+                            $sql .= " AND cad.inscricao = :inscricao";
                             $params[':inscricao'] = $values['inscricao'];
                         }
                         break;
@@ -587,21 +662,21 @@ if (isset($_GET['pesquisar'])) {
 
                     case 'zona':
                         if (!empty($values['zona'])) {
-                            $sql .= " AND zona = :zona";
+                            $sql .= " AND cad.zona = :zona";
                             $params[':zona'] = $values['zona'];
                         }
                         break;
 
                     case 'cat_via':
                         if (!empty($values['cat_via'])) {
-                            $sql .= " AND cat_via LIKE :cat_via";
+                            $sql .= " AND cad.cat_via LIKE :cat_via";
                             $params[':cat_via'] = '%' . $values['cat_via'] . '%';
                         }
                         break;
 
                     case 'tipo_edificacao':
                         if (!empty($values['tipo_edificacao'])) {
-                            $sql .= " AND tipo_edificacao LIKE :tipo_edificacao";
+                            $sql .= " AND cad.tipo_edificacao LIKE :tipo_edificacao";
                             $params[':tipo_edificacao'] = '%' . $values['tipo_edificacao'] . '%';
                         }
                         break;
@@ -612,7 +687,7 @@ if (isset($_GET['pesquisar'])) {
                             $params[':area_construida_min'] = floatval($values['area_construida_min']);
                         }
                         if (!empty($values['area_construida_max'])) {
-                            $sql .= " AND total_construido <= :area_construida_max";
+                            $sql .= " AND cad.total_construido <= :area_construida_max";
                             $params[':area_construida_max'] = floatval($values['area_construida_max']);
                         }
                         break;
@@ -623,7 +698,7 @@ if (isset($_GET['pesquisar'])) {
                             $params[':area_terreno_min'] = floatval($values['area_terreno_min']);
                         }
                         if (!empty($values['area_terreno_max'])) {
-                            $sql .= " AND area_terreno <= :area_terreno_max";
+                            $sql .= " AND cad.area_terreno <= :area_terreno_max";
                             $params[':area_terreno_max'] = floatval($values['area_terreno_max']);
                         }
                         break;
@@ -641,13 +716,8 @@ if (isset($_GET['pesquisar'])) {
         $offset = ($page - 1) * $limit;
 
         // Se usar cache, buscar do cache
-        if ($usarCache && $allResults !== null) {
-            // Usar o totalCount salvo no cache (total real do banco)
-            $totalCount = isset($cacheData['totalCount']) ? intval($cacheData['totalCount']) : count($allResults);
-
-            // Aplicar paginação APENAS na exibição dos dados da tabela
-            $results = array_slice($allResults, $offset, $limit);
-        } else {
+        // Sempre fazer pesquisa no banco (cache desabilitado)
+        {
             // Fazer pesquisa no banco
             // Primeiro, contar o total de resultados
             // Para cadastros_nao_desenhados, usar NOT EXISTS
@@ -662,6 +732,51 @@ if (isset($_GET['pesquisar'])) {
                                 AND des.quadra = cad.quadra 
                                 AND des.lote = cad.lote 
                             )";
+                $countParams = [];
+                
+                // Adicionar condição de loteamento se preenchido
+                if (!empty($values['loteamento'])) {
+                    $countSql .= " AND cad.nome_loteamento LIKE :loteamento";
+                    $countParams[':loteamento'] = '%' . $values['loteamento'] . '%';
+                }
+                
+                // Adicionar condição de quarteirão se preenchido
+                if (!empty($values['quarteirao'])) {
+                    $quarteiraoInput = trim($values['quarteirao']);
+                    // Verificar se tem letras
+                    if (preg_match('/[a-zA-Z]/', $quarteiraoInput)) {
+                        // Se tiver letras, busca exata como string
+                        $countSql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_cnd_count";
+                        $countParams[':quarteirao_cnd_count'] = $quarteiraoInput;
+                    } else {
+                        // Se for apenas numérico, busca flexível (com e sem zeros à esquerda)
+                        $quarteiraoInt = intval($quarteiraoInput);
+                        if ($quarteiraoInt > 0) {
+                            // Buscar tanto o valor original quanto o normalizado (sem zeros)
+                            // E também a versão com 4 dígitos (com zeros à esquerda)
+                            $quarteiraoComZeros = str_pad($quarteiraoInt, 4, '0', STR_PAD_LEFT);
+                            $countSql .= " AND (TRIM(cad.cara_quarteirao) = :quarteirao_original_cnd_count OR
+                                               CAST(TRIM(cad.cara_quarteirao) AS UNSIGNED) = :quarteirao_int_cnd_count OR
+                                               TRIM(cad.cara_quarteirao) = :quarteirao_com_zeros_cnd_count)";
+                            $countParams[':quarteirao_original_cnd_count'] = $quarteiraoInput;
+                            $countParams[':quarteirao_int_cnd_count'] = $quarteiraoInt;
+                            $countParams[':quarteirao_com_zeros_cnd_count'] = $quarteiraoComZeros;
+                        } else {
+                            // Se não for numérico válido, busca exata
+                            $countSql .= " AND TRIM(cad.cara_quarteirao) = :quarteirao_cnd_count";
+                            $countParams[':quarteirao_cnd_count'] = $quarteiraoInput;
+                        }
+                    }
+                }
+                
+                // Adicionar condição de responsável (historico) se preenchido
+                if (!empty($values['responsavel'])) {
+                    $countSql .= " AND cad.historico LIKE :responsavel_cnd_count";
+                    $countParams[':responsavel_cnd_count'] = '%' . $values['responsavel'] . '%';
+                }
+                
+                // Para cadastros_nao_desenhados, usar countParams separados
+                $paramsParaCount = $countParams;
             } else {
                 $wherePart = '';
                 if (preg_match('/WHERE\s+(.+?)(?:\s+ORDER\s+BY|$)/is', $sql, $matches)) {
@@ -674,11 +789,12 @@ if (isset($_GET['pesquisar'])) {
                     $wherePart = '1=1';
                 }
 
-                $countSql = "SELECT COUNT(*) as total FROM cadastro WHERE " . $wherePart;
+                $countSql = "SELECT COUNT(*) as total FROM cadastro cad WHERE " . $wherePart;
+                $paramsParaCount = $params;
             }
 
             $countStmt = $pdo->prepare($countSql);
-            foreach ($params as $key => $value) {
+            foreach ($paramsParaCount as $key => $value) {
                 $countStmt->bindValue($key, $value);
             }
             $countStmt->execute();
@@ -699,10 +815,116 @@ if (isset($_GET['pesquisar'])) {
         // Calcular informações de paginação
         $totalPages = ceil($totalCount / $limit);
 
+        // Buscar IDs dos desenhos se quadrícula foi fornecida
+        // SEMPRE inicializar como array vazio para limpar IDs antigos de pesquisas anteriores
+        $idsDesenhosFiltrados = [];
+        $quadricula = isset($input['quadricula']) ? trim($input['quadricula']) : null;
+        
+        // Buscar desenhos apenas se tiver quadrícula E resultados
+        if (!empty($quadricula) && !empty($allResults)) {
+            // Coletar combinações únicas de (quarteirao, quadra, lote) dos resultados
+            $combinacoesComLetras = [];
+            $combinacoesSemLetras = [];
+
+            foreach ($allResults as $resultado) {
+                $cara_quarteirao = isset($resultado['cara_quarteirao']) ? $resultado['cara_quarteirao'] : null;
+                $quadra = isset($resultado['quadra']) ? $resultado['quadra'] : null;
+                $lote = isset($resultado['lote']) ? $resultado['lote'] : null;
+
+                if ($cara_quarteirao && $quadra && $lote) {
+                    $temLetras = preg_match('/[^0-9]/', (string)$cara_quarteirao) === 1;
+                    $key = $cara_quarteirao . '|' . $quadra . '|' . $lote;
+
+                    if ($temLetras) {
+                        if (!isset($combinacoesComLetras[$key])) {
+                            $combinacoesComLetras[$key] = [
+                                'quarteirao' => $cara_quarteirao,
+                                'quadra' => $quadra,
+                                'lote' => $lote
+                            ];
+                        }
+                    } else {
+                        if (!isset($combinacoesSemLetras[$key])) {
+                            $combinacoesSemLetras[$key] = [
+                                'quarteirao' => $cara_quarteirao,
+                                'quadra' => $quadra,
+                                'lote' => $lote
+                            ];
+                        }
+                    }
+                }
+            }
+
+            // Buscar IDs dos desenhos FILTRADOS pela quadrícula
+            // Desenhos com letras
+            if (!empty($combinacoesComLetras)) {
+                $conditions = [];
+                $paramsDesenhos = [':quadricula' => $quadricula];
+                $paramIndex = 0;
+
+                foreach ($combinacoesComLetras as $comb) {
+                    $conditions[] = "(quarteirao = :q{$paramIndex} AND quadra = :quad{$paramIndex} AND lote = :lot{$paramIndex})";
+                    $paramsDesenhos[":q{$paramIndex}"] = $comb['quarteirao'];
+                    $paramsDesenhos[":quad{$paramIndex}"] = $comb['quadra'];
+                    $paramsDesenhos[":lot{$paramIndex}"] = $comb['lote'];
+                    $paramIndex++;
+                }
+
+                if (!empty($conditions)) {
+                    $sqlDesenhos = "SELECT id FROM desenhos 
+                                    WHERE quadricula = :quadricula
+                                    AND (" . implode(' OR ', $conditions) . ")
+                                    AND (camada = 'poligono lote' OR camada = 'poligono_lote')
+                                    AND status > 0";
+
+                    $stmtDesenhos = $pdo->prepare($sqlDesenhos);
+                    $stmtDesenhos->execute($paramsDesenhos);
+                    $poligonos = $stmtDesenhos->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($poligonos as $p) {
+                        $idsDesenhosFiltrados[] = intval($p['id']);
+                    }
+                }
+            }
+
+            // Desenhos sem letras
+            if (!empty($combinacoesSemLetras)) {
+                $conditions = [];
+                $paramsDesenhos = [':quadricula' => $quadricula];
+                $paramIndex = 0;
+
+                foreach ($combinacoesSemLetras as $comb) {
+                    $conditions[] = "(CAST(quarteirao AS UNSIGNED) = CAST(:q{$paramIndex} AS UNSIGNED) AND quadra = :quad{$paramIndex} AND lote = :lot{$paramIndex})";
+                    $paramsDesenhos[":q{$paramIndex}"] = $comb['quarteirao'];
+                    $paramsDesenhos[":quad{$paramIndex}"] = $comb['quadra'];
+                    $paramsDesenhos[":lot{$paramIndex}"] = $comb['lote'];
+                    $paramIndex++;
+                }
+
+                if (!empty($conditions)) {
+                    $sqlDesenhos = "SELECT id FROM desenhos 
+                                    WHERE quadricula = :quadricula
+                                    AND (" . implode(' OR ', $conditions) . ")
+                                    AND (camada = 'poligono lote' OR camada = 'poligono_lote')
+                                    AND status > 0";
+
+                    $stmtDesenhos = $pdo->prepare($sqlDesenhos);
+                    $stmtDesenhos->execute($paramsDesenhos);
+                    $poligonos = $stmtDesenhos->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($poligonos as $p) {
+                        $id = intval($p['id']);
+                        if (!in_array($id, $idsDesenhosFiltrados)) {
+                            $idsDesenhosFiltrados[] = $id;
+                        }
+                    }
+                }
+            }
+        }
+
         // Salvar pesquisa apenas se não usou cache (nova pesquisa)
-        if (!$usarCache) {
-            // Salvar pesquisa e resultados no JSON (apenas quando faz nova pesquisa)
-            // Salvar TODOS os resultados
+        // Salvar pesquisa e resultados no JSON (sempre salvar, mesmo com cache desabilitado)
+        {
+            // Salvar TODOS os resultados e IDs dos desenhos
+            // IMPORTANTE: Sempre salvar idsDesenhosFiltrados (mesmo que vazio) para limpar IDs antigos
             $cacheData = [
                 'type' => $type,
                 'values' => $values,
@@ -710,7 +932,9 @@ if (isset($_GET['pesquisar'])) {
                 'usuario_email' => isset($_SESSION['usuario']) && is_array($_SESSION['usuario']) && isset($_SESSION['usuario'][1]) ? $_SESSION['usuario'][1] : null,
                 'results' => [
                     'allResults' => $allResults // TODOS os resultados
-                ]
+                ],
+                'idsDesenhosFiltrados' => $idsDesenhosFiltrados, // IDs dos desenhos filtrados pela quadrícula (pode ser array vazio)
+                'quadricula' => $quadricula // Quadrícula usada para filtrar desenhos (pode ser null)
             ];
             file_put_contents($file, json_encode($cacheData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         }
@@ -1998,7 +2222,7 @@ if (isset($_GET['adicionar_historico'])) {
         }
 
         #searchType {
-            min-width: 200px;
+            min-width: 340px;
         }
 
         #searchInputs {
@@ -2008,8 +2232,8 @@ if (isset($_GET['adicionar_historico'])) {
         }
 
         #searchInputs input {
-            min-width: 150px;
-            max-width: 220px;
+            min-width: 180px;
+            max-width: 280px;
         }
 
         #btnPesquisar {
@@ -2114,6 +2338,15 @@ if (isset($_GET['adicionar_historico'])) {
         /* Remover text-decoration line-through de linhas sem desenho */
         #searchResultsBody table tbody tr td {
             text-decoration: none !important;
+        }
+
+        /* Estilo para linhas sem desenho */
+        #searchResultsBody table tbody tr.no-drawing {
+            background-color: #ffe6e6 !important; /* Vermelho bem clarinho */
+        }
+
+        #searchResultsBody table tbody tr.no-drawing td {
+            color: #dc3545; /* Texto vermelho */
         }
 
         #searchResultsBody table thead {
@@ -2837,6 +3070,11 @@ if (isset($_GET['adicionar_historico'])) {
                     {
                         name: 'quarteirao',
                         placeholder: 'Quarteirão (opcional)'
+                    },
+                    {
+                        name: 'responsavel',
+                        placeholder: 'Responsável (opcional)',
+                        label: 'Responsável'
                     }
                 ]
             },
@@ -2883,16 +3121,8 @@ if (isset($_GET['adicionar_historico'])) {
                 }]
             },
             {
-                value: 'cnpj',
-                label: 'CNPJ',
-                fields: [{
-                    name: 'cnpj',
-                    placeholder: 'CNPJ'
-                }]
-            },
-            {
                 value: 'endereco_numero',
-                label: 'Endereço e Número',
+                label: 'Endereço, Número e Complemento',
                 fields: [{
                         name: 'endereco',
                         placeholder: 'Endereço'
@@ -2900,6 +3130,27 @@ if (isset($_GET['adicionar_historico'])) {
                     {
                         name: 'numero',
                         placeholder: 'Número'
+                    },
+                    {
+                        name: 'complemento',
+                        placeholder: 'Complemento (opcional)'
+                    }
+                ]
+            },
+            {
+                value: 'proprietario_cnpj_cpf',
+                label: 'Proprietário, CNPJ, CPF',
+                fields: [{
+                        name: 'proprietario',
+                        placeholder: 'Proprietário (opcional)'
+                    },
+                    {
+                        name: 'cnpj',
+                        placeholder: 'CNPJ (opcional)'
+                    },
+                    {
+                        name: 'cpf',
+                        placeholder: 'CPF (opcional)'
                     }
                 ]
             },
@@ -2920,78 +3171,23 @@ if (isset($_GET['adicionar_historico'])) {
                 }]
             },
             {
-                value: 'loteamento',
-                label: 'Loteamento',
-                fields: [{
-                    name: 'loteamento',
-                    placeholder: 'Loteamento'
-                }]
-            },
-            {
-                value: 'loteamento_quadra',
-                label: 'Loteamento e Quadra',
+                value: 'loteamento_quarteirao_quadra_lote',
+                label: 'Loteamento, Quarteirão, Quadra e Lote',
                 fields: [{
                         name: 'loteamento',
-                        placeholder: 'Loteamento'
+                        placeholder: 'Loteamento (opcional)'
+                    },
+                    {
+                        name: 'quarteirao',
+                        placeholder: 'Quarteirão (opcional)'
                     },
                     {
                         name: 'quadra',
-                        placeholder: 'Quadra'
-                    }
-                ]
-            },
-            {
-                value: 'loteamento_quadra_lote',
-                label: 'Loteamento, Quadra e Lote',
-                fields: [{
-                        name: 'loteamento',
-                        placeholder: 'Loteamento'
-                    },
-                    {
-                        name: 'quadra',
-                        placeholder: 'Quadra'
+                        placeholder: 'Quadra (opcional)'
                     },
                     {
                         name: 'lote',
-                        placeholder: 'Lote'
-                    }
-                ]
-            },
-            {
-                value: 'quarteirao',
-                label: 'Quarteirão',
-                fields: [{
-                    name: 'quarteirao',
-                    placeholder: 'Quarteirão'
-                }]
-            },
-            {
-                value: 'quarteirao_quadra',
-                label: 'Quarteirão e Quadra',
-                fields: [{
-                        name: 'quarteirao',
-                        placeholder: 'Quarteirão'
-                    },
-                    {
-                        name: 'quadra',
-                        placeholder: 'Quadra'
-                    }
-                ]
-            },
-            {
-                value: 'quarteirao_quadra_lote',
-                label: 'Quarteirão, Quadra e Lote',
-                fields: [{
-                        name: 'quarteirao',
-                        placeholder: 'Quarteirão'
-                    },
-                    {
-                        name: 'quadra',
-                        placeholder: 'Quadra'
-                    },
-                    {
-                        name: 'lote',
-                        placeholder: 'Lote'
+                        placeholder: 'Lote (opcional)'
                     }
                 ]
             },
@@ -3121,6 +3317,11 @@ if (isset($_GET['adicionar_historico'])) {
 
                     payload.page = currentPage;
                     payload.limit = currentLimit;
+                    
+                    // Adicionar quadrícula se disponível
+                    if (typeof dadosOrto !== 'undefined' && dadosOrto && dadosOrto.length > 0 && dadosOrto[0]['quadricula']) {
+                        payload.quadricula = dadosOrto[0]['quadricula'];
+                    }
 
                     try {
                         const response = await fetch('index_3.php?pesquisar=1', {
@@ -3140,6 +3341,16 @@ if (isset($_GET['adicionar_historico'])) {
                             totalPages = result.totalPages;
                             totalResults = result.total;
                             displaySearchResults(result.dados, result.total, result.page, result.totalPages);
+                            
+                            // Recarregar desenhos filtrados após nova pesquisa
+                            // Aguardar um pouco para garantir que o JSON foi salvo
+                            setTimeout(() => {
+                                if (typeof window.carregarDesenhosFiltrados === 'function') {
+                                    window.carregarDesenhosFiltrados();
+                                } else if (typeof carregarDesenhosFiltrados === 'function') {
+                                    carregarDesenhosFiltrados();
+                                }
+                            }, 500);
                         }
                     } catch (err) {
                         console.error('Erro ao realizar pesquisa:', err);
@@ -3183,6 +3394,11 @@ if (isset($_GET['adicionar_historico'])) {
                 page: page,
                 limit: currentLimit
             };
+            
+            // Adicionar quadrícula se disponível
+            if (typeof dadosOrto !== 'undefined' && dadosOrto && dadosOrto.length > 0 && dadosOrto[0]['quadricula']) {
+                payload.quadricula = dadosOrto[0]['quadricula'];
+            }
 
             const btnPesquisar = document.getElementById('btnPesquisar');
             if (btnPesquisar) {
@@ -3230,16 +3446,31 @@ if (isset($_GET['adicionar_historico'])) {
             if (!option) return;
 
             option.fields.forEach(field => {
+                
                 const input = document.createElement('input');
                 input.className = 'form-control';
                 input.name = field.name;
                 input.placeholder = field.placeholder;
-                input.style.maxWidth = '220px';
+                input.style.maxWidth = '280px';
 
                 if (field.name.includes('area_') || field.name.includes('min') || field.name.includes('max')) {
                     input.type = 'number';
                     input.step = '0.01';
                     input.min = '0';
+                }
+                
+                // Definir tipo numérico para campo quarteirão (quando for cadastros_nao_desenhados ou loteamento_quarteirao_quadra_lote)
+                if (field.name === 'quarteirao' && (selectedValue === 'cadastros_nao_desenhados' || selectedValue === 'loteamento_quarteirao_quadra_lote')) {
+                    input.type = 'number';
+                    input.min = '1';
+                    input.step = '1';
+                }
+                
+                // Definir tipo numérico para campos quadra e lote (quando for loteamento_quarteirao_quadra_lote)
+                if ((field.name === 'quadra' || field.name === 'lote') && selectedValue === 'loteamento_quarteirao_quadra_lote') {
+                    input.type = 'number';
+                    input.min = '1';
+                    input.step = '1';
                 }
 
                 if (savedValues[field.name]) input.value = savedValues[field.name];
@@ -3341,6 +3572,7 @@ if (isset($_GET['adicionar_historico'])) {
                 'imob_id',
                 'logradouro',
                 'numero',
+                'complemento',
                 'bairro',
                 'nome_loteamento',
                 'cara_quarteirao',
@@ -3349,6 +3581,7 @@ if (isset($_GET['adicionar_historico'])) {
                 'total_construido',
                 'historico',
                 'nome_pessoa',
+                'cpf',
                 'cnpj',
                 'area_terreno',
                 'tipo_edificacao',
@@ -3365,6 +3598,7 @@ if (isset($_GET['adicionar_historico'])) {
                 'imob_id': 'Imob ID',
                 'logradouro': 'Logradouro',
                 'numero': 'Número',
+                'complemento': 'Complemento',
                 'bairro': 'Bairro',
                 'nome_loteamento': 'Loteamento',
                 'cara_quarteirao': 'Quarteirão',
@@ -3373,6 +3607,7 @@ if (isset($_GET['adicionar_historico'])) {
                 'total_construido': 'Área Construída',
                 'historico': 'Histórico',
                 'nome_pessoa': 'Nome',
+                'cpf': 'CPF',
                 'cnpj': 'CNPJ',
                 'area_terreno': 'Área Terreno',
                 'tipo_edificacao': 'Tipo Edificação',
@@ -3383,9 +3618,9 @@ if (isset($_GET['adicionar_historico'])) {
                 'uso_imovel': 'Uso Imóvel'
             };
 
-            // Filtrar apenas as colunas que existem nos dados
+            // Filtrar apenas as colunas que existem nos dados (excluir desenho_id que é apenas para verificação)
             const columnArray = columnsOrder.filter(col => {
-                return dados.some(row => row.hasOwnProperty(col));
+                return col !== 'desenho_id' && dados.some(row => row.hasOwnProperty(col));
             });
             
             // Armazenar para uso na ordenação
@@ -3422,7 +3657,10 @@ if (isset($_GET['adicionar_historico'])) {
             let bodyHTML = '';
             dados.forEach((row) => {
                 const imobId = row.imob_id || '';
-                bodyHTML += `<tr data-imob-id="${imobId}">`;
+                // Verificar se tem desenho (desenho_id não é null)
+                const temDesenho = row.desenho_id !== null && row.desenho_id !== undefined;
+                const rowClass = temDesenho ? '' : 'no-drawing';
+                bodyHTML += `<tr class="${rowClass}" data-imob-id="${imobId}">`;
                 columnArray.forEach(col => {
                     const value = row[col] !== null && row[col] !== undefined ? row[col] : '';
                     // Se for a coluna historico, criar link clicável
@@ -5890,7 +6128,9 @@ if (isset($_GET['adicionar_historico'])) {
                     if (!dadosOrto || dadosOrto.length === 0) return;
 
                     const quadricula = dadosOrto[0]['quadricula'];
-                    const response = await fetch(`index_3.php?buscarDesenhosFiltrados=1&quadricula=${quadricula}`);
+                    // Adicionar timestamp para forçar atualização (cache-busting)
+                    const timestamp = new Date().getTime();
+                    const response = await fetch(`index_3.php?buscarDesenhosFiltrados=1&quadricula=${quadricula}&_t=${timestamp}`);
 
                     if (!response.ok) return;
 
@@ -5899,16 +6139,23 @@ if (isset($_GET['adicionar_historico'])) {
                     if (data.ids && Array.isArray(data.ids) && data.ids.length > 0) {
                         idsDesenhosFiltrados = data.ids.map(id => parseInt(id));
                         temPesquisaSalva = true;
-                        //console.log('Desenhos filtrados encontrados:', idsDesenhosFiltrados.length);
-                        // Mostrar checkbox se houver pesquisa
+                        console.log('Desenhos filtrados atualizados:', idsDesenhosFiltrados.length);
+                        // Mostrar checkbox se houver pesquisa com desenhos
                         $('#liFiltrado').show();
                         $('#liFiltradoCheckbox').show();
                     } else {
+                        // Limpar IDs e ocultar filtrado quando não houver desenhos
                         idsDesenhosFiltrados = [];
                         temPesquisaSalva = false;
-                        // Ocultar checkbox se não houver pesquisa
+                        // Ocultar checkbox se não houver pesquisa ou desenhos
                         $('#liFiltrado').hide();
                         $('#liFiltradoCheckbox').hide();
+                        // Desmarcar checkbox se estiver marcado
+                        $('#chkFiltrado').prop('checked', false);
+                        // Restaurar visibilidade original se estava aplicando filtro
+                        if (typeof aplicarVisibilidadePorCheckboxes === 'function') {
+                            aplicarVisibilidadePorCheckboxes();
+                        }
                     }
                 } catch (err) {
                     console.error('Erro ao carregar desenhos filtrados:', err);
@@ -5916,6 +6163,9 @@ if (isset($_GET['adicionar_historico'])) {
                     $('#liFiltradoCheckbox').hide();
                 }
             }
+            
+            // Tornar a função acessível globalmente
+            window.carregarDesenhosFiltrados = carregarDesenhosFiltrados;
 
             // Salvar estado original de visibilidade de todos os objetos
             function salvarEstadoOriginal() {
@@ -10029,7 +10279,10 @@ if (isset($_GET['adicionar_historico'])) {
             let bodyHTML = '';
             dadosOrdenados.forEach((row) => {
                 const imobId = row.imob_id || '';
-                bodyHTML += `<tr data-imob-id="${imobId}">`;
+                // Verificar se tem desenho (desenho_id não é null)
+                const temDesenho = row.desenho_id !== null && row.desenho_id !== undefined;
+                const rowClass = temDesenho ? '' : 'no-drawing';
+                bodyHTML += `<tr class="${rowClass}" data-imob-id="${imobId}">`;
                 columnArrayGlobalIndex3.forEach(col => {
                     const value = row[col] !== null && row[col] !== undefined ? row[col] : '';
                     if (col === 'historico') {

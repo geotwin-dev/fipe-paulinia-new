@@ -6269,6 +6269,25 @@ const MapFramework = {
     
                             if (qtdeCadastros > 1) {
                                 desenho.dadosMoradores = MapFramework.dadosMoradores.filter(compararMorador);
+                                
+                                // Ordena por número de inscrição (menor primeiro)
+                                desenho.dadosMoradores.sort((a, b) => {
+                                    const inscricaoA = a.inscricao || '';
+                                    const inscricaoB = b.inscricao || '';
+                                    
+                                    // Tenta converter para número se possível
+                                    const numA = parseFloat(inscricaoA);
+                                    const numB = parseFloat(inscricaoB);
+                                    
+                                    // Se ambos são números válidos, compara numericamente
+                                    if (!isNaN(numA) && !isNaN(numB)) {
+                                        return numA - numB;
+                                    }
+                                    
+                                    // Caso contrário, compara como string
+                                    return String(inscricaoA).localeCompare(String(inscricaoB), undefined, { numeric: true, sensitivity: 'base' });
+                                });
+                                
                                 desenho.indiceMoradorAtual = 0;
                                 desenho.dadosMorador = (desenho.dadosMoradores.length > 0) ? desenho.dadosMoradores[0] : null;
                             } else {
